@@ -5,8 +5,11 @@
 #![cfg_attr(feature = "clippy", feature(plugin))]
 #![cfg_attr(feature = "clippy", plugin(clippy))]
 #![cfg_attr(feature = "clippy", allow(inline_always))]
-#![cfg_attr(feature = "clippy", allow(unreadable_literal))]
 #![cfg_attr(feature = "clippy", allow(many_single_char_names))]
+#![cfg_attr(feature = "clippy", allow(too_many_arguments))]
+#![cfg_attr(feature = "clippy", allow(type_complexity))]
+#![cfg_attr(feature = "clippy", allow(unreadable_literal))]
+#![cfg_attr(feature = "clippy", allow(wrong_self_convention))]
 
 extern crate pairing;
 extern crate bellman;

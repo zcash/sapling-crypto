@@ -86,7 +86,7 @@ impl<E: JubjubEngine> Point<E, Unknown> {
                     y.negate();
                 }
 
-                return Some(Point {
+                Some(Point {
                     x: x,
                     y: y,
                     infinity: false,
@@ -112,11 +112,8 @@ impl<E: JubjubEngine> Point<E, Unknown> {
         loop {
             let x: E::Fr = rng.gen();
 
-            match Self::get_for_x(x, rng.gen(), params) {
-                Some(p) => {
-                    return p
-                },
-                None => {}
+            if let Some(p) = Self::get_for_x(x, rng.gen(), params) {
+                return p;
             }
         }
     }
@@ -131,60 +128,57 @@ impl<E: JubjubEngine, Subgroup> Point<E, Subgroup> {
     {
         let (x, y) = e.into_xy();
 
+        // The map from a twisted Edwards curve is defined as
+        // (x, y) -> (u, v) where
+        //      u = (1 + y) / (1 - y)
+        //      v = u / x
+        //
+        // This mapping is not defined for y = 1 and for x = 0.
+
         if y == E::Fr::one() {
             // The only solution for y = 1 is x = 0. (0, 1) is
             // the neutral element, so we map this to the point
             // at infinity.
 
             Point::zero()
+        } else if x.is_zero() {
+            // If x = 0, the only solutions for y are 1 (contradiction) or -1.
+            // (0, -1) is the point of order two which is not
+            // the neutral element, so we map it to (0, 0) which is
+            // the only affine point of order 2.
+
+            Point {
+                x: E::Fr::zero(),
+                y: E::Fr::zero(),
+                infinity: false,
+                _marker: PhantomData
+            }
         } else {
-            // The map from a twisted Edwards curve is defined as
+            // The mapping is defined as above.
+            //
             // (x, y) -> (u, v) where
             //      u = (1 + y) / (1 - y)
             //      v = u / x
-            //
-            // This mapping is not defined for y = 1 and for x = 0.
-            //
-            // We have that y != 1 above. If x = 0, the only
-            // solutions for y are 1 (contradiction) or -1.
-            if x.is_zero() {
-                // (0, -1) is the point of order two which is not
-                // the neutral element, so we map it to (0, 0) which is
-                // the only affine point of order 2.
 
-                Point {
-                    x: E::Fr::zero(),
-                    y: E::Fr::zero(),
-                    infinity: false,
-                    _marker: PhantomData
-                }
-            } else {
-                // The mapping is defined as above.
-                //
-                // (x, y) -> (u, v) where
-                //      u = (1 + y) / (1 - y)
-                //      v = u / x
+            let mut u = E::Fr::one();
+            u.add_assign(&y);
+            {
+                let mut tmp = E::Fr::one();
+                tmp.sub_assign(&y);
+                u.mul_assign(&tmp.inverse().unwrap())
+            }
 
-                let mut u = E::Fr::one();
-                u.add_assign(&y);
-                {
-                    let mut tmp = E::Fr::one();
-                    tmp.sub_assign(&y);
-                    u.mul_assign(&tmp.inverse().unwrap())
-                }
+            let mut v = u;
+            v.mul_assign(&x.inverse().unwrap());
 
-                let mut v = u;
-                v.mul_assign(&x.inverse().unwrap());
+            // Scale it into the correct curve constants
+            v.mul_assign(params.scale());
 
-                // Scale it into the correct curve constants
-                v.mul_assign(params.scale());
-
-                Point {
-                    x: u,
-                    y: v,
-                    infinity: false,
-                    _marker: PhantomData
-                }
+            Point {
+                x: u,
+                y: v,
+                infinity: false,
+                _marker: PhantomData
             }
         }
     }
@@ -236,7 +230,7 @@ impl<E: JubjubEngine, Subgroup> Point<E, Subgroup> {
 
         let mut delta = E::Fr::one();
         {
-            let mut tmp = params.montgomery_a().clone();
+            let mut tmp = *params.montgomery_a();
             tmp.mul_assign(&self.x);
             tmp.double();
             delta.add_assign(&tmp);

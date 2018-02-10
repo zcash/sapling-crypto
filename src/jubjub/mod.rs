@@ -157,8 +157,8 @@ impl JubjubParams<Bls12> for JubjubBls12 {
     }
 }
 
-impl JubjubBls12 {
-    pub fn new() -> Self {
+impl Default for JubjubBls12 {
+    fn default() -> Self {
         let montgomery_a = Fr::from_str("40962").unwrap();
         let mut montgomery_2a = montgomery_a;
         montgomery_2a.double();
@@ -329,7 +329,7 @@ impl JubjubBls12 {
 
 #[test]
 fn test_jubjub_bls12() {
-    let params = JubjubBls12::new();
+    let params = JubjubBls12::default();
 
     tests::test_suite::<Bls12>(&params);
 

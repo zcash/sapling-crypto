@@ -775,7 +775,7 @@ mod test {
 
     #[test]
     fn test_into_edwards() {
-        let params = &JubjubBls12::new();
+        let params = &JubjubBls12::default();
         let rng = &mut XorShiftRng::from_seed([0x3dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for _ in 0..100 {
@@ -814,7 +814,7 @@ mod test {
 
     #[test]
     fn test_interpret() {
-        let params = &JubjubBls12::new();
+        let params = &JubjubBls12::default();
         let rng = &mut XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for _ in 0..100 {
@@ -874,7 +874,7 @@ mod test {
 
     #[test]
     fn test_edwards_fixed_base_multiplication()  {
-        let params = &JubjubBls12::new();
+        let params = &JubjubBls12::default();
         let rng = &mut XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for _ in 0..100 {
@@ -909,7 +909,7 @@ mod test {
 
     #[test]
     fn test_edwards_multiplication() {
-        let params = &JubjubBls12::new();
+        let params = &JubjubBls12::default();
         let rng = &mut XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for _ in 0..100 {
@@ -966,7 +966,7 @@ mod test {
 
     #[test]
     fn test_conditionally_select() {
-        let params = &JubjubBls12::new();
+        let params = &JubjubBls12::default();
         let rng = &mut XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for _ in 0..1000 {
@@ -1032,7 +1032,7 @@ mod test {
 
     #[test]
     fn test_edwards_addition() {
-        let params = &JubjubBls12::new();
+        let params = &JubjubBls12::default();
         let rng = &mut XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for _ in 0..100 {
@@ -1100,7 +1100,7 @@ mod test {
 
     #[test]
     fn test_edwards_doubling() {
-        let params = &JubjubBls12::new();
+        let params = &JubjubBls12::default();
         let rng = &mut XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for _ in 0..100 {
@@ -1135,7 +1135,7 @@ mod test {
 
     #[test]
     fn test_montgomery_addition() {
-        let params = &JubjubBls12::new();
+        let params = &JubjubBls12::default();
         let rng = &mut XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for _ in 0..100 {

@@ -214,7 +214,7 @@ impl<E: Engine> AllocatedNum<E> {
         );
 
         // Convert into booleans, and reverse for little-endian bit order
-        Ok(result.into_iter().map(|b| Boolean::from(b)).rev().collect())
+        Ok(result.into_iter().map(Boolean::from).rev().collect())
     }
 
     /// Convert the allocated number into its little-endian representation.
