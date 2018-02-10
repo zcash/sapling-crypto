@@ -17,6 +17,7 @@ rand = "0.4"
 digest = "0.7"
 bellman = "0.0.9"
 byteorder = "1"
+clippy = { version = "0.0.186", optional = true }
 
 [dependencies.blake2-rfc]
 git = "https://github.com/gtank/blake2-rfc"
