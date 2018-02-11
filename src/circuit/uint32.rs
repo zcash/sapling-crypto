@@ -32,12 +32,7 @@ impl UInt32 {
 
         let mut tmp = value;
         for _ in 0..32 {
-            if tmp & 1 == 1 {
-                bits.push(Boolean::constant(true))
-            } else {
-                bits.push(Boolean::constant(false))
-            }
-
+            bits.push(Boolean::constant(tmp & 1 == 1));
             tmp >>= 1;
         }
 
