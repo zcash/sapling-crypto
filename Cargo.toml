@@ -13,7 +13,7 @@ version = "~0.13.2"
 features = ["expose-arith"]
 
 [dependencies]
-rand = "0.3"
+rand = "0.4"
 blake2 = "0.7"
 digest = "0.7"
 bellman = "0.0.7"
