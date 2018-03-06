@@ -355,7 +355,7 @@ impl<E: Engine> AllocatedNum<E> {
     ) -> Result<(Self, Self), SynthesisError>
         where CS: ConstraintSystem<E>
     {
-        let c = Self::alloc(
+        let r = Self::alloc(
             cs.namespace(|| "conditional reversal result 1"),
             || {
                 if *condition.get_value().get()? {
@@ -366,14 +366,7 @@ impl<E: Engine> AllocatedNum<E> {
             }
         )?;
 
-        cs.enforce(
-            || "first conditional reversal",
-            |lc| lc + a.variable - b.variable,
-            |_| condition.lc(CS::one(), E::Fr::one()),
-            |lc| lc + a.variable - c.variable
-        );
-
-        let d = Self::alloc(
+        let s = Self::alloc(
             cs.namespace(|| "conditional reversal result 2"),
             || {
                 if *condition.get_value().get()? {
@@ -384,14 +377,19 @@ impl<E: Engine> AllocatedNum<E> {
             }
         )?;
 
+        // (1-c)(a) + (c)(b) = r
+        // (1-c)(b) + (c)(a) = s
+        // a - ca + cb - r = b - cb + ca - s
+        // c(2b - 2a) = (r - s) + (b - a)
+
         cs.enforce(
-            || "second conditional reversal",
-            |lc| lc + b.variable - a.variable,
+            || "conditional reversal",
+            |lc| lc + b.variable + b.variable - a.variable - a.variable,
             |_| condition.lc(CS::one(), E::Fr::one()),
-            |lc| lc + b.variable - d.variable
+            |lc| lc + r.variable - s.variable + b.variable - a.variable
         );
 
-        Ok((c, d))
+        Ok((r, s))
     }
 
     pub fn get_value(&self) -> Option<E::Fr> {
