@@ -87,8 +87,8 @@ impl<E: JubjubEngine> Point<E, Unknown> {
                 }
 
                 Some(Point {
-                    x: x,
-                    y: y,
+                    x,
+                    y,
                     infinity: false,
                     _marker: PhantomData
                 })

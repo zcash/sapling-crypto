@@ -21,7 +21,7 @@ impl Personalization {
 }
 
 pub fn pedersen_hash<E, I>(
-    personalization: Personalization,
+    personalization: &Personalization,
     bits: I,
     params: &E::Params
 ) -> edwards::Point<E, PrimeOrder>

@@ -101,7 +101,7 @@ impl<E: Engine> AllocatedNum<E> {
             where E: Engine,
                   CS: ConstraintSystem<E>
         {
-            assert!(v.len() > 0);
+            assert!(!v.is_empty());
 
             // Let's keep this simple for now and just AND them all
             // manually
@@ -119,7 +119,7 @@ impl<E: Engine> AllocatedNum<E> {
                 }
             }
 
-            Ok(cur.expect("v.len() > 0"))
+            Ok(cur.expect("!v.is_empty()"))
         }
 
         // We want to ensure that the bit representation of a is
@@ -136,6 +136,7 @@ impl<E: Engine> AllocatedNum<E> {
 
         let mut found_one = false;
         let mut i = 0;
+        #[cfg_attr(feature = "clippy", allow(explicit_counter_loop))]
         for b in BitIterator::new(b) {
             let a_bit = a.as_mut().map(|e| e.next().unwrap());
 
@@ -158,7 +159,7 @@ impl<E: Engine> AllocatedNum<E> {
                 current_run.push(a_bit.clone());
                 result.push(a_bit);
             } else {
-                if current_run.len() > 0 {
+                if !current_run.is_empty() {
                     // This is the start of a run of zeros, but we need
                     // to k-ary AND against `last_run` first.
 
@@ -180,7 +181,7 @@ impl<E: Engine> AllocatedNum<E> {
                 let a_bit = AllocatedBit::alloc_conditionally(
                     cs.namespace(|| format!("bit {}", i)),
                     a_bit,
-                    &last_run.as_ref().expect("char always starts with a one")
+                    last_run.as_ref().expect("char always starts with a one")
                 )?;
                 result.push(a_bit);
             }
@@ -234,7 +235,7 @@ impl<E: Engine> AllocatedNum<E> {
         let mut lc = LinearCombination::zero();
         let mut coeff = E::Fr::one();
 
-        for bit in bits.iter() {
+        for bit in &bits {
             lc = lc + (coeff, bit.get_variable());
 
             coeff.double();
@@ -249,7 +250,7 @@ impl<E: Engine> AllocatedNum<E> {
             |_| lc
         );
 
-        Ok(bits.into_iter().map(|b| Boolean::from(b)).collect())
+        Ok(bits.into_iter().map(Boolean::from).collect())
     }
 
     pub fn mul<CS>(
@@ -279,7 +280,7 @@ impl<E: Engine> AllocatedNum<E> {
         );
 
         Ok(AllocatedNum {
-            value: value,
+            value,
             variable: var
         })
     }
@@ -310,7 +311,7 @@ impl<E: Engine> AllocatedNum<E> {
         );
 
         Ok(AllocatedNum {
-            value: value,
+            value,
             variable: var
         })
     }

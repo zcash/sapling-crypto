@@ -198,7 +198,7 @@ impl<'a, E: JubjubEngine> Circuit<E> for Spend<'a, E> {
         // Compute the hash of the note contents
         let mut cm = pedersen_hash::pedersen_hash(
             cs.namespace(|| "note content hash"),
-            pedersen_hash::Personalization::NoteCommitment,
+            &pedersen_hash::Personalization::NoteCommitment,
             &note_contents,
             self.params
         )?;
@@ -265,7 +265,7 @@ impl<'a, E: JubjubEngine> Circuit<E> for Spend<'a, E> {
 
             cur = pedersen_hash::pedersen_hash(
                 cs.namespace(|| "computation of pedersen hash"),
-                pedersen_hash::Personalization::MerkleTree(i),
+                &pedersen_hash::Personalization::MerkleTree(i),
                 &preimage,
                 self.params
             )?.get_x().clone(); // Injective encoding
@@ -443,7 +443,7 @@ impl<'a, E: JubjubEngine> Circuit<E> for Output<'a, E> {
         // Compute the hash of the note contents
         let mut cm = pedersen_hash::pedersen_hash(
             cs.namespace(|| "note content hash"),
-            pedersen_hash::Personalization::NoteCommitment,
+            &pedersen_hash::Personalization::NoteCommitment,
             &note_contents,
             self.params
         )?;
@@ -486,7 +486,7 @@ fn test_input_circuit_with_bls12_381() {
     use ::circuit::test::*;
     use jubjub::{JubjubBls12, fs};
 
-    let params = &JubjubBls12::new();
+    let params = &JubjubBls12::default();
     let rng = &mut XorShiftRng::from_seed([0x3dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
     let tree_depth = 32;
@@ -528,7 +528,7 @@ fn test_output_circuit_with_bls12_381() {
     use ::circuit::test::*;
     use jubjub::{JubjubBls12, fs};
 
-    let params = &JubjubBls12::new();
+    let params = &JubjubBls12::default();
     let rng = &mut XorShiftRng::from_seed([0x3dbe6258, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
     let value: u64 = 1;

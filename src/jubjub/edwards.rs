@@ -180,9 +180,9 @@ impl<E: JubjubEngine> Point<E, Unknown> {
                         t.mul_assign(&y);
 
                         Some(Point {
-                            x: x,
-                            y: y,
-                            t: t,
+                            x,
+                            y,
+                            t,
                             z: E::Fr::one(),
                             _marker: PhantomData
                         })
@@ -341,8 +341,8 @@ impl<E: JubjubEngine, Subgroup> Point<E, Subgroup> {
                     Point {
                         x: u,
                         y: v,
-                        t: t,
-                        z: z,
+                        t,
+                        z,
                         _marker: PhantomData
                     }
                 }

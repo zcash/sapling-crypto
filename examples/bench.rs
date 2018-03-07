@@ -20,7 +20,7 @@ use pairing::bls12_381::Bls12;
 const TREE_DEPTH: usize = 32;
 
 fn main() {
-    let jubjub_params = &JubjubBls12::new();
+    let jubjub_params = &JubjubBls12::default();
     let rng = &mut XorShiftRng::from_seed([0x3dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
     println!("Creating sample parameters...");

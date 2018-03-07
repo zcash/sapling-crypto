@@ -15,14 +15,14 @@ impl Personalization {
     fn get_constant_bools(&self) -> Vec<Boolean> {
         self.get_bits()
         .into_iter()
-        .map(|e| Boolean::constant(e))
+        .map(Boolean::constant)
         .collect()
     }
 }
 
 pub fn pedersen_hash<E: JubjubEngine, CS>(
     mut cs: CS,
-    personalization: Personalization,
+    personalization: &Personalization,
     bits: &[Boolean],
     params: &E::Params
 ) -> Result<EdwardsPoint<E>, SynthesisError>
@@ -135,7 +135,7 @@ mod test {
 
         pedersen_hash(
             cs.namespace(|| "pedersen hash"),
-            Personalization::NoteCommitment,
+            &Personalization::NoteCommitment,
             &input_bools,
             params
         ).unwrap();
@@ -163,7 +163,7 @@ mod test {
 
                 let res = pedersen_hash(
                     cs.namespace(|| "pedersen hash"),
-                    Personalization::MerkleTree(1),
+                    &Personalization::MerkleTree(1),
                     &input_bools,
                     params
                 ).unwrap();
@@ -171,7 +171,7 @@ mod test {
                 assert!(cs.is_satisfied());
 
                 let expected = ::pedersen_hash::pedersen_hash::<Bls12, _>(
-                    Personalization::MerkleTree(1),
+                    &Personalization::MerkleTree(1),
                     input.clone().into_iter(),
                     params
                 ).into_xy();
@@ -181,7 +181,7 @@ mod test {
 
                 // Test against the output of a different personalization
                 let unexpected = ::pedersen_hash::pedersen_hash::<Bls12, _>(
-                    Personalization::MerkleTree(0),
+                    &Personalization::MerkleTree(0),
                     input.into_iter(),
                     params
                 ).into_xy();

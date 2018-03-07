@@ -167,9 +167,9 @@ impl Default for JubjubBls12 {
             // d = -(10240/10241)
             edwards_d: Fr::from_str("19257038036680949359750312669786877991949435402254120286184196891950884077233").unwrap(),
             // A = 40962
-            montgomery_a: montgomery_a,
+            montgomery_a,
             // 2A = 2.A
-            montgomery_2a: montgomery_2a,
+            montgomery_2a,
             // scaling factor = sqrt(4 / (a - d))
             scale: Fr::from_str("17814886934372412843466061268024708274627479829237077604635722030778476050649").unwrap(),
 
@@ -223,6 +223,7 @@ impl Default for JubjubBls12 {
 
                 // Written this way for exhaustion (double entendre). There's no
                 // way to iterate over the variants of an enum, so it's hideous.
+                #[cfg_attr(feature = "clippy", allow(needless_range_loop))]
                 for c in 0..(FixedGenerators::Max as usize) {
                     let p = match c {
                         c if c == (FixedGenerators::ProofGenerationKey as usize) => {

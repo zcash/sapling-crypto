@@ -45,7 +45,7 @@ impl<E: JubjubEngine> Note<E> {
 
         // Compute the Pedersen hash of the note contents
         let hash_of_contents = pedersen_hash(
-            Personalization::NoteCommitment,
+            &Personalization::NoteCommitment,
             note_contents.into_iter()
                          .flat_map(|byte| {
                             (0..8).rev().map(move |i| ((byte >> i) & 1) == 1)
