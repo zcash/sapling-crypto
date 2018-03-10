@@ -507,6 +507,65 @@ impl Boolean {
             }
         }
     }
+
+    /// Computes (a and b) xor (a and c) xor (b and c)
+    pub fn sha256_maj<'a, E, CS>(
+        mut cs: CS,
+        a: &'a Self,
+        b: &'a Self,
+        c: &'a Self,
+    ) -> Result<Self, SynthesisError>
+        where E: Engine,
+              CS: ConstraintSystem<E>
+    {
+        let maj_value = match (a.get_value(), b.get_value(), c.get_value()) {
+            (Some(a), Some(b), Some(c)) => {
+                // (a and b) xor (a and c) xor (b and c)
+                Some((a & b) ^ (a & c) ^ (b & c))
+            },
+            _ => None
+        };
+
+        let maj = cs.alloc(|| "maj", || {
+            maj_value.get().map(|v| {
+                if *v {
+                    E::Fr::one()
+                } else {
+                    E::Fr::zero()
+                }
+            })
+        })?;
+
+        // ¬(¬a ∧ ¬b) ∧ ¬(¬a ∧ ¬c) ∧ ¬(¬b ∧ ¬c)
+        // (1 - ((1 - a) * (1 - b))) * (1 - ((1 - a) * (1 - c))) * (1 - ((1 - b) * (1 - c)))
+        // (a + b - ab) * (a + c - ac) * (b + c - bc)
+        // -2abc + ab + ac + bc
+        // a (-2bc + b + c) + bc
+        //
+        // (b) * (c) = (bc)
+        // (2bc - b - c) * (a) = bc - maj
+
+        let bc = Self::and(
+            cs.namespace(|| "b and c"),
+            b,
+            c
+        )?;
+
+        cs.enforce(
+            || "maj computation",
+            |_| bc.lc(CS::one(), E::Fr::one())
+                + &bc.lc(CS::one(), E::Fr::one())
+                - &b.lc(CS::one(), E::Fr::one())
+                - &c.lc(CS::one(), E::Fr::one()),
+            |_| a.lc(CS::one(), E::Fr::one()),
+            |_| bc.lc(CS::one(), E::Fr::one()) - maj
+        );
+
+        Ok(AllocatedBit {
+            value: maj_value,
+            variable: maj
+        }.into())
+    }
 }
 
 impl From<AllocatedBit> for Boolean {
@@ -715,6 +774,88 @@ mod test {
         AllocatedFalse,
         NegatedAllocatedTrue,
         NegatedAllocatedFalse
+    }
+
+    impl OperandType {
+        fn val(&self) -> bool {
+            match *self {
+                OperandType::True => true,
+                OperandType::False => false,
+                OperandType::AllocatedTrue => true,
+                OperandType::AllocatedFalse => false,
+                OperandType::NegatedAllocatedTrue => false,
+                OperandType::NegatedAllocatedFalse => true
+            }
+        }
+    }
+
+    #[test]
+    fn test_boolean_sha256_maj() {
+        let variants = [
+            OperandType::True,
+            OperandType::False,
+            OperandType::AllocatedTrue,
+            OperandType::AllocatedFalse,
+            OperandType::NegatedAllocatedTrue,
+            OperandType::NegatedAllocatedFalse
+        ];
+
+        for first_operand in variants.iter().cloned() {
+            for second_operand in variants.iter().cloned() {
+                for third_operand in variants.iter().cloned() {
+                    let mut cs = TestConstraintSystem::<Bls12>::new();
+
+                    let a;
+                    let b;
+                    let c;
+
+                    // maj = (a and b) xor (a and c) xor (b and c)
+                    let expected = (first_operand.val() & second_operand.val()) ^
+                                   (first_operand.val() & third_operand.val()) ^
+                                   (second_operand.val() & third_operand.val());
+
+                    {
+                        let mut dyn_construct = |operand, name| {
+                            let cs = cs.namespace(|| name);
+
+                            match operand {
+                                OperandType::True => Boolean::constant(true),
+                                OperandType::False => Boolean::constant(false),
+                                OperandType::AllocatedTrue => Boolean::from(AllocatedBit::alloc(cs, Some(true)).unwrap()),
+                                OperandType::AllocatedFalse => Boolean::from(AllocatedBit::alloc(cs, Some(false)).unwrap()),
+                                OperandType::NegatedAllocatedTrue => Boolean::from(AllocatedBit::alloc(cs, Some(true)).unwrap()).not(),
+                                OperandType::NegatedAllocatedFalse => Boolean::from(AllocatedBit::alloc(cs, Some(false)).unwrap()).not(),
+                            }
+                        };
+
+                        a = dyn_construct(first_operand, "a");
+                        b = dyn_construct(second_operand, "b");
+                        c = dyn_construct(third_operand, "c");
+                    }
+
+                    let maj = Boolean::sha256_maj(&mut cs, &a, &b, &c).unwrap();
+
+                    assert!(cs.is_satisfied());
+
+                    assert_eq!(maj.get_value().unwrap(), expected);
+                    assert_eq!(cs.get("maj"), {
+                        if expected {
+                            Fr::one()
+                        } else {
+                            Fr::zero()
+                        }
+                    });
+                    cs.set("maj", {
+                        if expected {
+                            Fr::zero()
+                        } else {
+                            Fr::one()
+                        }
+                    });
+                    assert_eq!(cs.which_is_unsatisfied().unwrap(), "maj computation");
+                }
+            }
+        }
     }
 
     #[test]
