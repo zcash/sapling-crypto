@@ -137,6 +137,25 @@ impl UInt32 {
         }
     }
 
+    pub fn shr(&self, by: usize) -> Self {
+        let by = by % 32;
+
+        let fill = Boolean::constant(false);
+
+        let new_bits = self.bits
+                           .iter() // The bits are least significant first
+                           .skip(by) // Skip the bits that will be lost during the shift
+                           .chain(Some(&fill).into_iter().cycle()) // Rest will be zeros
+                           .take(32) // Only 32 bits needed!
+                           .cloned()
+                           .collect();
+
+        UInt32 {
+            bits: new_bits,
+            value: self.value.map(|v| v >> by as u32)
+        }
+    }
+
     pub fn rotr(&self, by: usize) -> Self {
         let by = by % 32;
 
@@ -478,6 +497,26 @@ mod test {
     }
 
     #[test]
+    fn test_uint32_shr() {
+        let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
+
+        for _ in 0..50 {
+            for i in 0..60 {
+                let num = rng.gen();
+                let a = UInt32::constant(num).shr(i);
+                let b = UInt32::constant(num >> i);
+
+                assert_eq!(a.value.unwrap(), num >> i);
+
+                assert_eq!(a.bits.len(), b.bits.len());
+                for (a, b) in a.bits.iter().zip(b.bits.iter()) {
+                    assert_eq!(a.get_value().unwrap(), b.get_value().unwrap());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn test_uint32_rotr() {
         let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
@@ -487,6 +526,7 @@ mod test {
 
         for i in 0..32 {
             let b = a.rotr(i);
+            assert_eq!(a.bits.len(), b.bits.len());
 
             assert!(b.value.unwrap() == num);
 
