@@ -130,33 +130,12 @@ pub fn sha256_compression_function<E, CS>(
         )?;
 
         // maj := (a and b) xor (a and c) xor (b and c)
-        let mut maj;
-        {
-            let a_and_b = a.and(
-                cs.namespace(|| "a and b"),
-                &b
-            )?;
-
-            let a_and_c = a.and(
-                cs.namespace(|| "a and c"),
-                &c
-            )?;
-
-            let b_and_c = b.and(
-                cs.namespace(|| "b and c"),
-                &c
-            )?;
-
-            maj = a_and_b.xor(
-                cs.namespace(|| "(a and b) xor (a and c)"),
-                &a_and_c
-            )?;
-
-            maj = maj.xor(
-                cs.namespace(|| "(a and b) xor (a and c) xor (b and c)"),
-                &b_and_c
-            )?;
-        }
+        let maj = UInt32::sha256_maj(
+            cs.namespace(|| "maj"),
+            &a,
+            &b,
+            &c
+        )?;
 
         // temp2 := S0 + maj
         let temp2 = UInt32::addmany(
@@ -306,6 +285,6 @@ mod test {
         ).unwrap();
 
         assert!(cs.is_satisfied());
-        assert_eq!(cs.num_constraints() - 512, 40078);
+        assert_eq!(cs.num_constraints() - 512, 40078 - 5800 - 66);
     }
 }

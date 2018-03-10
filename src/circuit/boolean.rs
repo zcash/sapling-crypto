@@ -526,6 +526,17 @@ impl Boolean {
             _ => None
         };
 
+        match (a, b, c) {
+            (&Boolean::Constant(_),
+            &Boolean::Constant(_),
+            &Boolean::Constant(_)) => {
+                // They're all constants, so we can just compute the value.
+
+                return Ok(Boolean::Constant(maj_value.expect("they're all constants")));
+            },
+            _ => {}
+        }
+
         let maj = cs.alloc(|| "maj", || {
             maj_value.get().map(|v| {
                 if *v {
@@ -777,6 +788,17 @@ mod test {
     }
 
     impl OperandType {
+        fn is_constant(&self) -> bool {
+            match *self {
+                OperandType::True => true,
+                OperandType::False => true,
+                OperandType::AllocatedTrue => false,
+                OperandType::AllocatedFalse => false,
+                OperandType::NegatedAllocatedTrue => false,
+                OperandType::NegatedAllocatedFalse => false
+            }
+        }
+
         fn val(&self) -> bool {
             match *self {
                 OperandType::True => true,
@@ -838,21 +860,31 @@ mod test {
                     assert!(cs.is_satisfied());
 
                     assert_eq!(maj.get_value().unwrap(), expected);
-                    assert_eq!(cs.get("maj"), {
-                        if expected {
-                            Fr::one()
-                        } else {
-                            Fr::zero()
-                        }
-                    });
-                    cs.set("maj", {
-                        if expected {
-                            Fr::zero()
-                        } else {
-                            Fr::one()
-                        }
-                    });
-                    assert_eq!(cs.which_is_unsatisfied().unwrap(), "maj computation");
+
+                    if first_operand.is_constant() &&
+                       second_operand.is_constant() &&
+                       third_operand.is_constant()
+                    {
+                        assert_eq!(cs.num_constraints(), 0);
+                    }
+                    else
+                    {
+                        assert_eq!(cs.get("maj"), {
+                            if expected {
+                                Fr::one()
+                            } else {
+                                Fr::zero()
+                            }
+                        });
+                        cs.set("maj", {
+                            if expected {
+                                Fr::zero()
+                            } else {
+                                Fr::one()
+                            }
+                        });
+                        assert_eq!(cs.which_is_unsatisfied().unwrap(), "maj computation");
+                    }
                 }
             }
         }
