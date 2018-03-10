@@ -97,19 +97,11 @@ pub fn sha256_compression_function<E, CS>(
         )?;
 
         // ch := (e and f) xor ((not e) and g)
-        let e_and_f = e.and(
-            cs.namespace(|| "e and f"),
-            &f
-        )?;
-
-        let not_e_and_g = g.and_not(
-            cs.namespace(|| "not e and g"),
-            &e
-        )?;
-
-        let ch = e_and_f.xor(
-            cs.namespace(|| "(e and f) xor ((not e) and g)"),
-            &not_e_and_g
+        let ch = UInt32::sha256_ch(
+            cs.namespace(|| "ch"),
+            &e,
+            &f,
+            &g
         )?;
 
         // temp1 := h + S1 + ch + k[i] + w[i]
@@ -285,6 +277,6 @@ mod test {
         ).unwrap();
 
         assert!(cs.is_satisfied());
-        assert_eq!(cs.num_constraints() - 512, 40078 - 5800 - 66);
+        assert_eq!(cs.num_constraints() - 512, 40078 - 5800 - 66 - 3894);
     }
 }
