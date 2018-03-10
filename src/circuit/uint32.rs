@@ -172,18 +172,21 @@ impl UInt32 {
         }
     }
 
-    /// XOR this `UInt32` with another `UInt32`
-    pub fn xor<E, CS>(
+    fn binop<E, CS, F, U>(
         &self,
         mut cs: CS,
-        other: &Self
+        other: &Self,
+        bin_fn: F,
+        circuit_fn: U
     ) -> Result<Self, SynthesisError>
         where E: Engine,
-              CS: ConstraintSystem<E>
+              CS: ConstraintSystem<E>,
+              F: Fn(u32, u32) -> u32,
+              U: Fn(&mut CS, usize, &Boolean, &Boolean) -> Result<Boolean, SynthesisError>
     {
         let new_value = match (self.value, other.value) {
             (Some(a), Some(b)) => {
-                Some(a ^ b)
+                Some(bin_fn(a, b))
             },
             _ => None
         };
@@ -191,18 +194,48 @@ impl UInt32 {
         let bits = self.bits.iter()
                             .zip(other.bits.iter())
                             .enumerate()
-                            .map(|(i, (a, b))| {
-                                Boolean::xor(
-                                    cs.namespace(|| format!("xor of bit {}", i)),
-                                    a,
-                                    b
-                                )
-                            })
+                            .map(|(i, (a, b))| circuit_fn(&mut cs, i, a, b))
                             .collect::<Result<_, _>>()?;
 
         Ok(UInt32 {
             bits: bits,
             value: new_value
+        })
+    }
+
+    /// AND this `UInt32` with another `UInt32`
+    pub fn and<E, CS>(
+        &self,
+        cs: CS,
+        other: &Self
+    ) -> Result<Self, SynthesisError>
+        where E: Engine,
+              CS: ConstraintSystem<E>
+    {
+        self.binop(cs, other, |a, b| a & b, |cs, i, a, b| {
+            Boolean::and(
+                cs.namespace(|| format!("and of bit {}", i)),
+                a,
+                b
+            )
+        })
+    }
+
+    /// XOR this `UInt32` with another `UInt32`
+    pub fn xor<E, CS>(
+        &self,
+        cs: CS,
+        other: &Self
+    ) -> Result<Self, SynthesisError>
+        where E: Engine,
+              CS: ConstraintSystem<E>
+    {
+        self.binop(cs, other, |a, b| a ^ b, |cs, i, a, b| {
+            Boolean::xor(
+                cs.namespace(|| format!("xor of bit {}", i)),
+                a,
+                b
+            )
         })
     }
 
@@ -385,6 +418,48 @@ mod test {
 
             let r = a_bit.xor(cs.namespace(|| "first xor"), &b_bit).unwrap();
             let r = r.xor(cs.namespace(|| "second xor"), &c_bit).unwrap();
+
+            assert!(cs.is_satisfied());
+
+            assert!(r.value == Some(expected));
+
+            for b in r.bits.iter() {
+                match b {
+                    &Boolean::Is(ref b) => {
+                        assert!(b.get_value().unwrap() == (expected & 1 == 1));
+                    },
+                    &Boolean::Not(ref b) => {
+                        assert!(!b.get_value().unwrap() == (expected & 1 == 1));
+                    },
+                    &Boolean::Constant(b) => {
+                        assert!(b == (expected & 1 == 1));
+                    }
+                }
+
+                expected >>= 1;
+            }
+        }
+    }
+
+    #[test]
+    fn test_uint32_and() {
+        let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0653]);
+
+        for _ in 0..1000 {
+            let mut cs = TestConstraintSystem::<Bls12>::new();
+
+            let a: u32 = rng.gen();
+            let b: u32 = rng.gen();
+            let c: u32 = rng.gen();
+
+            let mut expected = a & b & c;
+
+            let a_bit = UInt32::alloc(cs.namespace(|| "a_bit"), Some(a)).unwrap();
+            let b_bit = UInt32::constant(b);
+            let c_bit = UInt32::alloc(cs.namespace(|| "c_bit"), Some(c)).unwrap();
+
+            let r = a_bit.and(cs.namespace(|| "first and"), &b_bit).unwrap();
+            let r = r.and(cs.namespace(|| "second and"), &c_bit).unwrap();
 
             assert!(cs.is_satisfied());
 
