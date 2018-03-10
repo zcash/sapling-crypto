@@ -219,6 +219,29 @@ impl UInt32 {
         )
     }
 
+    /// Compute the `ch` value `(a and b) xor ((not a) and c)`
+    /// during SHA256.
+    pub fn sha256_ch<E, CS>(
+        cs: CS,
+        a: &Self,
+        b: &Self,
+        c: &Self
+    ) -> Result<Self, SynthesisError>
+        where E: Engine,
+              CS: ConstraintSystem<E>
+    {
+        Self::triop(cs, a, b, c, |a, b, c| (a & b) ^ ((!a) & c),
+            |cs, i, a, b, c| {
+                Boolean::sha256_ch(
+                    cs.namespace(|| format!("ch {}", i)),
+                    a,
+                    b,
+                    c
+                )
+            }
+        )
+    }
+
     fn triop<E, CS, F, U>(
         mut cs: CS,
         a: &Self,
@@ -672,6 +695,47 @@ mod test {
             let c_bit = UInt32::alloc(cs.namespace(|| "c_bit"), Some(c)).unwrap();
 
             let r = UInt32::sha256_maj(&mut cs, &a_bit, &b_bit, &c_bit).unwrap();
+
+            assert!(cs.is_satisfied());
+
+            assert!(r.value == Some(expected));
+
+            for b in r.bits.iter() {
+                match b {
+                    &Boolean::Is(ref b) => {
+                        assert!(b.get_value().unwrap() == (expected & 1 == 1));
+                    },
+                    &Boolean::Not(ref b) => {
+                        assert!(!b.get_value().unwrap() == (expected & 1 == 1));
+                    },
+                    &Boolean::Constant(b) => {
+                        assert!(b == (expected & 1 == 1));
+                    }
+                }
+
+                expected >>= 1;
+            }
+        }
+    }
+
+    #[test]
+    fn test_uint32_sha256_ch() {
+        let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0653]);
+
+        for _ in 0..1000 {
+            let mut cs = TestConstraintSystem::<Bls12>::new();
+
+            let a: u32 = rng.gen();
+            let b: u32 = rng.gen();
+            let c: u32 = rng.gen();
+
+            let mut expected = (a & b) ^ ((!a) & c);
+
+            let a_bit = UInt32::alloc(cs.namespace(|| "a_bit"), Some(a)).unwrap();
+            let b_bit = UInt32::constant(b);
+            let c_bit = UInt32::alloc(cs.namespace(|| "c_bit"), Some(c)).unwrap();
+
+            let r = UInt32::sha256_ch(&mut cs, &a_bit, &b_bit, &c_bit).unwrap();
 
             assert!(cs.is_satisfied());
 

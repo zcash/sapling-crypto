@@ -508,6 +508,60 @@ impl Boolean {
         }
     }
 
+    /// Computes (a and b) xor ((not a) and c)
+    pub fn sha256_ch<'a, E, CS>(
+        mut cs: CS,
+        a: &'a Self,
+        b: &'a Self,
+        c: &'a Self
+    ) -> Result<Self, SynthesisError>
+        where E: Engine,
+              CS: ConstraintSystem<E>
+    {
+        let ch_value = match (a.get_value(), b.get_value(), c.get_value()) {
+            (Some(a), Some(b), Some(c)) => {
+                // (a and b) xor ((not a) and c)
+                Some((a & b) ^ ((!a) & c))
+            },
+            _ => None
+        };
+
+        match (a, b, c) {
+            (&Boolean::Constant(_),
+            &Boolean::Constant(_),
+            &Boolean::Constant(_)) => {
+                // They're all constants, so we can just compute the value.
+
+                return Ok(Boolean::Constant(ch_value.expect("they're all constants")));
+            },
+            _ => {}
+        }
+
+        let ch = cs.alloc(|| "ch", || {
+            ch_value.get().map(|v| {
+                if *v {
+                    E::Fr::one()
+                } else {
+                    E::Fr::zero()
+                }
+            })
+        })?;
+
+        // a(b - c) = ch - c
+        cs.enforce(
+            || "ch computation",
+            |_| b.lc(CS::one(), E::Fr::one())
+                - &c.lc(CS::one(), E::Fr::one()),
+            |_| a.lc(CS::one(), E::Fr::one()),
+            |lc| lc + ch - &c.lc(CS::one(), E::Fr::one())
+        );
+
+        Ok(AllocatedBit {
+            value: ch_value,
+            variable: ch
+        }.into())
+    }
+
     /// Computes (a and b) xor (a and c) xor (b and c)
     pub fn sha256_maj<'a, E, CS>(
         mut cs: CS,
@@ -807,6 +861,84 @@ mod test {
                 OperandType::AllocatedFalse => false,
                 OperandType::NegatedAllocatedTrue => false,
                 OperandType::NegatedAllocatedFalse => true
+            }
+        }
+    }
+
+    #[test]
+    fn test_boolean_sha256_ch() {
+        let variants = [
+            OperandType::True,
+            OperandType::False,
+            OperandType::AllocatedTrue,
+            OperandType::AllocatedFalse,
+            OperandType::NegatedAllocatedTrue,
+            OperandType::NegatedAllocatedFalse
+        ];
+
+        for first_operand in variants.iter().cloned() {
+            for second_operand in variants.iter().cloned() {
+                for third_operand in variants.iter().cloned() {
+                    let mut cs = TestConstraintSystem::<Bls12>::new();
+
+                    let a;
+                    let b;
+                    let c;
+
+                    // ch = (a and b) xor ((not a) and c)
+                    let expected = (first_operand.val() & second_operand.val()) ^
+                                   ((!first_operand.val()) & third_operand.val());
+
+                    {
+                        let mut dyn_construct = |operand, name| {
+                            let cs = cs.namespace(|| name);
+
+                            match operand {
+                                OperandType::True => Boolean::constant(true),
+                                OperandType::False => Boolean::constant(false),
+                                OperandType::AllocatedTrue => Boolean::from(AllocatedBit::alloc(cs, Some(true)).unwrap()),
+                                OperandType::AllocatedFalse => Boolean::from(AllocatedBit::alloc(cs, Some(false)).unwrap()),
+                                OperandType::NegatedAllocatedTrue => Boolean::from(AllocatedBit::alloc(cs, Some(true)).unwrap()).not(),
+                                OperandType::NegatedAllocatedFalse => Boolean::from(AllocatedBit::alloc(cs, Some(false)).unwrap()).not(),
+                            }
+                        };
+
+                        a = dyn_construct(first_operand, "a");
+                        b = dyn_construct(second_operand, "b");
+                        c = dyn_construct(third_operand, "c");
+                    }
+
+                    let maj = Boolean::sha256_ch(&mut cs, &a, &b, &c).unwrap();
+
+                    assert!(cs.is_satisfied());
+
+                    assert_eq!(maj.get_value().unwrap(), expected);
+
+                    if first_operand.is_constant() &&
+                       second_operand.is_constant() &&
+                       third_operand.is_constant()
+                    {
+                        assert_eq!(cs.num_constraints(), 0);
+                    }
+                    else
+                    {
+                        assert_eq!(cs.get("ch"), {
+                            if expected {
+                                Fr::one()
+                            } else {
+                                Fr::zero()
+                            }
+                        });
+                        cs.set("ch", {
+                            if expected {
+                                Fr::zero()
+                            } else {
+                                Fr::one()
+                            }
+                        });
+                        assert_eq!(cs.which_is_unsatisfied().unwrap(), "ch computation");
+                    }
+                }
             }
         }
     }
