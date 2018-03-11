@@ -105,10 +105,13 @@ pub fn sha256_compression_function<E, CS>(
         )?;
 
         // temp1 := h + S1 + ch + k[i] + w[i]
-        let temp1 = UInt32::addmany(
-            cs.namespace(|| "temp1"),
-            &[h.clone(), s1, ch, UInt32::constant(ROUND_CONSTANTS[i]), w[i].clone()]
-        )?;
+        let temp1 = vec![
+            h.clone(),
+            s1,
+            ch,
+            UInt32::constant(ROUND_CONSTANTS[i]),
+            w[i].clone()
+        ];
 
         // S0 := (a rightrotate 2) xor (a rightrotate 13) xor (a rightrotate 22)
         let mut s0 = a.rotr(2);
@@ -130,10 +133,7 @@ pub fn sha256_compression_function<E, CS>(
         )?;
 
         // temp2 := S0 + maj
-        let temp2 = UInt32::addmany(
-            cs.namespace(|| "S0 + maj"),
-            &[s0, maj]
-        )?;
+        let temp2 = vec![s0, maj];
 
         /*
         h := g
@@ -151,14 +151,14 @@ pub fn sha256_compression_function<E, CS>(
         f = e;
         e = UInt32::addmany(
             cs.namespace(|| "d + temp1"),
-            &[d, temp1.clone()]
+            &temp1.iter().cloned().chain(Some(d)).collect::<Vec<_>>()
         )?;
         d = c;
         c = b;
         b = a;
         a = UInt32::addmany(
             cs.namespace(|| "temp1 + temp2"),
-            &[temp1, temp2]
+            &temp1.iter().cloned().chain(temp2.iter().cloned()).collect::<Vec<_>>()
         )?;
     }
 
@@ -277,6 +277,6 @@ mod test {
         ).unwrap();
 
         assert!(cs.is_satisfied());
-        assert_eq!(cs.num_constraints() - 512, 30254);
+        assert_eq!(cs.num_constraints() - 512, 26064);
     }
 }
