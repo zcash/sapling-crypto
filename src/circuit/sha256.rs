@@ -19,11 +19,65 @@ const IV: [u32; 8] = [
     0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
 ];
 
-pub fn get_sha256_iv() -> Vec<UInt32> {
+pub fn sha256_block_no_padding<E, CS>(
+    mut cs: CS,
+    input: &[Boolean]
+) -> Result<Vec<Boolean>, SynthesisError>
+    where E: Engine, CS: ConstraintSystem<E>
+{
+    assert_eq!(input.len(), 512);
+
+    Ok(sha256_compression_function(
+        &mut cs,
+        &input,
+        &get_sha256_iv()
+    )?
+    .into_iter()
+    .flat_map(|e| e.into_bits_be())
+    .collect())
+}
+
+pub fn sha256<E, CS>(
+    mut cs: CS,
+    input: &[Boolean]
+) -> Result<Vec<Boolean>, SynthesisError>
+    where E: Engine, CS: ConstraintSystem<E>
+{
+    assert!(input.len() % 8 == 0);
+
+    let mut padded = input.to_vec();
+    let plen = padded.len() as u64;
+    // append a single '1' bit
+    padded.push(Boolean::constant(true));
+    // append K '0' bits, where K is the minimum number >= 0 such that L + 1 + K + 64 is a multiple of 512
+    while (padded.len() + 64) % 512 != 0 {
+        padded.push(Boolean::constant(false));
+    }
+    // append L as a 64-bit big-endian integer, making the total post-processed length a multiple of 512 bits
+    for b in (0..64).rev().map(|i| (plen >> i) & 1 == 1) {
+        padded.push(Boolean::constant(b));
+    }
+    assert!(padded.len() % 512 == 0);
+
+    let mut cur = get_sha256_iv();
+    for (i, block) in padded.chunks(512).enumerate() {
+        cur = sha256_compression_function(
+            cs.namespace(|| format!("block {}", i)),
+            block,
+            &cur
+        )?;
+    }
+
+    Ok(cur.into_iter()
+    .flat_map(|e| e.into_bits_be())
+    .collect())
+}
+
+fn get_sha256_iv() -> Vec<UInt32> {
     IV.iter().map(|&v| UInt32::constant(v)).collect()
 }
 
-pub fn sha256_compression_function<E, CS>(
+fn sha256_compression_function<E, CS>(
     mut cs: CS,
     input: &[Boolean],
     current_hash_value: &[UInt32]
@@ -303,5 +357,55 @@ mod test {
 
         assert!(cs.is_satisfied());
         assert_eq!(cs.num_constraints() - 512, 25996);
+    }
+
+    #[test]
+    fn test_against_vectors() {
+        use crypto::sha2::Sha256;
+        use crypto::digest::Digest;
+
+        let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
+
+        for input_len in (0..32).chain((32..256).filter(|a| a % 8 == 0))
+        {
+            let mut h = Sha256::new();
+            let data: Vec<u8> = (0..input_len).map(|_| rng.gen()).collect();
+            h.input(&data);
+            let mut hash_result = [0u8; 32];
+            h.result(&mut hash_result[..]);
+
+            let mut cs = TestConstraintSystem::<Bls12>::new();
+            let mut input_bits = vec![];
+
+            for (byte_i, input_byte) in data.into_iter().enumerate() {
+                for bit_i in (0..8).rev() {
+                    let cs = cs.namespace(|| format!("input bit {} {}", byte_i, bit_i));
+
+                    input_bits.push(AllocatedBit::alloc(cs, Some((input_byte >> bit_i) & 1u8 == 1u8)).unwrap().into());
+                }
+            }
+
+            let r = sha256(&mut cs, &input_bits).unwrap();
+
+            assert!(cs.is_satisfied());
+
+            let mut s = hash_result.as_ref().iter()
+                                            .flat_map(|&byte| (0..8).rev().map(move |i| (byte >> i) & 1u8 == 1u8));
+
+            for b in r {
+                match b {
+                    Boolean::Is(b) => {
+                        assert!(s.next().unwrap() == b.get_value().unwrap());
+                    },
+                    Boolean::Not(b) => {
+                        assert!(s.next().unwrap() != b.get_value().unwrap());
+                    },
+                    Boolean::Constant(b) => {
+                        assert!(input_len == 0);
+                        assert!(s.next().unwrap() == b);
+                    }
+                }
+            }
+        }
     }
 }
