@@ -277,6 +277,6 @@ mod test {
         ).unwrap();
 
         assert!(cs.is_satisfied());
-        assert_eq!(cs.num_constraints() - 512, 30286);
+        assert_eq!(cs.num_constraints() - 512, 30254);
     }
 }

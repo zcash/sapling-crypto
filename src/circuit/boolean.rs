@@ -534,7 +534,79 @@ impl Boolean {
 
                 return Ok(Boolean::Constant(ch_value.expect("they're all constants")));
             },
-            _ => {}
+            (&Boolean::Constant(false), _, c) => {
+                // If a is false
+                // (a and b) xor ((not a) and c)
+                // equals
+                // (false) xor (c)
+                // equals
+                // c
+                return Ok(c.clone());
+            },
+            (a, &Boolean::Constant(false), c) => {
+                // If b is false
+                // (a and b) xor ((not a) and c)
+                // equals
+                // ((not a) and c)
+                return Boolean::and(
+                    cs,
+                    &a.not(),
+                    &c
+                );
+            },
+            (a, b, &Boolean::Constant(false)) => {
+                // If c is false
+                // (a and b) xor ((not a) and c)
+                // equals
+                // (a and b)
+                return Boolean::and(
+                    cs,
+                    &a,
+                    &b
+                );
+            },
+            (a, b, &Boolean::Constant(true)) => {
+                // If c is true
+                // (a and b) xor ((not a) and c)
+                // equals
+                // (a and b) xor (not a)
+                // equals
+                // not (a and (not b))
+                return Ok(Boolean::and(
+                    cs,
+                    &a,
+                    &b.not()
+                )?.not());
+            },
+            (a, &Boolean::Constant(true), c) => {
+                // If b is true
+                // (a and b) xor ((not a) and c)
+                // equals
+                // a xor ((not a) and c)
+                // equals
+                // not ((not a) and (not c))
+                return Ok(Boolean::and(
+                    cs,
+                    &a.not(),
+                    &c.not()
+                )?.not());
+            },
+            (&Boolean::Constant(true), _, _) => {
+                // If a is true
+                // (a and b) xor ((not a) and c)
+                // equals
+                // b xor ((not a) and c)
+                // So we just continue!
+            },
+            (&Boolean::Is(_), &Boolean::Is(_), &Boolean::Is(_)) |
+            (&Boolean::Is(_), &Boolean::Is(_), &Boolean::Not(_)) |
+            (&Boolean::Is(_), &Boolean::Not(_), &Boolean::Is(_)) |
+            (&Boolean::Is(_), &Boolean::Not(_), &Boolean::Not(_)) |
+            (&Boolean::Not(_), &Boolean::Is(_), &Boolean::Is(_)) |
+            (&Boolean::Not(_), &Boolean::Is(_), &Boolean::Not(_)) |
+            (&Boolean::Not(_), &Boolean::Not(_), &Boolean::Is(_)) |
+            (&Boolean::Not(_), &Boolean::Not(_), &Boolean::Not(_))
+            => {}
         }
 
         let ch = cs.alloc(|| "ch", || {
@@ -990,11 +1062,16 @@ mod test {
 
                     assert_eq!(maj.get_value().unwrap(), expected);
 
-                    if first_operand.is_constant() &&
-                       second_operand.is_constant() &&
+                    if first_operand.is_constant() ||
+                       second_operand.is_constant() ||
                        third_operand.is_constant()
                     {
-                        assert_eq!(cs.num_constraints(), 0);
+                        if first_operand.is_constant() &&
+                           second_operand.is_constant() &&
+                           third_operand.is_constant()
+                        {
+                            assert_eq!(cs.num_constraints(), 0);
+                        }
                     }
                     else
                     {
