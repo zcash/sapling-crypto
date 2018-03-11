@@ -73,11 +73,40 @@ pub fn sha256_compression_function<E, CS>(
 
     assert_eq!(w.len(), 64);
 
-    let mut a = current_hash_value[0].clone();
+    enum Maybe {
+        Deferred(Vec<UInt32>),
+        Concrete(UInt32)
+    }
+
+    impl Maybe {
+        fn compute<E, CS>(
+            self,
+            cs: CS,
+            others: &[UInt32]
+        ) -> Result<UInt32, SynthesisError>
+            where E: Engine,
+                  CS: ConstraintSystem<E>
+        {
+            Ok(match self {
+                Maybe::Concrete(ref v) => {
+                    return Ok(v.clone())
+                },
+                Maybe::Deferred(mut v) => {
+                    v.extend(others.into_iter().cloned());
+                    UInt32::addmany(
+                        cs,
+                        &v
+                    )?
+                }
+            })
+        }
+    }
+
+    let mut a = Maybe::Concrete(current_hash_value[0].clone());
     let mut b = current_hash_value[1].clone();
     let mut c = current_hash_value[2].clone();
     let mut d = current_hash_value[3].clone();
-    let mut e = current_hash_value[4].clone();
+    let mut e = Maybe::Concrete(current_hash_value[4].clone());
     let mut f = current_hash_value[5].clone();
     let mut g = current_hash_value[6].clone();
     let mut h = current_hash_value[7].clone();
@@ -86,20 +115,21 @@ pub fn sha256_compression_function<E, CS>(
         let cs = &mut cs.namespace(|| format!("compression round {}", i));
 
         // S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25)
-        let mut s1 = e.rotr(6);
+        let new_e = e.compute(cs.namespace(|| "deferred e computation"), &[])?;
+        let mut s1 = new_e.rotr(6);
         s1 = s1.xor(
             cs.namespace(|| "first xor for s1"),
-            &e.rotr(11)
+            &new_e.rotr(11)
         )?;
         s1 = s1.xor(
             cs.namespace(|| "second xor for s1"),
-            &e.rotr(25)
+            &new_e.rotr(25)
         )?;
 
         // ch := (e and f) xor ((not e) and g)
         let ch = UInt32::sha256_ch(
             cs.namespace(|| "ch"),
-            &e,
+            &new_e,
             &f,
             &g
         )?;
@@ -114,20 +144,21 @@ pub fn sha256_compression_function<E, CS>(
         ];
 
         // S0 := (a rightrotate 2) xor (a rightrotate 13) xor (a rightrotate 22)
-        let mut s0 = a.rotr(2);
+        let new_a = a.compute(cs.namespace(|| "deferred a computation"), &[])?;
+        let mut s0 = new_a.rotr(2);
         s0 = s0.xor(
             cs.namespace(|| "first xor for s0"),
-            &a.rotr(13)
+            &new_a.rotr(13)
         )?;
         s0 = s0.xor(
             cs.namespace(|| "second xor for s0"),
-            &a.rotr(22)
+            &new_a.rotr(22)
         )?;
 
         // maj := (a and b) xor (a and c) xor (b and c)
         let maj = UInt32::sha256_maj(
             cs.namespace(|| "maj"),
-            &a,
+            &new_a,
             &b,
             &c
         )?;
@@ -148,18 +179,12 @@ pub fn sha256_compression_function<E, CS>(
 
         h = g;
         g = f;
-        f = e;
-        e = UInt32::addmany(
-            cs.namespace(|| "d + temp1"),
-            &temp1.iter().cloned().chain(Some(d)).collect::<Vec<_>>()
-        )?;
+        f = new_e;
+        e = Maybe::Deferred(temp1.iter().cloned().chain(Some(d)).collect::<Vec<_>>());
         d = c;
         c = b;
-        b = a;
-        a = UInt32::addmany(
-            cs.namespace(|| "temp1 + temp2"),
-            &temp1.iter().cloned().chain(temp2.iter().cloned()).collect::<Vec<_>>()
-        )?;
+        b = new_a;
+        a = Maybe::Deferred(temp1.iter().cloned().chain(temp2.iter().cloned()).collect::<Vec<_>>());
     }
 
     /*
@@ -174,9 +199,9 @@ pub fn sha256_compression_function<E, CS>(
         h7 := h7 + h
     */
 
-    let h0 = UInt32::addmany(
-        cs.namespace(|| "new h0"),
-        &[current_hash_value[0].clone(), a]
+    let h0 = a.compute(
+        cs.namespace(|| "deferred h0 computation"),
+        &[current_hash_value[0].clone()]
     )?;
 
     let h1 = UInt32::addmany(
@@ -194,9 +219,9 @@ pub fn sha256_compression_function<E, CS>(
         &[current_hash_value[3].clone(), d]
     )?;
 
-    let h4 = UInt32::addmany(
-        cs.namespace(|| "new h4"),
-        &[current_hash_value[4].clone(), e]
+    let h4 = e.compute(
+        cs.namespace(|| "deferred h4 computation"),
+        &[current_hash_value[4].clone()]
     )?;
 
     let h5 = UInt32::addmany(
@@ -277,6 +302,6 @@ mod test {
         ).unwrap();
 
         assert!(cs.is_satisfied());
-        assert_eq!(cs.num_constraints() - 512, 26064);
+        assert_eq!(cs.num_constraints() - 512, 25996);
     }
 }
