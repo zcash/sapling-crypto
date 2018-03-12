@@ -4,6 +4,7 @@ use circuit::boolean::{
     AllocatedBit,
     Boolean
 };
+use circuit::multipack::pack_into_inputs;
 
 mod prfs;
 mod commitment;
@@ -204,10 +205,23 @@ impl<E: Engine> Circuit<E> for JoinSplit {
             |_| rhs
         );
 
-        // TODO: expose all of the inputs via
-        // multi-packing
+        let mut public_inputs = vec![];
+        public_inputs.extend(rt);
+        public_inputs.extend(h_sig);
 
-        Ok(())
+        for note in input_notes {
+            public_inputs.extend(note.nf);
+            public_inputs.extend(note.mac);
+        }
+
+        for note in output_notes {
+            public_inputs.extend(note.cm);
+        }
+
+        public_inputs.extend(vpub_old.bits_le());
+        public_inputs.extend(vpub_new.bits_le());
+
+        pack_into_inputs(cs.namespace(|| "input packing"), &public_inputs)
     }
 }
 
@@ -394,5 +408,6 @@ fn test_sprout_constraints() {
     js.synthesize(&mut cs).unwrap();
 
     assert!(cs.is_satisfied());
-    assert_eq!(cs.num_constraints(), 2104060);
+    assert_eq!(cs.num_constraints(), 2104069);
+    assert_eq!(cs.num_inputs(), 10);
 }
