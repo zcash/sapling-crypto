@@ -14,7 +14,7 @@ mod output;
 use self::input::*;
 use self::output::*;
 
-const TREE_DEPTH: usize = 29;
+pub const TREE_DEPTH: usize = 29;
 
 pub struct SpendingKey(pub [u8; 32]);
 pub struct PayingKey(pub [u8; 32]);
