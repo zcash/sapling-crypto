@@ -1,4 +1,4 @@
-use super::uint32::UInt32;
+use super::uint32::{UInt32, MultiAdder};
 use super::boolean::Boolean;
 use bellman::{ConstraintSystem, SynthesisError};
 use pairing::Engine;
@@ -78,7 +78,7 @@ fn get_sha256_iv() -> Vec<UInt32> {
 }
 
 fn sha256_compression_function<E, CS>(
-    mut cs: CS,
+    cs: CS,
     input: &[Boolean],
     current_hash_value: &[UInt32]
 ) -> Result<Vec<UInt32>, SynthesisError>
@@ -90,6 +90,10 @@ fn sha256_compression_function<E, CS>(
     let mut w = input.chunks(32)
                      .map(|e| UInt32::from_bits_be(e))
                      .collect::<Vec<_>>();
+
+    // We can save some constraints by combining some of
+    // the constraints in different u32 additions
+    let mut cs = MultiAdder::new(cs);
 
     for i in 16..64 {
         let cs = &mut cs.namespace(|| format!("w extension {}", i));
@@ -116,7 +120,7 @@ fn sha256_compression_function<E, CS>(
             &w[i-2].shr(10)
         )?;
 
-        let tmp = UInt32::addmany(
+        let tmp = UInt32::addmany_multiadder(
             cs.namespace(|| "computation of w[i]"),
             &[w[i-16].clone(), s0, w[i-7].clone(), s1]
         )?;
@@ -133,13 +137,14 @@ fn sha256_compression_function<E, CS>(
     }
 
     impl Maybe {
-        fn compute<E, CS>(
+        fn compute<E, CS, M>(
             self,
-            cs: CS,
+            cs: M,
             others: &[UInt32]
         ) -> Result<UInt32, SynthesisError>
             where E: Engine,
-                  CS: ConstraintSystem<E>
+                  CS: ConstraintSystem<E>,
+                  M: ConstraintSystem<E, Root=MultiAdder<E, CS>>
         {
             Ok(match self {
                 Maybe::Concrete(ref v) => {
@@ -147,7 +152,7 @@ fn sha256_compression_function<E, CS>(
                 },
                 Maybe::Deferred(mut v) => {
                     v.extend(others.into_iter().cloned());
-                    UInt32::addmany(
+                    UInt32::addmany_multiadder(
                         cs,
                         &v
                     )?
@@ -258,17 +263,17 @@ fn sha256_compression_function<E, CS>(
         &[current_hash_value[0].clone()]
     )?;
 
-    let h1 = UInt32::addmany(
+    let h1 = UInt32::addmany_multiadder(
         cs.namespace(|| "new h1"),
         &[current_hash_value[1].clone(), b]
     )?;
 
-    let h2 = UInt32::addmany(
+    let h2 = UInt32::addmany_multiadder(
         cs.namespace(|| "new h2"),
         &[current_hash_value[2].clone(), c]
     )?;
 
-    let h3 = UInt32::addmany(
+    let h3 = UInt32::addmany_multiadder(
         cs.namespace(|| "new h3"),
         &[current_hash_value[3].clone(), d]
     )?;
@@ -278,17 +283,17 @@ fn sha256_compression_function<E, CS>(
         &[current_hash_value[4].clone()]
     )?;
 
-    let h5 = UInt32::addmany(
+    let h5 = UInt32::addmany_multiadder(
         cs.namespace(|| "new h5"),
         &[current_hash_value[5].clone(), f]
     )?;
 
-    let h6 = UInt32::addmany(
+    let h6 = UInt32::addmany_multiadder(
         cs.namespace(|| "new h6"),
         &[current_hash_value[6].clone(), g]
     )?;
 
-    let h7 = UInt32::addmany(
+    let h7 = UInt32::addmany_multiadder(
         cs.namespace(|| "new h7"),
         &[current_hash_value[7].clone(), h]
     )?;
@@ -356,7 +361,7 @@ mod test {
         ).unwrap();
 
         assert!(cs.is_satisfied());
-        assert_eq!(cs.num_constraints() - 512, 25996);
+        assert_eq!(cs.num_constraints() - 512, 25840);
     }
 
     #[test]

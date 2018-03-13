@@ -408,6 +408,6 @@ fn test_sprout_constraints() {
     js.synthesize(&mut cs).unwrap();
 
     assert!(cs.is_satisfied());
-    assert_eq!(cs.num_constraints(), 2104069);
+    assert_eq!(cs.num_constraints(), 2091901);
     assert_eq!(cs.num_inputs(), 10);
 }

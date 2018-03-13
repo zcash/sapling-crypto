@@ -7,7 +7,8 @@ use pairing::{
 use bellman::{
     SynthesisError,
     ConstraintSystem,
-    LinearCombination
+    LinearCombination,
+    Variable
 };
 
 use super::boolean::{
@@ -362,11 +363,23 @@ impl UInt32 {
 
     /// Perform modular addition of several `UInt32` objects.
     pub fn addmany<E, CS>(
-        mut cs: CS,
+        cs: CS,
         operands: &[Self]
     ) -> Result<Self, SynthesisError>
         where E: Engine,
               CS: ConstraintSystem<E>
+    {
+        Self::addmany_multiadder(MultiAdder::new(cs), operands)
+    }
+
+    /// Perform modular addition of several `UInt32` objects.
+    pub fn addmany_multiadder<E, CS, M>(
+        mut cs: M,
+        operands: &[Self]
+    ) -> Result<Self, SynthesisError>
+        where E: Engine,
+              CS: ConstraintSystem<E>,
+              M: ConstraintSystem<E, Root=MultiAdder<E, CS>>
     {
         // Make some arbitrary bounds for ourselves to avoid overflows
         // in the scalar field
@@ -381,7 +394,8 @@ impl UInt32 {
         // Keep track of the resulting value
         let mut result_value = Some(0u64);
 
-        // This is a linear combination that we will enforce to be "zero"
+        // This is a linear combination that we will enforce to equal the
+        // output
         let mut lc = LinearCombination::zero();
 
         let mut all_constants = true;
@@ -441,6 +455,10 @@ impl UInt32 {
         // Storage area for the resulting bits
         let mut result_bits = vec![];
 
+        // Linear combination representing the output,
+        // for comparison with the sum of the operands
+        let mut result_lc = LinearCombination::zero();
+
         // Allocate each bit of the result
         let mut coeff = E::Fr::one();
         let mut i = 0;
@@ -451,8 +469,8 @@ impl UInt32 {
                 result_value.map(|v| (v >> i) & 1 == 1)
             )?;
 
-            // Subtract this bit from the linear combination to ensure the sums balance out
-            lc = lc - (coeff, b.get_variable());
+            // Add this bit to the result combination
+            result_lc = result_lc + (coeff, b.get_variable());
 
             result_bits.push(b.into());
 
@@ -461,13 +479,8 @@ impl UInt32 {
             coeff.double();
         }
 
-        // Enforce that the linear combination equals zero
-        cs.enforce(
-            || "modular addition",
-            |lc| lc,
-            |lc| lc,
-            |_| lc
-        );
+        // Enforce equality between the sum and result
+        cs.get_root().enforce_equal(i, &lc, &result_lc);
 
         // Discard carry bits that we don't care about
         result_bits.truncate(32);
@@ -476,6 +489,131 @@ impl UInt32 {
             bits: result_bits,
             value: modular_value
         })
+    }
+}
+
+pub struct MultiAdder<E: Engine, CS: ConstraintSystem<E>>{
+    cs: CS,
+    ops: usize,
+    bits_used: usize,
+    lhs: LinearCombination<E>,
+    rhs: LinearCombination<E>,
+}
+
+impl<E: Engine, CS: ConstraintSystem<E>> MultiAdder<E, CS> {
+    pub fn new(cs: CS) -> Self {
+        MultiAdder {
+            cs: cs,
+            ops: 0,
+            bits_used: 0,
+            lhs: LinearCombination::zero(),
+            rhs: LinearCombination::zero()
+        }
+    }
+
+    fn accumulate(&mut self)
+    {
+        let ops = self.ops;
+        let lhs = self.lhs.clone();
+        let rhs = self.rhs.clone();
+        self.cs.enforce(
+            || format!("multiadd {}", ops),
+            |_| lhs,
+            |lc| lc + CS::one(),
+            |_| rhs
+        );
+        self.lhs = LinearCombination::zero();
+        self.rhs = LinearCombination::zero();
+        self.bits_used = 0;
+        self.ops += 1;
+    }
+
+    pub fn enforce_equal(
+        &mut self,
+        num_bits: usize,
+        lhs: &LinearCombination<E>,
+        rhs: &LinearCombination<E>
+    )
+    {
+        // Check if we will exceed the capacity
+        if (E::Fr::CAPACITY as usize) <= (self.bits_used + num_bits) {
+            self.accumulate();
+        }
+
+        assert!((E::Fr::CAPACITY as usize) > (self.bits_used + num_bits));
+
+        let coeff = E::Fr::from_str("2").unwrap().pow(&[self.bits_used as u64]);
+        self.lhs = self.lhs.clone() + (coeff, lhs);
+        self.rhs = self.rhs.clone() + (coeff, rhs);
+        self.bits_used += num_bits;
+    }
+}
+
+impl<E: Engine, CS: ConstraintSystem<E>> Drop for MultiAdder<E, CS> {
+    fn drop(&mut self) {
+        if self.bits_used > 0 {
+           self.accumulate();
+        }
+    }
+}
+
+impl<E: Engine, CS: ConstraintSystem<E>> ConstraintSystem<E> for MultiAdder<E, CS>
+{
+    type Root = Self;
+
+    fn one() -> Variable {
+        CS::one()
+    }
+
+    fn alloc<F, A, AR>(
+        &mut self,
+        annotation: A,
+        f: F
+    ) -> Result<Variable, SynthesisError>
+        where F: FnOnce() -> Result<E::Fr, SynthesisError>, A: FnOnce() -> AR, AR: Into<String>
+    {
+        self.cs.alloc(annotation, f)
+    }
+
+    fn alloc_input<F, A, AR>(
+        &mut self,
+        annotation: A,
+        f: F
+    ) -> Result<Variable, SynthesisError>
+        where F: FnOnce() -> Result<E::Fr, SynthesisError>, A: FnOnce() -> AR, AR: Into<String>
+    {
+        self.cs.alloc_input(annotation, f)
+    }
+
+    fn enforce<A, AR, LA, LB, LC>(
+        &mut self,
+        annotation: A,
+        a: LA,
+        b: LB,
+        c: LC
+    )
+        where A: FnOnce() -> AR, AR: Into<String>,
+              LA: FnOnce(LinearCombination<E>) -> LinearCombination<E>,
+              LB: FnOnce(LinearCombination<E>) -> LinearCombination<E>,
+              LC: FnOnce(LinearCombination<E>) -> LinearCombination<E>
+    {
+        self.cs.enforce(annotation, a, b, c)
+    }
+
+    fn push_namespace<NR, N>(&mut self, name_fn: N)
+        where NR: Into<String>, N: FnOnce() -> NR
+    {
+        self.cs.get_root().push_namespace(name_fn)
+    }
+
+    fn pop_namespace(&mut self)
+    {
+        self.cs.get_root().pop_namespace()
+    }
+
+    fn get_root(&mut self) -> &mut Self::Root
+    {
+        self
     }
 }
 
