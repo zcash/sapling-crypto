@@ -418,25 +418,9 @@ impl UInt32 {
             // the linear combination
             let mut coeff = E::Fr::one();
             for bit in &op.bits {
-                match bit {
-                    &Boolean::Is(ref bit) => {
-                        all_constants = false;
+                lc = lc + &bit.lc(CS::one(), coeff);
 
-                        // Add coeff * bit
-                        lc = lc + (coeff, bit.get_variable());
-                    },
-                    &Boolean::Not(ref bit) => {
-                        all_constants = false;
-
-                        // Add coeff * (1 - bit) = coeff * ONE - coeff * bit
-                        lc = lc + (coeff, CS::one()) - (coeff, bit.get_variable());
-                    },
-                    &Boolean::Constant(bit) => {
-                        if bit {
-                            lc = lc + (coeff, CS::one());
-                        }
-                    }
-                }
+                all_constants &= bit.is_constant();
 
                 coeff.double();
             }
