@@ -410,4 +410,5 @@ fn test_sprout_constraints() {
     assert!(cs.is_satisfied());
     assert_eq!(cs.num_constraints(), 2091901);
     assert_eq!(cs.num_inputs(), 10);
+    assert_eq!(cs.hash(), "9d2d7bcffe5bd838009493ecf57a0401dc9b57e71d016e83744c2e1d32dc00c3");
 }
