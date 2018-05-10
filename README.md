@@ -2,6 +2,13 @@
 
 This repository contains a (work-in-progress) implementation of Zcash's "Sapling" cryptography.
 
+You currently need to use the beta version of Rust to build.
+
+```
+rustup install beta
+cargo +beta build
+```
+
 ## Security Warnings
 
 This library is currently under development and has not been reviewed.
