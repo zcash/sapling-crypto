@@ -226,12 +226,11 @@ impl<'a, E: JubjubEngine> Circuit<E> for Spend<'a, E> {
             constants::CRH_IVK_PERSONALIZATION
         )?;
 
-        // Swap bit-endianness in each byte
-        for ivk_byte in ivk.chunks_mut(8) {
-            ivk_byte.reverse();
-        }
+        // We need ivk in least significant bit first
+        ivk.reverse();
 
-        // drop_5 to ensure it's in the field
+        // The most significant 5 bits are masked away
+        // to ensure the result is in the field.
         ivk.truncate(E::Fs::CAPACITY as usize);
 
         // Witness g_d, checking that it's on the curve.
@@ -720,7 +719,7 @@ fn test_input_circuit_with_bls12_381() {
 
             assert!(cs.is_satisfied());
             assert_eq!(cs.num_constraints(), 98777);
-            assert_eq!(cs.hash(), "5e18546f6abc6c814aa033d3301bbc2bd641fefb636c6af00b02ba4d0b84de9a");
+            assert_eq!(cs.hash(), "c8483efae2099cdf8cea9ea69dc6cbb917eded5af59b7e8aed8d72b1bae6d269");
 
             assert_eq!(cs.get("randomization of note commitment/x3/num"), cm);
 

@@ -96,10 +96,8 @@ impl<E: JubjubEngine> ViewingKey<E> {
         h.update(&preimage);
         let mut h = h.finalize().as_ref().to_vec();
 
-        // Reverse the bytes to interpret it in little-endian byte order
-        h.reverse();
-
-        // Drop the first five bits, so it can be interpreted as a scalar.
+        // Drop the most significant five bits, so it can be interpreted
+        // as a scalar in big endian.
         h[0] &= 0b0000_0111;
 
         let mut e = <E::Fs as PrimeField>::Repr::default();
