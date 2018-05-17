@@ -1,4 +1,4 @@
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::{ByteOrder, BigEndian};
 use pairing::{BitIterator, Field, PrimeField, SqrtField, PrimeFieldRepr, PrimeFieldDecodingError, LegendreSymbol};
 use pairing::LegendreSymbol::*;
 use pairing::{adc, sbb, mac_with_carry};
@@ -566,14 +566,14 @@ impl Fs {
 }
 
 impl ToUniform for Fs {
-    /// Convert a little endian byte string into a uniform
+    /// Convert a big endian byte string into a uniform
     /// field element. The number is reduced mod s. The caller
     /// is responsible for ensuring the input is 64 bytes of
     /// Random Oracle output.
     fn to_uniform(digest: &[u8]) -> Self {
         assert_eq!(digest.len(), 64);
         let mut repr: [u64; 8] = [0; 8];
-        LittleEndian::read_u64_into(digest, &mut repr);
+        BigEndian::read_u64_into(digest, &mut repr);
         Self::one().mul_bits(BitIterator::new(repr))
     }
 }
