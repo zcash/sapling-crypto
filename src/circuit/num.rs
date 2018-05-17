@@ -84,11 +84,11 @@ impl<E: Engine> AllocatedNum<E> {
     }
 
     /// Deconstructs this allocated number into its
-    /// boolean representation in little-endian bit
+    /// boolean representation in big endian bit
     /// order, requiring that the representation
     /// strictly exists "in the field" (i.e., a
     /// congruency is not allowed.)
-    pub fn into_bits_le_strict<CS>(
+    pub fn into_bits_be_strict<CS>(
         &self,
         mut cs: CS
     ) -> Result<Vec<Boolean>, SynthesisError>
@@ -213,8 +213,8 @@ impl<E: Engine> AllocatedNum<E> {
             |_| lc
         );
 
-        // Convert into booleans, and reverse for little-endian bit order
-        Ok(result.into_iter().map(|b| Boolean::from(b)).rev().collect())
+        // Convert into booleans
+        Ok(result.into_iter().map(|b| Boolean::from(b)).collect())
     }
 
     /// Convert the allocated number into its little-endian representation.
@@ -565,7 +565,7 @@ mod test {
         let mut cs = TestConstraintSystem::<Bls12>::new();
 
         let n = AllocatedNum::alloc(&mut cs, || Ok(negone)).unwrap();
-        n.into_bits_le_strict(&mut cs).unwrap();
+        n.into_bits_be_strict(&mut cs).unwrap();
 
         assert!(cs.is_satisfied());
 
@@ -586,16 +586,18 @@ mod test {
 
             let n = AllocatedNum::alloc(&mut cs, || Ok(r)).unwrap();
 
-            let bits = if i % 2 == 0 {
-                n.into_bits_le(&mut cs).unwrap()
+            let bits: Box<Iterator<Item=Boolean>> = if i % 2 == 0 {
+                // If it's little-endian bit order, we have to reverse to
+                // get the correct values.
+                Box::new(n.into_bits_le(&mut cs).unwrap().into_iter().rev())
             } else {
-                n.into_bits_le_strict(&mut cs).unwrap()
+                Box::new(n.into_bits_be_strict(&mut cs).unwrap().into_iter())
             };
 
             assert!(cs.is_satisfied());
 
-            for (b, a) in BitIterator::new(r.into_repr()).skip(1).zip(bits.iter().rev()) {
-                if let &Boolean::Is(ref a) = a {
+            for (b, a) in BitIterator::new(r.into_repr()).skip(1).zip(bits) {
+                if let Boolean::Is(ref a) = a {
                     assert_eq!(b, a.get_value().unwrap());
                 } else {
                     unreachable!()

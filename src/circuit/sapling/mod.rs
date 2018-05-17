@@ -537,12 +537,14 @@ impl<'a, E: JubjubEngine> Circuit<E> for Output<'a, E> {
             // Just grab pk_d from the witness
             let pk_d = self.payment_address.as_ref().map(|e| e.pk_d.into_xy());
 
-            // Witness the y-coordinate, encoded as little
-            // endian bits (to match the representation)
-            let y_contents = boolean::field_into_boolean_vec_le(
+            // Witness the y-coordinate, least significant bit first
+            let mut y_contents = boolean::field_into_boolean_vec_le(
                 cs.namespace(|| "pk_d bits of y"),
                 pk_d.map(|e| e.1)
             )?;
+
+            // Turn into big-endian
+            y_contents.reverse();
 
             // Witness the sign bit
             let sign_bit = boolean::Boolean::from(boolean::AllocatedBit::alloc(
@@ -551,8 +553,8 @@ impl<'a, E: JubjubEngine> Circuit<E> for Output<'a, E> {
             )?);
 
             // Extend the note with pk_d representation
-            note_contents.extend(y_contents);
             note_contents.push(sign_bit);
+            note_contents.extend(y_contents);
         }
 
         assert_eq!(
@@ -718,7 +720,7 @@ fn test_input_circuit_with_bls12_381() {
 
             assert!(cs.is_satisfied());
             assert_eq!(cs.num_constraints(), 98777);
-            assert_eq!(cs.hash(), "499305e409599a3e4fe0a885f6adf674e9f49ba4a21e47362356d2a89f15dc1f");
+            assert_eq!(cs.hash(), "5e18546f6abc6c814aa033d3301bbc2bd641fefb636c6af00b02ba4d0b84de9a");
 
             assert_eq!(cs.get("randomization of note commitment/x3/num"), cm);
 
@@ -795,7 +797,7 @@ fn test_output_circuit_with_bls12_381() {
 
             assert!(cs.is_satisfied());
             assert_eq!(cs.num_constraints(), 7827);
-            assert_eq!(cs.hash(), "d18e83255220328a688134038ba4f82d5ce67ffe9f97b2ae2678042da0efad43");
+            assert_eq!(cs.hash(), "c5d834bc7cf1cc1f87d6e0358ad36de7b8c241ba0b32f28779d23ca2bd1d0efa");
 
             let expected_cm = payment_address.create_note(
                 value_commitment.value,

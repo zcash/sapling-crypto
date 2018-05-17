@@ -142,16 +142,16 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
     {
         let mut tmp = vec![];
 
-        let x = self.x.into_bits_le_strict(
+        let x = self.x.into_bits_be_strict(
             cs.namespace(|| "unpack x")
         )?;
 
-        let y = self.y.into_bits_le_strict(
+        let y = self.y.into_bits_be_strict(
             cs.namespace(|| "unpack y")
         )?;
 
+        tmp.push(x.last().unwrap().clone());
         tmp.extend(y);
-        tmp.push(x[0].clone());
 
         Ok(tmp)
     }
