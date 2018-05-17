@@ -293,7 +293,7 @@ impl<'a, E: JubjubEngine> Circuit<E> for Spend<'a, E> {
             }
 
             // Place the value in the note
-            note_contents.extend(value_bits);
+            note_contents.extend(value_bits.into_iter().rev());
         }
 
         // Place g_d in the note
@@ -478,7 +478,7 @@ impl<'a, E: JubjubEngine> Circuit<E> for Output<'a, E> {
             cs.namespace(|| "value commitment"),
             self.value_commitment,
             self.params
-        )?);
+        )?.into_iter().rev());
 
         // Let's deal with g_d
         {
@@ -719,7 +719,7 @@ fn test_input_circuit_with_bls12_381() {
 
             assert!(cs.is_satisfied());
             assert_eq!(cs.num_constraints(), 98777);
-            assert_eq!(cs.hash(), "c8483efae2099cdf8cea9ea69dc6cbb917eded5af59b7e8aed8d72b1bae6d269");
+            assert_eq!(cs.hash(), "55e8feefadfc04768378d4fad5b2f3ebdefcffce5b2eb6dded14a1d374242858");
 
             assert_eq!(cs.get("randomization of note commitment/x3/num"), cm);
 
@@ -796,7 +796,7 @@ fn test_output_circuit_with_bls12_381() {
 
             assert!(cs.is_satisfied());
             assert_eq!(cs.num_constraints(), 7827);
-            assert_eq!(cs.hash(), "c5d834bc7cf1cc1f87d6e0358ad36de7b8c241ba0b32f28779d23ca2bd1d0efa");
+            assert_eq!(cs.hash(), "aefdf3eed1aca3b66eeb152390518d1903ad1b764154e708a0033d12462417b3");
 
             let expected_cm = payment_address.create_note(
                 value_commitment.value,
