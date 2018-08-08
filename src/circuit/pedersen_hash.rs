@@ -32,6 +32,7 @@ pub fn pedersen_hash<E: JubjubEngine, CS>(
     assert_eq!(personalization.len(), 6);
 
     let mut edwards_result = None;
+    //REVIEW: bit cloning
     let mut bits = personalization.iter().chain(bits.iter());
     let mut segment_generators = params.pedersen_circuit_generators().iter();
     let boolean_false = Boolean::constant(false);
