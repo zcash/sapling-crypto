@@ -15,7 +15,7 @@ use super::uint32::{
     UInt32
 };
 
-use super::multieq::MultiEq;
+use super::multieq::{MultiEq, multi_eq};
 
 /*
 2.1.  Parameters
@@ -202,9 +202,7 @@ fn blake2s_compression<E: Engine, CS: ConstraintSystem<E>>(
         v[14] = v[14].xor(cs.namespace(|| "third xor"), &UInt32::constant(u32::max_value()))?;
     }
 
-    {
-        let mut cs = MultiEq::new(&mut cs);
-
+    multi_eq::<_, _, _, Result<(), SynthesisError>>(&mut cs, |cs| {
         for i in 0..10 {
             let mut cs = cs.namespace(|| format!("round {}", i));
 
@@ -220,7 +218,9 @@ fn blake2s_compression<E: Engine, CS: ConstraintSystem<E>>(
             mixing_g(cs.namespace(|| "mixing invocation 7"), &mut v, 2, 7,  8, 13, &m[s[12]], &m[s[13]])?;
             mixing_g(cs.namespace(|| "mixing invocation 8"), &mut v, 3, 4,  9, 14, &m[s[14]], &m[s[15]])?;
         }
-    }
+
+        Ok(())
+    })?;
 
     for i in 0..8 {
         let mut cs = cs.namespace(|| format!("h[{i}] ^ v[{i}] ^ v[{i} + 8]", i=i));

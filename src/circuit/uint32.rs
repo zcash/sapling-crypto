@@ -419,7 +419,7 @@ mod test {
     use pairing::{Field};
     use ::circuit::test::*;
     use bellman::{ConstraintSystem};
-    use circuit::multieq::MultiEq;
+    use circuit::multieq::multi_eq;
 
     #[test]
     fn test_uint32_from_bits_be() {
@@ -542,11 +542,9 @@ mod test {
 
             let mut expected = a.wrapping_add(b).wrapping_add(c);
 
-            let r = {
-                let mut cs = MultiEq::new(&mut cs);
-                let r = UInt32::addmany(cs.namespace(|| "addition"), &[a_bit, b_bit, c_bit]).unwrap();
-                r
-            };
+            let r = multi_eq(&mut cs, |cs| {
+                UInt32::addmany(cs.namespace(|| "addition"), &[a_bit, b_bit, c_bit]).unwrap()
+            });
 
             assert!(r.value == Some(expected));
 
@@ -584,11 +582,9 @@ mod test {
             let d_bit = UInt32::alloc(cs.namespace(|| "d_bit"), Some(d)).unwrap();
 
             let r = a_bit.xor(cs.namespace(|| "xor"), &b_bit).unwrap();
-            let r = {
-                let mut cs = MultiEq::new(&mut cs);
-                let r = UInt32::addmany(cs.namespace(|| "addition"), &[r, c_bit, d_bit]).unwrap();
-                r
-            };
+            let r = multi_eq(&mut cs, |cs| {
+                UInt32::addmany(cs.namespace(|| "addition"), &[r, c_bit, d_bit]).unwrap()
+            });
 
             assert!(cs.is_satisfied());
 
