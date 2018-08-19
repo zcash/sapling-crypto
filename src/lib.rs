@@ -12,6 +12,9 @@ extern crate hex_literal;
 #[cfg(test)]
 extern crate crypto;
 
+#[cfg(test)]
+pub mod tests;
+
 pub mod jubjub;
 pub mod group_hash;
 pub mod circuit;
