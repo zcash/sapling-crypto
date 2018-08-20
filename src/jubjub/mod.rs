@@ -247,7 +247,6 @@ impl JubjubBls12 {
                 if p1 == &edwards::Point::zero() {
                     panic!("Neutral element!");
                 }
-
                 for p2 in pedersen_hash_generators.iter().skip(i+1) {
                     if p1 == p2 {
                         panic!("Duplicate generator!");
@@ -296,8 +295,11 @@ impl JubjubBls12 {
             tmp_params.fixed_base_generators = fixed_base_generators;
         }
 
-        // Create the 2-bit window table lookups for each 4-bit
-        // "chunk" in each segment of the Pedersen hash
+        // Create the 2-bit window table lookups for each 3-bit chunck of the hash input:
+        // If the generator of the chunk is g, the table corresponds, with negations, to the values
+        // g, [2]g, [3]g, [4]g, -g, [-2]g, [-3]g, [-4]g
+        // If the generator of the segment is g, the generator of the i'th chunk in the segment 
+        // is [16^i]g.
         {
             let mut pedersen_circuit_generators = vec![];
 
@@ -310,7 +312,7 @@ impl JubjubBls12 {
                     let mut coeffs = vec![];
                     let mut g = gen.clone();
 
-                    // coeffs = g, g*2, g*3, g*4
+                    // coeffs = g, [2]g, [3]g, [4]g
                     for _ in 0..4 {
                         coeffs.push(g.into_xy().expect("cannot produce O"));
                         g = g.add(&gen, &tmp_params);
@@ -330,6 +332,8 @@ impl JubjubBls12 {
 
         // Create the 3-bit window table lookups for fixed-base
         // exp of each base in the protocol.
+        // The base g_i of the i'th window is [8^i]gen
+        // and we store the values 0, g_i,[2]g_i,..,[7]g_i
         {
             let mut fixed_base_circuit_generators = vec![];
 
@@ -344,7 +348,7 @@ impl JubjubBls12 {
                     }
                     windows.push(coeffs);
 
-                    // gen = gen * 8
+                    // gen = [8]gen
                     gen = g;
                 }
                 fixed_base_circuit_generators.push(windows);

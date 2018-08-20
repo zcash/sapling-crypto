@@ -85,9 +85,12 @@ impl<E: Engine> AllocatedNum<E> {
 
     /// Deconstructs this allocated number into its
     /// boolean representation in little-endian bit
-    /// order, requiring that the representation
-    /// strictly exists "in the field" (i.e., a
-    /// congruency is not allowed.)
+    /// order, requiring that the representation *truncated to the leading bit of r-1* 
+    /// strictly exists "in the field", i.e. is at most r-1.
+    /// *We do not enforce anything about the bits that are (r-1)'s leading zeroes* 
+    /// (In the case of Sapling this is only the msb.)
+    /// The returned value is a bit representation not including these leading zeroes,
+    /// e.g. of length 255 in Sapling.
     pub fn into_bits_le_strict<CS>(
         &self,
         mut cs: CS
@@ -131,10 +134,10 @@ impl<E: Engine> AllocatedNum<E> {
 
         let mut result = vec![];
 
-        // Flag indicating evidence that a<r hasn't been found yet, i.e. a was 1 whenever r-1 was, 
+        // Flag indicating evidence that a < r hasn't been found yet, i.e. a was 1 whenever r-1 was,
         // when checking bit-wise from the msb.
         let mut equal_so_far = None;
-        // Vector of values of a, during runs of ones in r
+        // Vector of values of a, during a run of ones in r-1.
         let mut current_run = vec![];
 
         let mut found_one = false;
@@ -191,8 +194,8 @@ impl<E: Engine> AllocatedNum<E> {
             i += 1;
         }
 
-        // char is prime, so we'll always end on
-        // a run of zeros.
+        // r is prime, so we'll always end on
+        // a run of zeros (of b = r-1).
         assert_eq!(current_run.len(), 0);
 
         // Now, we have `result` in big-endian order.
