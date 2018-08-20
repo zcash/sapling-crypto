@@ -85,15 +85,19 @@ impl<E: Engine> AllocatedNum<E> {
 
     /// Deconstructs this allocated number into its
     /// boolean representation in little-endian bit
-    /// order, requiring that the representation
-    /// strictly exists "in the field" (i.e., a
-    /// congruency is not allowed.)
+    /// order, requiring that the representation *truncated to the leading bit of r-1* 
+    /// strictly exists "in the field", i.e. is at most r-1.
+    /// *We do not enforce anything about the bits that are (r-1)'s leading zeroes* 
+    /// (In the case of Sapling this is only the msb.)
+    /// The returned value is a bit representation not including these leading zeroes,
+    /// e.g. of length 255 in Sapling.
     pub fn into_bits_le_strict<CS>(
         &self,
         mut cs: CS
     ) -> Result<Vec<Boolean>, SynthesisError>
         where CS: ConstraintSystem<E>
     {
+        // Check that a vector of AllocatedBit is the all ones vector
         pub fn kary_and<E, CS>(
             mut cs: CS,
             v: &[AllocatedBit]
@@ -130,8 +134,10 @@ impl<E: Engine> AllocatedNum<E> {
 
         let mut result = vec![];
 
-        // Runs of ones in r
-        let mut last_run = None;
+        // Flag indicating evidence that a < r hasn't been found yet, i.e. a was 1 whenever r-1 was,
+        // when checking bit-wise from the msb.
+        let mut equal_so_far = None;
+        // Vector of values of a, during a run of ones in r-1.
         let mut current_run = vec![];
 
         let mut found_one = false;
@@ -160,27 +166,27 @@ impl<E: Engine> AllocatedNum<E> {
             } else {
                 if current_run.len() > 0 {
                     // This is the start of a run of zeros, but we need
-                    // to k-ary AND against `last_run` first.
+                    // to k-ary AND against `equal_so_far` first, to see if we can already conclude a<r.
 
-                    if last_run.is_some() {
-                        current_run.push(last_run.clone().unwrap());
+                    if equal_so_far.is_some() {
+                        current_run.push(equal_so_far.clone().unwrap());
                     }
-                    last_run = Some(kary_and(
+                    equal_so_far = Some(kary_and(
                         cs.namespace(|| format!("run ending at {}", i)),
                         &current_run
                     )?);
                     current_run.truncate(0);
                 }
 
-                // If `last_run` is true, `a` must be false, or it would
+                // If `equal_so_far` is true, `a` must be false, or it would
                 // not be in the field.
                 //
-                // If `last_run` is false, `a` can be true or false.
+                // If `equal_so_far` is false, `a` can be true or false.
 
                 let a_bit = AllocatedBit::alloc_conditionally(
                     cs.namespace(|| format!("bit {}", i)),
                     a_bit,
-                    &last_run.as_ref().expect("char always starts with a one")
+                    &equal_so_far.as_ref().expect("char always starts with a one")
                 )?;
                 result.push(a_bit);
             }
@@ -188,8 +194,8 @@ impl<E: Engine> AllocatedNum<E> {
             i += 1;
         }
 
-        // char is prime, so we'll always end on
-        // a run of zeros.
+        // r is prime, so we'll always end on
+        // a run of zeros (of b = r-1).
         assert_eq!(current_run.len(), 0);
 
         // Now, we have `result` in big-endian order.

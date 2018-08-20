@@ -9,7 +9,18 @@ use bellman::{
     ConstraintSystem
 };
 
-// Synthesize the constants for each base pattern.
+/// Synthesize the constants for each base pattern:
+/// Given table `I`, viewed as a function from bit strings to Fr,
+/// we compute in `assignment` the coefficients of the multi-linear polynomial P describing I.
+/// For example, when `window_size` is 2, then P(b0,b1)=a0 + a1*b0 + a2*b1 + a3*b0b1,
+/// and P(b0,b1) = I(b), where b is the integer constructed from (b0,b1) in little endian order.
+/// The coeff a_b is defined inductively on  b as a_b=I(b)-sum a_{b'}
+/// running over b' that are "contained" in b; meaning that the ones in the binary representation of b' are
+/// contained in the ones of the binary representation of b.
+/// Under this definition, one can show that P(b) = I(b): basically all terms except I(b) are
+/// canceled out by the inductive formula.
+/// For example, when `window_size` is 2, we have a_0 = I(0), a_1 = I(1)-I(0), a_2 = I(2)-I(0),
+/// a_3 = I(3)-a_2-a_1-a_0 = I(3)-I(2)-I(1)+I(0).
 fn synth<'a, E: Engine, I>(
     window_size: usize,
     constants: I,
@@ -20,13 +31,12 @@ fn synth<'a, E: Engine, I>(
     assert_eq!(assignment.len(), 1 << window_size);
 
     for (i, constant) in constants.into_iter().enumerate() {
-        let mut cur = assignment[i];
-        cur.negate();
-        cur.add_assign(constant);
-        assignment[i] = cur;
+        assignment[i].add_assign(constant);
+        let cur = assignment[i];
+        // Subtract a_i from a_j when the set bits of j contain those of i.
         for (j, eval) in assignment.iter_mut().enumerate().skip(i + 1) {
             if j & i == i {
-                eval.add_assign(&cur);
+                eval.sub_assign(&cur);
             }
         }
     }
@@ -79,7 +89,8 @@ pub fn lookup3_xy<E: Engine, CS>(
         }
     )?;
 
-    // Compute the coefficients for the lookup constraints
+    // Compute the coefficients for the lookup constraints.
+    // Note that these are *not* simply the x coords and y coords of the curve points in coords.
     let mut x_coeffs = [E::Fr::zero(); 8];
     let mut y_coeffs = [E::Fr::zero(); 8];
     synth::<E, _>(3, coords.iter().map(|c| &c.0), &mut x_coeffs);
@@ -89,6 +100,10 @@ pub fn lookup3_xy<E: Engine, CS>(
 
     let one = CS::one();
 
+    // After calling `synth`, `x_coeffs` contains the coefficients of the polynomial P
+    // s.t. P(b)=coords(i).x, where b is the binary representation of i
+    // Moving all terms to the lhs except `res_x.get_variable`, we see that the constraint below
+    // corresponds to `P(bits) = res_x.get_variable`.
     cs.enforce(
         || "x-coordinate lookup",
         |lc| lc + (x_coeffs[0b001], one)
@@ -103,6 +118,7 @@ pub fn lookup3_xy<E: Engine, CS>(
                 - &precomp.lc::<E>(one, x_coeffs[0b110]),
     );
 
+    // same logic as for x coordinate
     cs.enforce(
         || "y-coordinate lookup",
         |lc| lc + (y_coeffs[0b001], one)
