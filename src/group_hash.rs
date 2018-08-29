@@ -71,6 +71,33 @@ mod test {
 
     #[test]
     fn test_group_hash() {
+        fn find_group_hash<E: JubjubEngine>(
+                m: &[u8],
+                personalization: &[u8; 8],
+                params: &E::Params
+        ) -> edwards::Point<E, PrimeOrder>
+        {
+            let mut tag = m.to_vec();
+            let i = tag.len();
+            tag.push(0u8);
+
+
+            loop {
+                let gh = group_hash(
+                    &tag,
+                    personalization,
+                    params
+                );
+
+                // We don't want to overflow and start reusing generators
+                assert!(tag[i] != u8::max_value());
+                tag[i] += 1;
+
+                if let Some(gh) = gh {
+                    break gh;
+                }
+            }
+        }
         let params = JubjubBls12::new();
 
         let expected_points: Vec<edwards::Point<Bls12, PrimeOrder>> = vec![];
@@ -103,47 +130,30 @@ mod test {
             let domain = domains[i];
             let msg =  msgs[i];
 
-            fn find_group_hash<E: JubjubEngine>(
-                m: &[u8],
-                personalization: &[u8; 8],
-                params: &E::Params
-            ) -> edwards::Point<E, PrimeOrder>
-            {
-                let mut tag = m.to_vec();
-                let i = tag.len();
-                tag.push(0u8);
 
-                loop {
-                    let gh = group_hash(
-                        &tag,
-                        personalization,
-                        params
-                    );
-
-                    // We don't want to overflow and start reusing generators
-                    assert!(tag[i] != u8::max_value());
-                    tag[i] += 1;
-
-                    if let Some(gh) = gh {
-                        break gh;
-                    }
-                }
-            }
             let gh : edwards::Point<Bls12, _> = find_group_hash(
                     &msg,
                     &domain,
                     &params
                 );
 
-            println!("gh: {}, {}", gh.into_xy().0, gh.into_xy().1);
-
             let p_sign_false = edwards::Point::<Bls12, _>::get_for_y(Fr::from_str(ys[i]).unwrap(), false, &params).unwrap();
             let p_sign_true = edwards::Point::<Bls12, _>::get_for_y(Fr::from_str(ys[i]).unwrap(), true, &params).unwrap();
             let is_one_of_xs =  p_sign_false.into_xy().0 == Fr::from_str(xs[i]).unwrap() || p_sign_true.into_xy().0 == Fr::from_str(xs[i]).unwrap();
             let is_y =p_sign_false.into_xy().1 == Fr::from_str(ys[i]).unwrap() && p_sign_true.into_xy().1 == Fr::from_str(ys[i]).unwrap();
-            println!("p_sign_false: {}, {}", p_sign_false.into_xy().0, p_sign_false.into_xy().1);
-            println!("p_sign_true: {}, {}", p_sign_true.into_xy().0, p_sign_true.into_xy().1);
             assert!(is_one_of_xs && is_y);
         }
+
+        for m in 0..5 {
+            use byteorder::{WriteBytesExt, LittleEndian};
+            let mut segment_number = [0u8; 4];
+            (&mut segment_number[0..4]).write_u32::<LittleEndian>(m).unwrap();
+            let p: edwards::Point<Bls12, _> = find_group_hash(
+                &segment_number,
+                b"Zcash_PH",
+                &params
+            );
+        }
+
     }
 }

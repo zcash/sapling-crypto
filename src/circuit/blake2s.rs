@@ -498,6 +498,52 @@ mod test {
                 let c = out.next().unwrap().get_value().unwrap();
 
                 assert_eq!(c, (b >> i) & 1u8 == 1u8);
+        #[test]
+    fn test_blake2s_test_vectors() {
+        let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
+
+        for input_len in (0..32).chain((32..256).filter(|a| a % 8 == 0))
+        {
+            let mut h = Blake2s::with_params(32, &[], &[], b"12345678");
+
+            let data: Vec<u8> = (0..input_len).map(|_| rng.gen()).collect();
+
+            h.update(&data);
+
+            let hash_result = h.finalize();
+
+            let mut cs = TestConstraintSystem::<Bls12>::new();
+
+            let mut input_bits = vec![];
+
+            for (byte_i, input_byte) in data.into_iter().enumerate() {
+                for bit_i in 0..8 {
+                    let cs = cs.namespace(|| format!("input bit {} {}", byte_i, bit_i));
+
+                    input_bits.push(AllocatedBit::alloc(cs, Some((input_byte >> bit_i) & 1u8 == 1u8)).unwrap().into());
+                }
+            }
+
+            let r = blake2s(&mut cs, &input_bits, b"12345678").unwrap();
+
+            assert!(cs.is_satisfied());
+
+            let mut s = hash_result.as_ref().iter()
+                                            .flat_map(|&byte| (0..8).map(move |i| (byte >> i) & 1u8 == 1u8));
+
+            for b in r {
+                match b {
+                    Boolean::Is(b) => {
+                        assert!(s.next().unwrap() == b.get_value().unwrap());
+                    },
+                    Boolean::Not(b) => {
+                        assert!(s.next().unwrap() != b.get_value().unwrap());
+                    },
+                    Boolean::Constant(b) => {
+                        assert!(input_len == 0);
+                        assert!(s.next().unwrap() == b);
+                    }
+                }
             }
         }
     }
