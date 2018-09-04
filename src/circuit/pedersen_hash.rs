@@ -3,8 +3,6 @@ use super::ecc::{
     MontgomeryPoint,
     EdwardsPoint
 };
-
-
 use super::boolean::Boolean;
 use ::jubjub::*;
 use bellman::{
@@ -34,9 +32,7 @@ pub fn pedersen_hash<E: JubjubEngine, CS>(
     assert_eq!(personalization.len(), 6);
 
     let mut edwards_result = None;
-    //REVIEW: bit cloning
     let mut bits = personalization.iter().chain(bits.iter());
-
     let mut segment_generators = params.pedersen_circuit_generators().iter();
     let boolean_false = Boolean::constant(false);
 
@@ -50,7 +46,6 @@ pub fn pedersen_hash<E: JubjubEngine, CS>(
         while let Some(a) = bits.next() {
             let b = bits.next().unwrap_or(&boolean_false);
             let c = bits.next().unwrap_or(&boolean_false);
-
 
             let tmp = lookup3_xy_with_conditional_negation(
                 cs.namespace(|| format!("segment {}, window {}", segment_i, window_i)),
@@ -90,7 +85,6 @@ pub fn pedersen_hash<E: JubjubEngine, CS>(
                     params
                 )?;
 
- 
                 match edwards_result {
                     Some(ref mut edwards_result) => {
                         *edwards_result = segment_result.add(
@@ -196,34 +190,5 @@ mod test {
                 assert!(res.get_y().get_value().unwrap() != unexpected.1);
             }
         }
-    }
-
-    #[test]
-    fn test_pedersen_hash_alternative() {
-        let params = &JubjubBls12::new();
-
-        let mut input: Vec<bool> = vec![];
-        for i in 0..(63*3*4-6+1) {
-            input.push(true);
-        }
-
-        let mut cs = TestConstraintSystem::<Bls12>::new();
-
-
-        let input_bools: Vec<Boolean> = input.iter().enumerate().map(|(i, b)| {
-            Boolean::from(
-                AllocatedBit::alloc(cs.namespace(|| format!("input {}", i)), Some(*b)).unwrap()
-            )
-        }).collect();
-        let res = pedersen_hash(
-            cs.namespace(|| "pedersen hash"),
-            Personalization::Empty,
-            &input_bools,
-            params
-        ).unwrap();
-
-        assert!(cs.is_satisfied());
-        println!("x={},y={}", res.get_x().get_value().unwrap(), res.get_y().get_value().unwrap());
-
     }
 }

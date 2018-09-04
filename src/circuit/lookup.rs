@@ -161,7 +161,6 @@ pub fn lookup3_xy_with_conditional_negation<E: Engine, CS>(
         }
     )?;
 
-
     let one = CS::one();
 
     // Compute the coefficients for the lookup constraints
