@@ -502,10 +502,13 @@ mod test {
     fn test_blake2s_test_vectors() {
         let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
-        for input_len in (0..32).chain((32..256).filter(|a| a % 8 == 0))
-        {
+            let expecteds = [
+                hex!("a1309e334376c8f36a736a4ab0e691ef931ee3ebdb9ea96187127136fea622a1"),
+                hex!("82fefff60f265cea255252f7c194a7f93965dffee0609ef74eb67f0d76cd41c6"),
+            ];
+        for i in 0..2 {
             let mut h = Blake2s::with_params(32, &[], &[], b"12345678");
-
+            let input_len = 1024;
             let data: Vec<u8> = (0..input_len).map(|_| rng.gen()).collect();
 
             h.update(&data);
@@ -529,7 +532,7 @@ mod test {
             assert!(cs.is_satisfied());
 
             let mut s = hash_result.as_ref().iter()
-                                            .flat_map(|&byte| (0..8).map(move |i| (byte >> i) & 1u8 == 1u8));
+                .flat_map(|&byte| (0..8).map(move |i| (byte >> i) & 1u8 == 1u8));
 
             for b in r {
                 match b {
@@ -545,6 +548,8 @@ mod test {
                     }
                 }
             }
+
+            assert_eq!(expecteds[i], hash_result.as_bytes());
         }
     }
 }

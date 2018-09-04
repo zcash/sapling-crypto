@@ -98,7 +98,6 @@ impl<E: JubjubEngine> Point<E, Unknown> {
         let mut y_repr = <E::Fr as PrimeField>::Repr::default();
         y_repr.read_le(reader)?;
 
-
         let x_sign = (y_repr.as_ref()[3] >> 63) == 1;
         y_repr.as_mut()[3] &= 0x7fffffffffffffff;
 
@@ -134,11 +133,6 @@ impl<E: JubjubEngine> Point<E, Unknown> {
 
         // tmp1 = y^2 - 1
         tmp1.sub_assign(&E::Fr::one());
-
-
-        let mut modulus = E::Fr::from_str("52435875175126190479447740508185965837690552500527637822603658699938581184513").unwrap();
-        modulus.sub_assign(&E::Fr::from_str("2").unwrap());
-        let tmp3 = tmp2.pow(modulus.into_repr());
 
         match tmp2.inverse() {
             Some(tmp2) => {

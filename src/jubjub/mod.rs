@@ -253,10 +253,6 @@ impl JubjubBls12 {
                         &tmp_params
                     )
                 );
-                let gh:edwards::Point<Bls12, PrimeOrder> = find_group_hash(
-                        &segment_number,
-                        constants::PEDERSEN_HASH_GENERATORS_PERSONALIZATION,
-                        &tmp_params);
             }
 
             // Check for duplicates, far worse than spec inconsistencies!
