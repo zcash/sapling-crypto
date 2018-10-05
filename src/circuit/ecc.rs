@@ -37,7 +37,8 @@ pub struct EdwardsPoint<E: Engine> {
 }
 
 /// Perform a fixed-base scalar multiplication with
-/// `by` being in little-endian bit order.
+/// `base` choosing the fixed-base amongst those user-defined for `E`
+/// `by` being the bit decomposition of the scalar in little-endian bit order.
 pub fn fixed_base_multiplication<E, CS>(
     mut cs: CS,
     base: FixedGenerators,
@@ -183,6 +184,7 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             }
         )?;
 
+        // Add the curve constraints for (x,y)
         Self::interpret(
             cs.namespace(|| "point interpretation"),
             &x,
