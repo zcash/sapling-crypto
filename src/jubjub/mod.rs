@@ -164,7 +164,7 @@ impl JubjubParams<Bls12> for JubjubBls12 {
         &self.pedersen_hash_exp
     }
     fn pedersen_hash_chunks_per_generator(&self) -> usize {
-        63
+        291
     }
     fn fixed_base_chunks_per_generator(&self) -> usize {
         84
@@ -240,7 +240,7 @@ impl JubjubBls12 {
         {
             let mut pedersen_hash_generators = vec![];
 
-            for m in 0..5 {
+            for m in 0..6 {
                 use byteorder::{WriteBytesExt, LittleEndian};
 
                 let mut segment_number = [0u8; 4];
