@@ -1,5 +1,5 @@
 use super::uint32::UInt32;
-use super::multieq::MultiEq;
+use super::multieq::{MultiEq, multi_eq};
 use super::boolean::Boolean;
 use bellman::{ConstraintSystem, SynthesisError};
 use pairing::Engine;
@@ -94,212 +94,212 @@ fn sha256_compression_function<E, CS>(
 
     // We can save some constraints by combining some of
     // the constraints in different u32 additions
-    let mut cs = MultiEq::new(cs);
+    multi_eq(cs, |cs| {
+        for i in 16..64 {
+            let cs = &mut cs.namespace(|| format!("w extension {}", i));
 
-    for i in 16..64 {
-        let cs = &mut cs.namespace(|| format!("w extension {}", i));
+            // s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift 3)
+            let mut s0 = w[i-15].rotr(7);
+            s0 = s0.xor(
+                cs.namespace(|| "first xor for s0"),
+                &w[i-15].rotr(18)
+            )?;
+            s0 = s0.xor(
+                cs.namespace(|| "second xor for s0"),
+                &w[i-15].shr(3)
+            )?;
 
-        // s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift 3)
-        let mut s0 = w[i-15].rotr(7);
-        s0 = s0.xor(
-            cs.namespace(|| "first xor for s0"),
-            &w[i-15].rotr(18)
-        )?;
-        s0 = s0.xor(
-            cs.namespace(|| "second xor for s0"),
-            &w[i-15].shr(3)
-        )?;
+            // s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift 10)
+            let mut s1 = w[i-2].rotr(17);
+            s1 = s1.xor(
+                cs.namespace(|| "first xor for s1"),
+                &w[i-2].rotr(19)
+            )?;
+            s1 = s1.xor(
+                cs.namespace(|| "second xor for s1"),
+                &w[i-2].shr(10)
+            )?;
 
-        // s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift 10)
-        let mut s1 = w[i-2].rotr(17);
-        s1 = s1.xor(
-            cs.namespace(|| "first xor for s1"),
-            &w[i-2].rotr(19)
-        )?;
-        s1 = s1.xor(
-            cs.namespace(|| "second xor for s1"),
-            &w[i-2].shr(10)
-        )?;
+            let tmp = UInt32::addmany(
+                cs.namespace(|| "computation of w[i]"),
+                &[w[i-16].clone(), s0, w[i-7].clone(), s1]
+            )?;
 
-        let tmp = UInt32::addmany(
-            cs.namespace(|| "computation of w[i]"),
-            &[w[i-16].clone(), s0, w[i-7].clone(), s1]
-        )?;
-
-        // w[i] := w[i-16] + s0 + w[i-7] + s1
-        w.push(tmp);
-    }
-
-    assert_eq!(w.len(), 64);
-
-    enum Maybe {
-        Deferred(Vec<UInt32>),
-        Concrete(UInt32)
-    }
-
-    impl Maybe {
-        fn compute<E, CS, M>(
-            self,
-            cs: M,
-            others: &[UInt32]
-        ) -> Result<UInt32, SynthesisError>
-            where E: Engine,
-                  CS: ConstraintSystem<E>,
-                  M: ConstraintSystem<E, Root=MultiEq<E, CS>>
-        {
-            Ok(match self {
-                Maybe::Concrete(ref v) => {
-                    return Ok(v.clone())
-                },
-                Maybe::Deferred(mut v) => {
-                    v.extend(others.into_iter().cloned());
-                    UInt32::addmany(
-                        cs,
-                        &v
-                    )?
-                }
-            })
+            // w[i] := w[i-16] + s0 + w[i-7] + s1
+            w.push(tmp);
         }
-    }
 
-    let mut a = Maybe::Concrete(current_hash_value[0].clone());
-    let mut b = current_hash_value[1].clone();
-    let mut c = current_hash_value[2].clone();
-    let mut d = current_hash_value[3].clone();
-    let mut e = Maybe::Concrete(current_hash_value[4].clone());
-    let mut f = current_hash_value[5].clone();
-    let mut g = current_hash_value[6].clone();
-    let mut h = current_hash_value[7].clone();
+        assert_eq!(w.len(), 64);
 
-    for i in 0..64 {
-        let cs = &mut cs.namespace(|| format!("compression round {}", i));
+        enum Maybe {
+            Deferred(Vec<UInt32>),
+            Concrete(UInt32)
+        }
 
-        // S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25)
-        let new_e = e.compute(cs.namespace(|| "deferred e computation"), &[])?;
-        let mut s1 = new_e.rotr(6);
-        s1 = s1.xor(
-            cs.namespace(|| "first xor for s1"),
-            &new_e.rotr(11)
-        )?;
-        s1 = s1.xor(
-            cs.namespace(|| "second xor for s1"),
-            &new_e.rotr(25)
-        )?;
+        impl Maybe {
+            fn compute<E, CS, M>(
+                self,
+                cs: M,
+                others: &[UInt32]
+            ) -> Result<UInt32, SynthesisError>
+                where E: Engine,
+                      CS: ConstraintSystem<E>,
+                      M: ConstraintSystem<E, Root=MultiEq<E, CS>>
+            {
+                Ok(match self {
+                    Maybe::Concrete(ref v) => {
+                        return Ok(v.clone())
+                    },
+                    Maybe::Deferred(mut v) => {
+                        v.extend(others.into_iter().cloned());
+                        UInt32::addmany(
+                            cs,
+                            &v
+                        )?
+                    }
+                })
+            }
+        }
 
-        // ch := (e and f) xor ((not e) and g)
-        let ch = UInt32::sha256_ch(
-            cs.namespace(|| "ch"),
-            &new_e,
-            &f,
-            &g
-        )?;
+        let mut a = Maybe::Concrete(current_hash_value[0].clone());
+        let mut b = current_hash_value[1].clone();
+        let mut c = current_hash_value[2].clone();
+        let mut d = current_hash_value[3].clone();
+        let mut e = Maybe::Concrete(current_hash_value[4].clone());
+        let mut f = current_hash_value[5].clone();
+        let mut g = current_hash_value[6].clone();
+        let mut h = current_hash_value[7].clone();
 
-        // temp1 := h + S1 + ch + k[i] + w[i]
-        let temp1 = vec![
-            h.clone(),
-            s1,
-            ch,
-            UInt32::constant(ROUND_CONSTANTS[i]),
-            w[i].clone()
-        ];
+        for i in 0..64 {
+            let cs = &mut cs.namespace(|| format!("compression round {}", i));
 
-        // S0 := (a rightrotate 2) xor (a rightrotate 13) xor (a rightrotate 22)
-        let new_a = a.compute(cs.namespace(|| "deferred a computation"), &[])?;
-        let mut s0 = new_a.rotr(2);
-        s0 = s0.xor(
-            cs.namespace(|| "first xor for s0"),
-            &new_a.rotr(13)
-        )?;
-        s0 = s0.xor(
-            cs.namespace(|| "second xor for s0"),
-            &new_a.rotr(22)
-        )?;
+            // S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25)
+            let new_e = e.compute(cs.namespace(|| "deferred e computation"), &[])?;
+            let mut s1 = new_e.rotr(6);
+            s1 = s1.xor(
+                cs.namespace(|| "first xor for s1"),
+                &new_e.rotr(11)
+            )?;
+            s1 = s1.xor(
+                cs.namespace(|| "second xor for s1"),
+                &new_e.rotr(25)
+            )?;
 
-        // maj := (a and b) xor (a and c) xor (b and c)
-        let maj = UInt32::sha256_maj(
-            cs.namespace(|| "maj"),
-            &new_a,
-            &b,
-            &c
-        )?;
+            // ch := (e and f) xor ((not e) and g)
+            let ch = UInt32::sha256_ch(
+                cs.namespace(|| "ch"),
+                &new_e,
+                &f,
+                &g
+            )?;
 
-        // temp2 := S0 + maj
-        let temp2 = vec![s0, maj];
+            // temp1 := h + S1 + ch + k[i] + w[i]
+            let temp1 = vec![
+                h.clone(),
+                s1,
+                ch,
+                UInt32::constant(ROUND_CONSTANTS[i]),
+                w[i].clone()
+            ];
+
+            // S0 := (a rightrotate 2) xor (a rightrotate 13) xor (a rightrotate 22)
+            let new_a = a.compute(cs.namespace(|| "deferred a computation"), &[])?;
+            let mut s0 = new_a.rotr(2);
+            s0 = s0.xor(
+                cs.namespace(|| "first xor for s0"),
+                &new_a.rotr(13)
+            )?;
+            s0 = s0.xor(
+                cs.namespace(|| "second xor for s0"),
+                &new_a.rotr(22)
+            )?;
+
+            // maj := (a and b) xor (a and c) xor (b and c)
+            let maj = UInt32::sha256_maj(
+                cs.namespace(|| "maj"),
+                &new_a,
+                &b,
+                &c
+            )?;
+
+            // temp2 := S0 + maj
+            let temp2 = vec![s0, maj];
+
+            /*
+            h := g
+            g := f
+            f := e
+            e := d + temp1
+            d := c
+            c := b
+            b := a
+            a := temp1 + temp2
+            */
+
+            h = g;
+            g = f;
+            f = new_e;
+            e = Maybe::Deferred(temp1.iter().cloned().chain(Some(d)).collect::<Vec<_>>());
+            d = c;
+            c = b;
+            b = new_a;
+            a = Maybe::Deferred(temp1.iter().cloned().chain(temp2.iter().cloned()).collect::<Vec<_>>());
+        }
 
         /*
-        h := g
-        g := f
-        f := e
-        e := d + temp1
-        d := c
-        c := b
-        b := a
-        a := temp1 + temp2
+            Add the compressed chunk to the current hash value:
+            h0 := h0 + a
+            h1 := h1 + b
+            h2 := h2 + c
+            h3 := h3 + d
+            h4 := h4 + e
+            h5 := h5 + f
+            h6 := h6 + g
+            h7 := h7 + h
         */
 
-        h = g;
-        g = f;
-        f = new_e;
-        e = Maybe::Deferred(temp1.iter().cloned().chain(Some(d)).collect::<Vec<_>>());
-        d = c;
-        c = b;
-        b = new_a;
-        a = Maybe::Deferred(temp1.iter().cloned().chain(temp2.iter().cloned()).collect::<Vec<_>>());
-    }
+        let h0 = a.compute(
+            cs.namespace(|| "deferred h0 computation"),
+            &[current_hash_value[0].clone()]
+        )?;
 
-    /*
-        Add the compressed chunk to the current hash value:
-        h0 := h0 + a
-        h1 := h1 + b
-        h2 := h2 + c
-        h3 := h3 + d
-        h4 := h4 + e
-        h5 := h5 + f
-        h6 := h6 + g
-        h7 := h7 + h
-    */
+        let h1 = UInt32::addmany(
+            cs.namespace(|| "new h1"),
+            &[current_hash_value[1].clone(), b]
+        )?;
 
-    let h0 = a.compute(
-        cs.namespace(|| "deferred h0 computation"),
-        &[current_hash_value[0].clone()]
-    )?;
+        let h2 = UInt32::addmany(
+            cs.namespace(|| "new h2"),
+            &[current_hash_value[2].clone(), c]
+        )?;
 
-    let h1 = UInt32::addmany(
-        cs.namespace(|| "new h1"),
-        &[current_hash_value[1].clone(), b]
-    )?;
+        let h3 = UInt32::addmany(
+            cs.namespace(|| "new h3"),
+            &[current_hash_value[3].clone(), d]
+        )?;
 
-    let h2 = UInt32::addmany(
-        cs.namespace(|| "new h2"),
-        &[current_hash_value[2].clone(), c]
-    )?;
+        let h4 = e.compute(
+            cs.namespace(|| "deferred h4 computation"),
+            &[current_hash_value[4].clone()]
+        )?;
 
-    let h3 = UInt32::addmany(
-        cs.namespace(|| "new h3"),
-        &[current_hash_value[3].clone(), d]
-    )?;
+        let h5 = UInt32::addmany(
+            cs.namespace(|| "new h5"),
+            &[current_hash_value[5].clone(), f]
+        )?;
 
-    let h4 = e.compute(
-        cs.namespace(|| "deferred h4 computation"),
-        &[current_hash_value[4].clone()]
-    )?;
+        let h6 = UInt32::addmany(
+            cs.namespace(|| "new h6"),
+            &[current_hash_value[6].clone(), g]
+        )?;
 
-    let h5 = UInt32::addmany(
-        cs.namespace(|| "new h5"),
-        &[current_hash_value[5].clone(), f]
-    )?;
+        let h7 = UInt32::addmany(
+            cs.namespace(|| "new h7"),
+            &[current_hash_value[7].clone(), h]
+        )?;
 
-    let h6 = UInt32::addmany(
-        cs.namespace(|| "new h6"),
-        &[current_hash_value[6].clone(), g]
-    )?;
-
-    let h7 = UInt32::addmany(
-        cs.namespace(|| "new h7"),
-        &[current_hash_value[7].clone(), h]
-    )?;
-
-    Ok(vec![h0, h1, h2, h3, h4, h5, h6, h7])
+        Ok(vec![h0, h1, h2, h3, h4, h5, h6, h7])
+    })
 }
 
 #[cfg(test)]

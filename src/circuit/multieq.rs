@@ -11,6 +11,24 @@ use bellman::{
     Variable
 };
 
+pub fn multi_eq<E, CS, F, R>(cs: CS, f: F) -> R
+    where E: Engine, CS: ConstraintSystem<E>, F: FnOnce(&mut MultiEq<E, CS>) -> R
+{
+    let mut cs = MultiEq {
+        cs: cs,
+        ops: 0,
+        bits_used: 0,
+        lhs: LinearCombination::zero(),
+        rhs: LinearCombination::zero()
+    };
+    let tmp = f(&mut cs);
+    if cs.bits_used > 0 {
+       cs.accumulate();
+    }
+
+    tmp
+}
+
 pub struct MultiEq<E: Engine, CS: ConstraintSystem<E>>{
     cs: CS,
     ops: usize,
@@ -20,16 +38,6 @@ pub struct MultiEq<E: Engine, CS: ConstraintSystem<E>>{
 }
 
 impl<E: Engine, CS: ConstraintSystem<E>> MultiEq<E, CS> {
-    pub fn new(cs: CS) -> Self {
-        MultiEq {
-            cs: cs,
-            ops: 0,
-            bits_used: 0,
-            lhs: LinearCombination::zero(),
-            rhs: LinearCombination::zero()
-        }
-    }
-
     fn accumulate(&mut self)
     {
         let ops = self.ops;
@@ -65,14 +73,6 @@ impl<E: Engine, CS: ConstraintSystem<E>> MultiEq<E, CS> {
         self.lhs = self.lhs.clone() + (coeff, lhs);
         self.rhs = self.rhs.clone() + (coeff, rhs);
         self.bits_used += num_bits;
-    }
-}
-
-impl<E: Engine, CS: ConstraintSystem<E>> Drop for MultiEq<E, CS> {
-    fn drop(&mut self) {
-        if self.bits_used > 0 {
-           self.accumulate();
-        }
     }
 }
 
