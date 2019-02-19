@@ -629,7 +629,7 @@ mod test {
 
         let a = UInt32::constant(num);
 
-        for i in 0..32 {
+        for i in 0..60 {
             let b = a.rotr(i);
             assert_eq!(a.bits.len(), b.bits.len());
 
