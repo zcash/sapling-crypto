@@ -498,7 +498,11 @@ mod test {
                 let c = out.next().unwrap().get_value().unwrap();
 
                 assert_eq!(c, (b >> i) & 1u8 == 1u8);
-        #[test]
+            }
+        }
+    }
+
+    #[test]
     fn test_blake2s_test_vectors() {
         let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
