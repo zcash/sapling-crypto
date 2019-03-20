@@ -12,7 +12,7 @@ version = "0.0.2"
 rand = "0.4"
 digest = "0.7"
 byteorder = "1"
-ff = "0.4.0"
+ff = {version = "0.4.0", features = ["derive"]}
 
 [dependencies.bellman]
 git = "https://github.com/filecoin-project/bellman"
