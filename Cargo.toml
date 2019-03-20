@@ -6,7 +6,7 @@ homepage = "https://github.com/zcash-hackworks/sapling"
 license = "MIT/Apache-2.0"
 name = "sapling-crypto"
 repository = "https://github.com/zcash-hackworks/sapling"
-version = "0.0.1"
+version = "0.0.2"
 
 [dependencies]
 rand = "0.4"
@@ -19,7 +19,7 @@ git = "https://github.com/filecoin-project/bellman"
 branch = "master"
 
 [dependencies.pairing]
-git = "https://github.com/zkcrypto/pairing"
+git = "https://github.com/filecoin-project/pairing"
 branch = "master"
 features = ["expose-arith"]
 
