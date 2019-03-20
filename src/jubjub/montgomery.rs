@@ -1,4 +1,4 @@
-use pairing::{
+use ff::{
     Field,
     SqrtField,
     PrimeField,

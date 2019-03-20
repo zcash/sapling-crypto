@@ -4,6 +4,7 @@ extern crate blake2_rfc;
 extern crate digest;
 extern crate rand;
 extern crate byteorder;
+extern crate ff;
 
 #[cfg(test)]
 #[macro_use]

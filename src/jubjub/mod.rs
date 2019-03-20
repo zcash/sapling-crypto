@@ -17,8 +17,9 @@
 //! the Montgomery curve forms a group isomorphism, allowing points
 //! to be freely converted between the two forms.
 
-use pairing::{
-    Engine,
+use pairing::Engine;
+
+use ff::{
     Field,
     PrimeField,
     SqrtField

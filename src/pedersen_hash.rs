@@ -1,5 +1,5 @@
 use jubjub::*;
-use pairing::*;
+use ff::{PrimeField, PrimeFieldRepr, Field};
 
 #[derive(Copy, Clone)]
 pub enum Personalization {
@@ -84,7 +84,7 @@ pub fn pedersen_hash<E, I>(
         let window_mask = (1 << window) - 1;
 
         let mut acc = acc.into_repr();
-        
+
         let mut tmp = edwards::Point::zero();
 
         while !acc.is_zero() {

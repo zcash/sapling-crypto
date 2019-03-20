@@ -1,9 +1,9 @@
-use pairing::{
+use ff::{
     Field,
     SqrtField,
     PrimeField,
     PrimeFieldRepr,
-    BitIterator
+    BitIterator,
 };
 
 use super::{

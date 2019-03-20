@@ -1,5 +1,6 @@
-use pairing::{
-    Engine,
+use pairing::Engine;
+
+use ff::{
     Field,
     PrimeField,
     PrimeFieldRepr,
@@ -323,7 +324,7 @@ impl<E: Engine> AllocatedNum<E> {
     {
         let inv = cs.alloc(|| "ephemeral inverse", || {
             let tmp = *self.value.get()?;
-            
+
             if tmp.is_zero() {
                 Err(SynthesisError::DivisionByZero)
             } else {
@@ -463,7 +464,7 @@ mod test {
     use rand::{SeedableRng, Rand, Rng, XorShiftRng};
     use bellman::{ConstraintSystem};
     use pairing::bls12_381::{Bls12, Fr};
-    use pairing::{Field, PrimeField, BitIterator};
+    use ff::{Field, PrimeField, BitIterator};
     use ::circuit::test::*;
     use super::{AllocatedNum, Boolean};
 

@@ -1,7 +1,8 @@
 use pairing::{
     Engine,
-    Field
 };
+
+use ff::Field;
 
 use bellman::{
     SynthesisError,
@@ -752,7 +753,7 @@ mod test {
     use bellman::{ConstraintSystem};
     use rand::{XorShiftRng, SeedableRng, Rand, Rng};
     use pairing::bls12_381::{Bls12, Fr};
-    use pairing::{BitIterator, Field, PrimeField};
+    use ff::{BitIterator, Field, PrimeField};
     use ::circuit::test::*;
     use ::jubjub::{
         montgomery,

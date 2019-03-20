@@ -1,5 +1,8 @@
 use pairing::{
     Engine,
+};
+
+use ff::{
     Field,
     PrimeField,
     PrimeFieldRepr
@@ -120,7 +123,7 @@ fn hash_lc<E: Engine>(
                 BigEndian::write_u64(&mut buf[1..9], i as u64);
             }
         }
-        
+
         coeff.into_repr().write_be(&mut buf[9..]).unwrap();
 
         h.update(&buf);
@@ -446,7 +449,7 @@ impl<E: Engine> ConstraintSystem<E> for TestConstraintSystem<E> {
 #[test]
 fn test_cs() {
     use pairing::bls12_381::{Bls12, Fr};
-    use pairing::PrimeField;
+    use ff::PrimeField;
 
     let mut cs = TestConstraintSystem::<Bls12>::new();
     assert!(cs.is_satisfied());
