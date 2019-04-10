@@ -45,6 +45,7 @@ pub fn group_hash<E: JubjubEngine>(
     }
 }
 
+#[cfg(test)]
 mod test {
     use pairing::bls12_381::{
         Bls12,

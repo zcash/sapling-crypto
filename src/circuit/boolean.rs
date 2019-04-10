@@ -1621,7 +1621,7 @@ mod test {
 
             let value = Some(true);
             let b = AllocatedBit::alloc(&mut cs, Some(true)).unwrap();
-            let allocated_value = AllocatedBit::alloc_conditionally(
+            AllocatedBit::alloc_conditionally(
                 cs.namespace(|| "alloc_conditionally"),
                 value,
                 &b,
@@ -1637,7 +1637,7 @@ mod test {
             //check with false bit
             let mut cs = TestConstraintSystem::<Bls12>::new();
             let b1 = AllocatedBit::alloc(&mut cs, Some(false)).unwrap();
-            let allocated_value = AllocatedBit::alloc_conditionally(
+            AllocatedBit::alloc_conditionally(
                 cs.namespace(|| "alloc_conditionally"),
                 value,
                 &b1,
@@ -1646,7 +1646,7 @@ mod test {
             //check with true bit
             let mut cs = TestConstraintSystem::<Bls12>::new();
             let b2 = AllocatedBit::alloc(&mut cs, Some(true)).unwrap();
-            let allocated_value = AllocatedBit::alloc_conditionally(
+            AllocatedBit::alloc_conditionally(
                 cs.namespace(|| "alloc_conditionally"),
                 value,
                 &b2,
