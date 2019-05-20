@@ -1,20 +1,18 @@
-use pairing::{Engine};
-use bellman::{ConstraintSystem, SynthesisError};
-use circuit::sha256::{
-    sha256
-};
-use circuit::boolean::{
-    Boolean
-};
+use bellperson::{ConstraintSystem, SynthesisError};
+use circuit::boolean::Boolean;
+use circuit::sha256::sha256;
+use paired::Engine;
 
 pub fn note_comm<E, CS>(
     cs: CS,
     a_pk: &[Boolean],
     value: &[Boolean],
     rho: &[Boolean],
-    r: &[Boolean]
+    r: &[Boolean],
 ) -> Result<Vec<Boolean>, SynthesisError>
-    where E: Engine, CS: ConstraintSystem<E>
+where
+    E: Engine,
+    CS: ConstraintSystem<E>,
 {
     assert_eq!(a_pk.len(), 256);
     assert_eq!(value.len(), 64);
@@ -35,8 +33,5 @@ pub fn note_comm<E, CS>(
     image.extend(rho.iter().cloned());
     image.extend(r.iter().cloned());
 
-    sha256(
-        cs,
-        &image
-    )
+    sha256(cs, &image)
 }

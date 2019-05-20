@@ -1,22 +1,14 @@
-use pairing::Engine;
-use ff::Field;
-use super::*;
-use super::num::{
-    AllocatedNum,
-    Num
-};
 use super::boolean::Boolean;
-use bellman::{
-    ConstraintSystem
-};
+use super::num::{AllocatedNum, Num};
+use super::*;
+use bellperson::ConstraintSystem;
+use ff::Field;
+use paired::Engine;
 
 // Synthesize the constants for each base pattern.
-fn synth<'a, E: Engine, I>(
-    window_size: usize,
-    constants: I,
-    assignment: &mut [E::Fr]
-)
-    where I: IntoIterator<Item=&'a E::Fr>
+fn synth<'a, E: Engine, I>(window_size: usize, constants: I, assignment: &mut [E::Fr])
+where
+    I: IntoIterator<Item = &'a E::Fr>,
 {
     assert_eq!(assignment.len(), 1 << window_size);
 
@@ -38,16 +30,20 @@ fn synth<'a, E: Engine, I>(
 pub fn lookup3_xy<E: Engine, CS>(
     mut cs: CS,
     bits: &[Boolean],
-    coords: &[(E::Fr, E::Fr)]
+    coords: &[(E::Fr, E::Fr)],
 ) -> Result<(AllocatedNum<E>, AllocatedNum<E>), SynthesisError>
-    where CS: ConstraintSystem<E>
+where
+    CS: ConstraintSystem<E>,
 {
     assert_eq!(bits.len(), 3);
     assert_eq!(coords.len(), 8);
 
     // Calculate the index into `coords`
-    let i =
-    match (bits[0].get_value(), bits[1].get_value(), bits[2].get_value()) {
+    let i = match (
+        bits[0].get_value(),
+        bits[1].get_value(),
+        bits[2].get_value(),
+    ) {
         (Some(a_value), Some(b_value), Some(c_value)) => {
             let mut tmp = 0;
             if a_value {
@@ -60,25 +56,15 @@ pub fn lookup3_xy<E: Engine, CS>(
                 tmp += 4;
             }
             Some(tmp)
-        },
-        _ => None
+        }
+        _ => None,
     };
 
     // Allocate the x-coordinate resulting from the lookup
-    let res_x = AllocatedNum::alloc(
-        cs.namespace(|| "x"),
-        || {
-            Ok(coords[*i.get()?].0)
-        }
-    )?;
+    let res_x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(coords[*i.get()?].0))?;
 
     // Allocate the y-coordinate resulting from the lookup
-    let res_y = AllocatedNum::alloc(
-        cs.namespace(|| "y"),
-        || {
-            Ok(coords[*i.get()?].1)
-        }
-    )?;
+    let res_y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(coords[*i.get()?].1))?;
 
     // Compute the coefficients for the lookup constraints
     let mut x_coeffs = [E::Fr::zero(); 8];
@@ -92,30 +78,38 @@ pub fn lookup3_xy<E: Engine, CS>(
 
     cs.enforce(
         || "x-coordinate lookup",
-        |lc| lc + (x_coeffs[0b001], one)
+        |lc| {
+            lc + (x_coeffs[0b001], one)
                 + &bits[1].lc::<E>(one, x_coeffs[0b011])
                 + &bits[2].lc::<E>(one, x_coeffs[0b101])
-                + &precomp.lc::<E>(one, x_coeffs[0b111]),
+                + &precomp.lc::<E>(one, x_coeffs[0b111])
+        },
         |lc| lc + &bits[0].lc::<E>(one, E::Fr::one()),
-        |lc| lc + res_x.get_variable()
+        |lc| {
+            lc + res_x.get_variable()
                 - (x_coeffs[0b000], one)
                 - &bits[1].lc::<E>(one, x_coeffs[0b010])
                 - &bits[2].lc::<E>(one, x_coeffs[0b100])
-                - &precomp.lc::<E>(one, x_coeffs[0b110]),
+                - &precomp.lc::<E>(one, x_coeffs[0b110])
+        },
     );
 
     cs.enforce(
         || "y-coordinate lookup",
-        |lc| lc + (y_coeffs[0b001], one)
+        |lc| {
+            lc + (y_coeffs[0b001], one)
                 + &bits[1].lc::<E>(one, y_coeffs[0b011])
                 + &bits[2].lc::<E>(one, y_coeffs[0b101])
-                + &precomp.lc::<E>(one, y_coeffs[0b111]),
+                + &precomp.lc::<E>(one, y_coeffs[0b111])
+        },
         |lc| lc + &bits[0].lc::<E>(one, E::Fr::one()),
-        |lc| lc + res_y.get_variable()
+        |lc| {
+            lc + res_y.get_variable()
                 - (y_coeffs[0b000], one)
                 - &bits[1].lc::<E>(one, y_coeffs[0b010])
                 - &bits[2].lc::<E>(one, y_coeffs[0b100])
-                - &precomp.lc::<E>(one, y_coeffs[0b110]),
+                - &precomp.lc::<E>(one, y_coeffs[0b110])
+        },
     );
 
     Ok((res_x, res_y))
@@ -126,16 +120,16 @@ pub fn lookup3_xy<E: Engine, CS>(
 pub fn lookup3_xy_with_conditional_negation<E: Engine, CS>(
     mut cs: CS,
     bits: &[Boolean],
-    coords: &[(E::Fr, E::Fr)]
+    coords: &[(E::Fr, E::Fr)],
 ) -> Result<(Num<E>, Num<E>), SynthesisError>
-    where CS: ConstraintSystem<E>
+where
+    CS: ConstraintSystem<E>,
 {
     assert_eq!(bits.len(), 3);
     assert_eq!(coords.len(), 4);
 
     // Calculate the index into `coords`
-    let i =
-    match (bits[0].get_value(), bits[1].get_value()) {
+    let i = match (bits[0].get_value(), bits[1].get_value()) {
         (Some(a_value), Some(b_value)) => {
             let mut tmp = 0;
             if a_value {
@@ -145,22 +139,19 @@ pub fn lookup3_xy_with_conditional_negation<E: Engine, CS>(
                 tmp += 2;
             }
             Some(tmp)
-        },
-        _ => None
+        }
+        _ => None,
     };
 
     // Allocate the y-coordinate resulting from the lookup
     // and conditional negation
-    let y = AllocatedNum::alloc(
-        cs.namespace(|| "y"),
-        || {
-            let mut tmp = coords[*i.get()?].1;
-            if *bits[2].get_value().get()? {
-                tmp.negate();
-            }
-            Ok(tmp)
+    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+        let mut tmp = coords[*i.get()?].1;
+        if *bits[2].get_value().get()? {
+            tmp.negate();
         }
-    )?;
+        Ok(tmp)
+    })?;
 
     let one = CS::one();
 
@@ -173,21 +164,21 @@ pub fn lookup3_xy_with_conditional_negation<E: Engine, CS>(
     let precomp = Boolean::and(cs.namespace(|| "precomp"), &bits[0], &bits[1])?;
 
     let x = Num::zero()
-            .add_bool_with_coeff(one, &Boolean::constant(true), x_coeffs[0b00])
-            .add_bool_with_coeff(one, &bits[0], x_coeffs[0b01])
-            .add_bool_with_coeff(one, &bits[1], x_coeffs[0b10])
-            .add_bool_with_coeff(one, &precomp, x_coeffs[0b11]);
+        .add_bool_with_coeff(one, &Boolean::constant(true), x_coeffs[0b00])
+        .add_bool_with_coeff(one, &bits[0], x_coeffs[0b01])
+        .add_bool_with_coeff(one, &bits[1], x_coeffs[0b10])
+        .add_bool_with_coeff(one, &precomp, x_coeffs[0b11]);
 
-    let y_lc = precomp.lc::<E>(one, y_coeffs[0b11]) +
-               &bits[1].lc::<E>(one, y_coeffs[0b10]) +
-               &bits[0].lc::<E>(one, y_coeffs[0b01]) +
-               (y_coeffs[0b00], one);
+    let y_lc = precomp.lc::<E>(one, y_coeffs[0b11])
+        + &bits[1].lc::<E>(one, y_coeffs[0b10])
+        + &bits[0].lc::<E>(one, y_coeffs[0b01])
+        + (y_coeffs[0b00], one);
 
     cs.enforce(
         || "y-coordinate lookup",
         |lc| lc + &y_lc + &y_lc,
         |lc| lc + &bits[2].lc::<E>(one, E::Fr::one()),
-        |lc| lc + &y_lc - y.get_variable()
+        |lc| lc + &y_lc - y.get_variable(),
     );
 
     Ok((x, y.into()))
@@ -195,11 +186,11 @@ pub fn lookup3_xy_with_conditional_negation<E: Engine, CS>(
 
 #[cfg(test)]
 mod test {
-    use rand::{SeedableRng, Rand, Rng, XorShiftRng};
     use super::*;
-    use ::circuit::test::*;
-    use ::circuit::boolean::{Boolean, AllocatedBit};
-    use pairing::bls12_381::{Bls12, Fr};
+    use circuit::boolean::{AllocatedBit, Boolean};
+    use circuit::test::*;
+    use paired::bls12_381::{Bls12, Fr};
+    use rand::{Rand, Rng, SeedableRng, XorShiftRng};
 
     #[test]
     fn test_lookup3_xy() {
@@ -209,19 +200,13 @@ mod test {
             let mut cs = TestConstraintSystem::<Bls12>::new();
 
             let a_val = rng.gen();
-            let a = Boolean::from(
-                AllocatedBit::alloc(cs.namespace(|| "a"), Some(a_val)).unwrap()
-            );
+            let a = Boolean::from(AllocatedBit::alloc(cs.namespace(|| "a"), Some(a_val)).unwrap());
 
             let b_val = rng.gen();
-            let b = Boolean::from(
-                AllocatedBit::alloc(cs.namespace(|| "b"), Some(b_val)).unwrap()
-            );
+            let b = Boolean::from(AllocatedBit::alloc(cs.namespace(|| "b"), Some(b_val)).unwrap());
 
             let c_val = rng.gen();
-            let c = Boolean::from(
-                AllocatedBit::alloc(cs.namespace(|| "c"), Some(c_val)).unwrap()
-            );
+            let c = Boolean::from(AllocatedBit::alloc(cs.namespace(|| "c"), Some(c_val)).unwrap());
 
             let bits = vec![a, b, c];
 
@@ -232,9 +217,15 @@ mod test {
             assert!(cs.is_satisfied());
 
             let mut index = 0;
-            if a_val { index += 1 }
-            if b_val { index += 2 }
-            if c_val { index += 4 }
+            if a_val {
+                index += 1
+            }
+            if b_val {
+                index += 2
+            }
+            if c_val {
+                index += 4
+            }
 
             assert_eq!(res.0.get_value().unwrap(), points[index].0);
             assert_eq!(res.1.get_value().unwrap(), points[index].1);
@@ -249,19 +240,13 @@ mod test {
             let mut cs = TestConstraintSystem::<Bls12>::new();
 
             let a_val = rng.gen();
-            let a = Boolean::from(
-                AllocatedBit::alloc(cs.namespace(|| "a"), Some(a_val)).unwrap()
-            );
+            let a = Boolean::from(AllocatedBit::alloc(cs.namespace(|| "a"), Some(a_val)).unwrap());
 
             let b_val = rng.gen();
-            let b = Boolean::from(
-                AllocatedBit::alloc(cs.namespace(|| "b"), Some(b_val)).unwrap()
-            );
+            let b = Boolean::from(AllocatedBit::alloc(cs.namespace(|| "b"), Some(b_val)).unwrap());
 
             let c_val = rng.gen();
-            let c = Boolean::from(
-                AllocatedBit::alloc(cs.namespace(|| "c"), Some(c_val)).unwrap()
-            );
+            let c = Boolean::from(AllocatedBit::alloc(cs.namespace(|| "c"), Some(c_val)).unwrap());
 
             let bits = vec![a, b, c];
 
@@ -272,12 +257,18 @@ mod test {
             assert!(cs.is_satisfied());
 
             let mut index = 0;
-            if a_val { index += 1 }
-            if b_val { index += 2 }
+            if a_val {
+                index += 1
+            }
+            if b_val {
+                index += 2
+            }
 
             assert_eq!(res.0.get_value().unwrap(), points[index].0);
             let mut tmp = points[index].1;
-            if c_val { tmp.negate() }
+            if c_val {
+                tmp.negate()
+            }
             assert_eq!(res.1.get_value().unwrap(), tmp);
         }
     }
@@ -289,7 +280,9 @@ mod test {
         let window_size = 4;
 
         let mut assignment = vec![Fr::zero(); 1 << window_size];
-        let constants: Vec<_> = (0..(1 << window_size)).map(|_| Fr::rand(&mut rng)).collect();
+        let constants: Vec<_> = (0..(1 << window_size))
+            .map(|_| Fr::rand(&mut rng))
+            .collect();
 
         synth::<Bls12, _>(window_size, &constants, &mut assignment);
 

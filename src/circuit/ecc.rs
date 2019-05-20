@@ -1,40 +1,23 @@
-use pairing::{
-    Engine,
-};
+use paired::Engine;
 
 use ff::Field;
 
-use bellman::{
-    SynthesisError,
-    ConstraintSystem
-};
+use bellperson::{ConstraintSystem, SynthesisError};
 
-use super::{
-    Assignment
-};
+use super::Assignment;
 
-use super::num::{
-    AllocatedNum,
-    Num
-};
+use super::num::{AllocatedNum, Num};
 
-use ::jubjub::{
-    edwards,
-    JubjubEngine,
-    JubjubParams,
-    FixedGenerators
-};
+use jubjub::{edwards, FixedGenerators, JubjubEngine, JubjubParams};
 
-use super::lookup::{
-    lookup3_xy
-};
+use super::lookup::lookup3_xy;
 
 use super::boolean::Boolean;
 
 #[derive(Clone)]
 pub struct EdwardsPoint<E: Engine> {
     x: AllocatedNum<E>,
-    y: AllocatedNum<E>
+    y: AllocatedNum<E>,
 }
 
 /// Perform a fixed-base scalar multiplication with
@@ -43,32 +26,40 @@ pub fn fixed_base_multiplication<E, CS>(
     mut cs: CS,
     base: FixedGenerators,
     by: &[Boolean],
-    params: &E::Params
+    params: &E::Params,
 ) -> Result<EdwardsPoint<E>, SynthesisError>
-    where CS: ConstraintSystem<E>,
-          E: JubjubEngine
+where
+    CS: ConstraintSystem<E>,
+    E: JubjubEngine,
 {
     // Represents the result of the multiplication
     let mut result = None;
 
-    for (i, (chunk, window)) in by.chunks(3)
-                                  .zip(params.circuit_generators(base).iter())
-                                  .enumerate()
+    for (i, (chunk, window)) in by
+        .chunks(3)
+        .zip(params.circuit_generators(base).iter())
+        .enumerate()
     {
-        let chunk_a = chunk.get(0).map(|e| e.clone()).unwrap_or(Boolean::constant(false));
-        let chunk_b = chunk.get(1).map(|e| e.clone()).unwrap_or(Boolean::constant(false));
-        let chunk_c = chunk.get(2).map(|e| e.clone()).unwrap_or(Boolean::constant(false));
+        let chunk_a = chunk
+            .get(0)
+            .map(|e| e.clone())
+            .unwrap_or(Boolean::constant(false));
+        let chunk_b = chunk
+            .get(1)
+            .map(|e| e.clone())
+            .unwrap_or(Boolean::constant(false));
+        let chunk_c = chunk
+            .get(2)
+            .map(|e| e.clone())
+            .unwrap_or(Boolean::constant(false));
 
         let (x, y) = lookup3_xy(
             cs.namespace(|| format!("window table lookup {}", i)),
             &[chunk_a, chunk_b, chunk_c],
-            window
+            window,
         )?;
 
-        let p = EdwardsPoint {
-            x: x,
-            y: y
-        };
+        let p = EdwardsPoint { x: x, y: y };
 
         if result.is_none() {
             result = Some(p);
@@ -76,7 +67,7 @@ pub fn fixed_base_multiplication<E, CS>(
             result = Some(result.unwrap().add(
                 cs.namespace(|| format!("addition {}", i)),
                 &p,
-                params
+                params,
             )?);
         }
     }
@@ -96,22 +87,14 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
     pub fn assert_not_small_order<CS>(
         &self,
         mut cs: CS,
-        params: &E::Params
+        params: &E::Params,
     ) -> Result<(), SynthesisError>
-        where CS: ConstraintSystem<E>
+    where
+        CS: ConstraintSystem<E>,
     {
-        let tmp = self.double(
-            cs.namespace(|| "first doubling"),
-            params
-        )?;
-        let tmp = tmp.double(
-            cs.namespace(|| "second doubling"),
-            params
-        )?;
-        let tmp = tmp.double(
-            cs.namespace(|| "third doubling"),
-            params
-        )?;
+        let tmp = self.double(cs.namespace(|| "first doubling"), params)?;
+        let tmp = tmp.double(cs.namespace(|| "second doubling"), params)?;
+        let tmp = tmp.double(cs.namespace(|| "third doubling"), params)?;
 
         // (0, -1) is a small order point, but won't ever appear here
         // because cofactor is 2^3, and we performed three doublings.
@@ -122,11 +105,9 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
         Ok(())
     }
 
-    pub fn inputize<CS>(
-        &self,
-        mut cs: CS
-    ) -> Result<(), SynthesisError>
-        where CS: ConstraintSystem<E>
+    pub fn inputize<CS>(&self, mut cs: CS) -> Result<(), SynthesisError>
+    where
+        CS: ConstraintSystem<E>,
     {
         self.x.inputize(cs.namespace(|| "x"))?;
         self.y.inputize(cs.namespace(|| "y"))?;
@@ -135,21 +116,15 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
     }
 
     /// This converts the point into a representation.
-    pub fn repr<CS>(
-        &self,
-        mut cs: CS
-    ) -> Result<Vec<Boolean>, SynthesisError>
-        where CS: ConstraintSystem<E>
+    pub fn repr<CS>(&self, mut cs: CS) -> Result<Vec<Boolean>, SynthesisError>
+    where
+        CS: ConstraintSystem<E>,
     {
         let mut tmp = vec![];
 
-        let x = self.x.into_bits_le_strict(
-            cs.namespace(|| "unpack x")
-        )?;
+        let x = self.x.into_bits_le_strict(cs.namespace(|| "unpack x"))?;
 
-        let y = self.y.into_bits_le_strict(
-            cs.namespace(|| "unpack y")
-        )?;
+        let y = self.y.into_bits_le_strict(cs.namespace(|| "unpack y"))?;
 
         tmp.extend(y);
         tmp.push(x[0].clone());
@@ -162,34 +137,20 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
     pub fn witness<Order, CS>(
         mut cs: CS,
         p: Option<edwards::Point<E, Order>>,
-        params: &E::Params
+        params: &E::Params,
     ) -> Result<Self, SynthesisError>
-        where CS: ConstraintSystem<E>
+    where
+        CS: ConstraintSystem<E>,
     {
         let p = p.map(|p| p.into_xy());
 
         // Allocate x
-        let x = AllocatedNum::alloc(
-            cs.namespace(|| "x"),
-            || {
-                Ok(p.get()?.0)
-            }
-        )?;
+        let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(p.get()?.0))?;
 
         // Allocate y
-        let y = AllocatedNum::alloc(
-            cs.namespace(|| "y"),
-            || {
-                Ok(p.get()?.1)
-            }
-        )?;
+        let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(p.get()?.1))?;
 
-        Self::interpret(
-            cs.namespace(|| "point interpretation"),
-            &x,
-            &y,
-            params
-        )
+        Self::interpret(cs.namespace(|| "point interpretation"), &x, &y, params)
     }
 
     /// Returns `self` if condition is true, and the neutral
@@ -197,9 +158,10 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
     pub fn conditionally_select<CS>(
         &self,
         mut cs: CS,
-        condition: &Boolean
+        condition: &Boolean,
     ) -> Result<Self, SynthesisError>
-        where CS: ConstraintSystem<E>
+    where
+        CS: ConstraintSystem<E>,
     {
         // Compute x' = self.x if condition, and 0 otherwise
         let x_prime = AllocatedNum::alloc(cs.namespace(|| "x'"), || {
@@ -218,7 +180,7 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             || "x' computation",
             |lc| lc + self.x.get_variable(),
             |_| condition.lc(one, E::Fr::one()),
-            |lc| lc + x_prime.get_variable()
+            |lc| lc + x_prime.get_variable(),
         );
 
         // Compute y' = self.y if condition, and 1 otherwise
@@ -237,13 +199,12 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             || "y' computation",
             |lc| lc + self.y.get_variable(),
             |_| condition.lc(one, E::Fr::one()),
-            |lc| lc + y_prime.get_variable()
-                                                - &condition.not().lc(one, E::Fr::one())
+            |lc| lc + y_prime.get_variable() - &condition.not().lc(one, E::Fr::one()),
         );
 
         Ok(EdwardsPoint {
             x: x_prime,
-            y: y_prime
+            y: y_prime,
         })
     }
 
@@ -254,9 +215,10 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
         &self,
         mut cs: CS,
         by: &[Boolean],
-        params: &E::Params
+        params: &E::Params,
     ) -> Result<Self, SynthesisError>
-        where CS: ConstraintSystem<E>
+    where
+        CS: ConstraintSystem<E>,
     {
         // Represents the current "magnitude" of the base
         // that we're operating over. Starts at self,
@@ -272,8 +234,9 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             } else {
                 // Double the previous value
                 curbase = Some(
-                    curbase.unwrap()
-                           .double(cs.namespace(|| format!("doubling {}", i)), params)?
+                    curbase
+                        .unwrap()
+                        .double(cs.namespace(|| format!("doubling {}", i)), params)?,
                 );
             }
 
@@ -281,12 +244,10 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             // is true, this will return `curbase`. Otherwise it will
             // return the neutral element, which will have no effect on
             // the result.
-            let thisbase = curbase.as_ref()
-                                  .unwrap()
-                                  .conditionally_select(
-                                      cs.namespace(|| format!("selection {}", i)),
-                                      bit
-                                  )?;
+            let thisbase = curbase
+                .as_ref()
+                .unwrap()
+                .conditionally_select(cs.namespace(|| format!("selection {}", i)), bit)?;
 
             if result.is_none() {
                 result = Some(thisbase);
@@ -294,7 +255,7 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
                 result = Some(result.unwrap().add(
                     cs.namespace(|| format!("addition {}", i)),
                     &thisbase,
-                    params
+                    params,
                 )?);
             }
         }
@@ -306,9 +267,10 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
         mut cs: CS,
         x: &AllocatedNum<E>,
         y: &AllocatedNum<E>,
-        params: &E::Params
+        params: &E::Params,
     ) -> Result<Self, SynthesisError>
-        where CS: ConstraintSystem<E>
+    where
+        CS: ConstraintSystem<E>,
     {
         // -x^2 + y^2 = 1 + dx^2y^2
 
@@ -319,25 +281,20 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
         let one = CS::one();
         cs.enforce(
             || "on curve check",
-            |lc| lc - x2.get_variable()
-                    + y2.get_variable(),
+            |lc| lc - x2.get_variable() + y2.get_variable(),
             |lc| lc + one,
-            |lc| lc + one
-                    + (*params.edwards_d(), x2y2.get_variable())
+            |lc| lc + one + (*params.edwards_d(), x2y2.get_variable()),
         );
 
         Ok(EdwardsPoint {
             x: x.clone(),
-            y: y.clone()
+            y: y.clone(),
         })
     }
 
-    pub fn double<CS>(
-        &self,
-        mut cs: CS,
-        params: &E::Params
-    ) -> Result<Self, SynthesisError>
-        where CS: ConstraintSystem<E>
+    pub fn double<CS>(&self, mut cs: CS, params: &E::Params) -> Result<Self, SynthesisError>
+    where
+        CS: ConstraintSystem<E>,
     {
         // Compute T = (x1 + y1) * (x1 + y1)
         let t = AllocatedNum::alloc(cs.namespace(|| "T"), || {
@@ -354,11 +311,9 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
 
         cs.enforce(
             || "T computation",
-            |lc| lc + self.x.get_variable()
-                    + self.y.get_variable(),
-            |lc| lc + self.x.get_variable()
-                    + self.y.get_variable(),
-            |lc| lc + t.get_variable()
+            |lc| lc + self.x.get_variable() + self.y.get_variable(),
+            |lc| lc + self.x.get_variable() + self.y.get_variable(),
+            |lc| lc + t.get_variable(),
         );
 
         // Compute A = x1 * y1
@@ -377,7 +332,7 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             || "C computation",
             |lc| lc + (*params.edwards_d(), a.get_variable()),
             |lc| lc + a.get_variable(),
-            |lc| lc + c.get_variable()
+            |lc| lc + c.get_variable(),
         );
 
         // Compute x3 = (2.A) / (1 + C)
@@ -393,10 +348,8 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
                     t0.mul_assign(&t1);
 
                     Ok(t0)
-                },
-                None => {
-                    Err(SynthesisError::DivisionByZero)
                 }
+                None => Err(SynthesisError::DivisionByZero),
             }
         })?;
 
@@ -405,8 +358,7 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             || "x3 computation",
             |lc| lc + one + c.get_variable(),
             |lc| lc + x3.get_variable(),
-            |lc| lc + a.get_variable()
-                    + a.get_variable()
+            |lc| lc + a.get_variable() + a.get_variable(),
         );
 
         // Compute y3 = (U - 2.A) / (1 - C)
@@ -424,10 +376,8 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
                     t0.mul_assign(&t1);
 
                     Ok(t0)
-                },
-                None => {
-                    Err(SynthesisError::DivisionByZero)
                 }
+                None => Err(SynthesisError::DivisionByZero),
             }
         })?;
 
@@ -435,15 +385,10 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             || "y3 computation",
             |lc| lc + one - c.get_variable(),
             |lc| lc + y3.get_variable(),
-            |lc| lc + t.get_variable()
-                    - a.get_variable()
-                    - a.get_variable()
+            |lc| lc + t.get_variable() - a.get_variable() - a.get_variable(),
         );
 
-        Ok(EdwardsPoint {
-            x: x3,
-            y: y3
-        })
+        Ok(EdwardsPoint { x: x3, y: y3 })
     }
 
     /// Perform addition between any two points
@@ -451,9 +396,10 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
         &self,
         mut cs: CS,
         other: &Self,
-        params: &E::Params
+        params: &E::Params,
     ) -> Result<Self, SynthesisError>
-        where CS: ConstraintSystem<E>
+    where
+        CS: ConstraintSystem<E>,
     {
         // Compute U = (x1 + y1) * (x2 + y2)
         let u = AllocatedNum::alloc(cs.namespace(|| "U"), || {
@@ -470,11 +416,9 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
 
         cs.enforce(
             || "U computation",
-            |lc| lc + self.x.get_variable()
-                    + self.y.get_variable(),
-            |lc| lc + other.x.get_variable()
-                    + other.y.get_variable(),
-            |lc| lc + u.get_variable()
+            |lc| lc + self.x.get_variable() + self.y.get_variable(),
+            |lc| lc + other.x.get_variable() + other.y.get_variable(),
+            |lc| lc + u.get_variable(),
         );
 
         // Compute A = y2 * x1
@@ -496,7 +440,7 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             || "C computation",
             |lc| lc + (*params.edwards_d(), a.get_variable()),
             |lc| lc + b.get_variable(),
-            |lc| lc + c.get_variable()
+            |lc| lc + c.get_variable(),
         );
 
         // Compute x3 = (A + B) / (1 + C)
@@ -512,10 +456,8 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
                     t0.mul_assign(&t1);
 
                     Ok(t0)
-                },
-                None => {
-                    Err(SynthesisError::DivisionByZero)
                 }
+                None => Err(SynthesisError::DivisionByZero),
             }
         })?;
 
@@ -524,8 +466,7 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             || "x3 computation",
             |lc| lc + one + c.get_variable(),
             |lc| lc + x3.get_variable(),
-            |lc| lc + a.get_variable()
-                    + b.get_variable()
+            |lc| lc + a.get_variable() + b.get_variable(),
         );
 
         // Compute y3 = (U - A - B) / (1 - C)
@@ -542,10 +483,8 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
                     t0.mul_assign(&t1);
 
                     Ok(t0)
-                },
-                None => {
-                    Err(SynthesisError::DivisionByZero)
                 }
+                None => Err(SynthesisError::DivisionByZero),
             }
         })?;
 
@@ -553,21 +492,16 @@ impl<E: JubjubEngine> EdwardsPoint<E> {
             || "y3 computation",
             |lc| lc + one - c.get_variable(),
             |lc| lc + y3.get_variable(),
-            |lc| lc + u.get_variable()
-                    - a.get_variable()
-                    - b.get_variable()
+            |lc| lc + u.get_variable() - a.get_variable() - b.get_variable(),
         );
 
-        Ok(EdwardsPoint {
-            x: x3,
-            y: y3
-        })
+        Ok(EdwardsPoint { x: x3, y: y3 })
     }
 }
 
 pub struct MontgomeryPoint<E: Engine> {
     x: Num<E>,
-    y: Num<E>
+    y: Num<E>,
 }
 
 impl<E: JubjubEngine> MontgomeryPoint<E> {
@@ -577,9 +511,10 @@ impl<E: JubjubEngine> MontgomeryPoint<E> {
     pub fn into_edwards<CS>(
         &self,
         mut cs: CS,
-        params: &E::Params
+        params: &E::Params,
     ) -> Result<EdwardsPoint<E>, SynthesisError>
-        where CS: ConstraintSystem<E>
+    where
+        CS: ConstraintSystem<E>,
     {
         // Compute u = (scale*x) / y
         let u = AllocatedNum::alloc(cs.namespace(|| "u"), || {
@@ -591,10 +526,8 @@ impl<E: JubjubEngine> MontgomeryPoint<E> {
                     t0.mul_assign(&invy);
 
                     Ok(t0)
-                },
-                None => {
-                    Err(SynthesisError::DivisionByZero)
                 }
+                None => Err(SynthesisError::DivisionByZero),
             }
         })?;
 
@@ -602,7 +535,7 @@ impl<E: JubjubEngine> MontgomeryPoint<E> {
             || "u computation",
             |lc| lc + &self.y.lc(E::Fr::one()),
             |lc| lc + u.get_variable(),
-            |lc| lc + &self.x.lc(*params.scale())
+            |lc| lc + &self.x.lc(*params.scale()),
         );
 
         // Compute v = (x - 1) / (x + 1)
@@ -617,42 +550,28 @@ impl<E: JubjubEngine> MontgomeryPoint<E> {
                     t0.mul_assign(&t1);
 
                     Ok(t0)
-                },
-                None => {
-                    Err(SynthesisError::DivisionByZero)
                 }
+                None => Err(SynthesisError::DivisionByZero),
             }
         })?;
 
         let one = CS::one();
         cs.enforce(
             || "v computation",
-            |lc| lc + &self.x.lc(E::Fr::one())
-                    + one,
+            |lc| lc + &self.x.lc(E::Fr::one()) + one,
             |lc| lc + v.get_variable(),
-            |lc| lc + &self.x.lc(E::Fr::one())
-                    - one,
+            |lc| lc + &self.x.lc(E::Fr::one()) - one,
         );
 
-        Ok(EdwardsPoint {
-            x: u,
-            y: v
-        })
+        Ok(EdwardsPoint { x: u, y: v })
     }
 
     /// Interprets an (x, y) pair as a point
     /// in Montgomery, does not check that it's
     /// on the curve. Useful for constants and
     /// window table lookups.
-    pub fn interpret_unchecked(
-        x: Num<E>,
-        y: Num<E>
-    ) -> Self
-    {
-        MontgomeryPoint {
-            x: x,
-            y: y
-        }
+    pub fn interpret_unchecked(x: Num<E>, y: Num<E>) -> Self {
+        MontgomeryPoint { x: x, y: y }
     }
 
     /// Performs an affine point addition, not defined for
@@ -661,9 +580,10 @@ impl<E: JubjubEngine> MontgomeryPoint<E> {
         &self,
         mut cs: CS,
         other: &Self,
-        params: &E::Params
+        params: &E::Params,
     ) -> Result<Self, SynthesisError>
-        where CS: ConstraintSystem<E>
+    where
+        CS: ConstraintSystem<E>,
     {
         // Compute lambda = (y' - y) / (x' - x)
         let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
@@ -677,22 +597,16 @@ impl<E: JubjubEngine> MontgomeryPoint<E> {
                 Some(d) => {
                     n.mul_assign(&d);
                     Ok(n)
-                },
-                None => {
-                    Err(SynthesisError::DivisionByZero)
                 }
+                None => Err(SynthesisError::DivisionByZero),
             }
         })?;
 
         cs.enforce(
             || "evaluate lambda",
-            |lc| lc + &other.x.lc(E::Fr::one())
-                    - &self.x.lc(E::Fr::one()),
-
+            |lc| lc + &other.x.lc(E::Fr::one()) - &self.x.lc(E::Fr::one()),
             |lc| lc + lambda.get_variable(),
-
-            |lc| lc + &other.y.lc(E::Fr::one())
-                    - &self.y.lc(E::Fr::one())
+            |lc| lc + &other.y.lc(E::Fr::one()) - &self.y.lc(E::Fr::one()),
         );
 
         // Compute x'' = lambda^2 - A - x - x'
@@ -712,10 +626,12 @@ impl<E: JubjubEngine> MontgomeryPoint<E> {
             || "evaluate xprime",
             |lc| lc + lambda.get_variable(),
             |lc| lc + lambda.get_variable(),
-            |lc| lc + (*params.montgomery_a(), one)
+            |lc| {
+                lc + (*params.montgomery_a(), one)
                     + &self.x.lc(E::Fr::one())
                     + &other.x.lc(E::Fr::one())
                     + xprime.get_variable()
+            },
         );
 
         // Compute y' = -(y + lambda(x' - x))
@@ -732,47 +648,29 @@ impl<E: JubjubEngine> MontgomeryPoint<E> {
         // y' + y = lambda(x - x')
         cs.enforce(
             || "evaluate yprime",
-            |lc| lc + &self.x.lc(E::Fr::one())
-                    - xprime.get_variable(),
-
+            |lc| lc + &self.x.lc(E::Fr::one()) - xprime.get_variable(),
             |lc| lc + lambda.get_variable(),
-
-            |lc| lc + yprime.get_variable()
-                    + &self.y.lc(E::Fr::one())
+            |lc| lc + yprime.get_variable() + &self.y.lc(E::Fr::one()),
         );
 
         Ok(MontgomeryPoint {
             x: xprime.into(),
-            y: yprime.into()
+            y: yprime.into(),
         })
     }
 }
 
 #[cfg(test)]
 mod test {
-    use bellman::{ConstraintSystem};
-    use rand::{XorShiftRng, SeedableRng, Rand, Rng};
-    use pairing::bls12_381::{Bls12, Fr};
+    use super::super::boolean::{AllocatedBit, Boolean};
+    use super::{fixed_base_multiplication, AllocatedNum, EdwardsPoint, MontgomeryPoint};
+    use bellperson::ConstraintSystem;
+    use circuit::test::*;
     use ff::{BitIterator, Field, PrimeField};
-    use ::circuit::test::*;
-    use ::jubjub::{
-        montgomery,
-        edwards,
-        JubjubBls12,
-        JubjubParams,
-        FixedGenerators
-    };
-    use ::jubjub::fs::Fs;
-    use super::{
-        MontgomeryPoint,
-        EdwardsPoint,
-        AllocatedNum,
-        fixed_base_multiplication
-    };
-    use super::super::boolean::{
-        Boolean,
-        AllocatedBit
-    };
+    use jubjub::fs::Fs;
+    use jubjub::{edwards, montgomery, FixedGenerators, JubjubBls12, JubjubParams};
+    use paired::bls12_381::{Bls12, Fr};
+    use rand::{Rand, Rng, SeedableRng, XorShiftRng};
 
     #[test]
     fn test_into_edwards() {
@@ -786,12 +684,8 @@ mod test {
             let (u, v) = edwards::Point::from_montgomery(&p, params).into_xy();
             let (x, y) = p.into_xy().unwrap();
 
-            let numx = AllocatedNum::alloc(cs.namespace(|| "mont x"), || {
-                Ok(x)
-            }).unwrap();
-            let numy = AllocatedNum::alloc(cs.namespace(|| "mont y"), || {
-                Ok(y)
-            }).unwrap();
+            let numx = AllocatedNum::alloc(cs.namespace(|| "mont x"), || Ok(x)).unwrap();
+            let numy = AllocatedNum::alloc(cs.namespace(|| "mont y"), || Ok(y)).unwrap();
 
             let p = MontgomeryPoint::interpret_unchecked(numx.into(), numy.into());
 
@@ -822,11 +716,7 @@ mod test {
             let p = edwards::Point::<Bls12, _>::rand(rng, &params);
 
             let mut cs = TestConstraintSystem::<Bls12>::new();
-            let q = EdwardsPoint::witness(
-                &mut cs,
-                Some(p.clone()),
-                &params
-            ).unwrap();
+            let q = EdwardsPoint::witness(&mut cs, Some(p.clone()), &params).unwrap();
 
             let p = p.into_xy();
 
@@ -840,12 +730,8 @@ mod test {
             let (x, y) = p.into_xy();
 
             let mut cs = TestConstraintSystem::<Bls12>::new();
-            let numx = AllocatedNum::alloc(cs.namespace(|| "x"), || {
-                Ok(x)
-            }).unwrap();
-            let numy = AllocatedNum::alloc(cs.namespace(|| "y"), || {
-                Ok(y)
-            }).unwrap();
+            let numx = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(x)).unwrap();
+            let numy = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(y)).unwrap();
 
             let p = EdwardsPoint::interpret(&mut cs, &numx, &numy, &params).unwrap();
 
@@ -860,12 +746,8 @@ mod test {
             let y = rng.gen();
 
             let mut cs = TestConstraintSystem::<Bls12>::new();
-            let numx = AllocatedNum::alloc(cs.namespace(|| "x"), || {
-                Ok(x)
-            }).unwrap();
-            let numy = AllocatedNum::alloc(cs.namespace(|| "y"), || {
-                Ok(y)
-            }).unwrap();
+            let numx = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(x)).unwrap();
+            let numy = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(y)).unwrap();
 
             EdwardsPoint::interpret(&mut cs, &numx, &numy, &params).unwrap();
 
@@ -874,7 +756,7 @@ mod test {
     }
 
     #[test]
-    fn test_edwards_fixed_base_multiplication()  {
+    fn test_edwards_fixed_base_multiplication() {
         let params = &JubjubBls12::new();
         let rng = &mut XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
@@ -890,18 +772,23 @@ mod test {
             s_bits.reverse();
             s_bits.truncate(Fs::NUM_BITS as usize);
 
-            let s_bits = s_bits.into_iter()
-                               .enumerate()
-                               .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| format!("scalar bit {}", i)), Some(b)).unwrap())
-                               .map(|v| Boolean::from(v))
-                               .collect::<Vec<_>>();
+            let s_bits = s_bits
+                .into_iter()
+                .enumerate()
+                .map(|(i, b)| {
+                    AllocatedBit::alloc(cs.namespace(|| format!("scalar bit {}", i)), Some(b))
+                        .unwrap()
+                })
+                .map(|v| Boolean::from(v))
+                .collect::<Vec<_>>();
 
             let q = fixed_base_multiplication(
                 cs.namespace(|| "multiplication"),
                 FixedGenerators::NoteCommitmentRandomness,
                 &s_bits,
-                params
-            ).unwrap();
+                params,
+            )
+            .unwrap();
 
             assert_eq!(q.x.get_value().unwrap(), x1);
             assert_eq!(q.y.get_value().unwrap(), y1);
@@ -923,45 +810,37 @@ mod test {
             let (x0, y0) = p.into_xy();
             let (x1, y1) = q.into_xy();
 
-            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || {
-                Ok(x0)
-            }).unwrap();
-            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || {
-                Ok(y0)
-            }).unwrap();
+            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || Ok(x0)).unwrap();
+            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || Ok(y0)).unwrap();
 
             let p = EdwardsPoint {
                 x: num_x0,
-                y: num_y0
+                y: num_y0,
             };
 
             let mut s_bits = BitIterator::new(s.into_repr()).collect::<Vec<_>>();
             s_bits.reverse();
             s_bits.truncate(Fs::NUM_BITS as usize);
 
-            let s_bits = s_bits.into_iter()
-                               .enumerate()
-                               .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| format!("scalar bit {}", i)), Some(b)).unwrap())
-                               .map(|v| Boolean::from(v))
-                               .collect::<Vec<_>>();
+            let s_bits = s_bits
+                .into_iter()
+                .enumerate()
+                .map(|(i, b)| {
+                    AllocatedBit::alloc(cs.namespace(|| format!("scalar bit {}", i)), Some(b))
+                        .unwrap()
+                })
+                .map(|v| Boolean::from(v))
+                .collect::<Vec<_>>();
 
-            let q = p.mul(
-                cs.namespace(|| "scalar mul"),
-                &s_bits,
-                params
-            ).unwrap();
+            let q = p
+                .mul(cs.namespace(|| "scalar mul"), &s_bits, params)
+                .unwrap();
 
             assert!(cs.is_satisfied());
 
-            assert_eq!(
-                q.x.get_value().unwrap(),
-                x1
-            );
+            assert_eq!(q.x.get_value().unwrap(), x1);
 
-            assert_eq!(
-                q.y.get_value().unwrap(),
-                y1
-            );
+            assert_eq!(q.y.get_value().unwrap(), y1);
         }
     }
 
@@ -977,26 +856,22 @@ mod test {
 
             let (x0, y0) = p.into_xy();
 
-            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || {
-                Ok(x0)
-            }).unwrap();
-            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || {
-                Ok(y0)
-            }).unwrap();
+            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || Ok(x0)).unwrap();
+            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || Ok(y0)).unwrap();
 
             let p = EdwardsPoint {
                 x: num_x0,
-                y: num_y0
+                y: num_y0,
             };
 
             let mut should_we_select = rng.gen();
 
             // Conditionally allocate
             let mut b = if rng.gen() {
-                Boolean::from(AllocatedBit::alloc(
-                    cs.namespace(|| "condition"),
-                    Some(should_we_select)
-                ).unwrap())
+                Boolean::from(
+                    AllocatedBit::alloc(cs.namespace(|| "condition"), Some(should_we_select))
+                        .unwrap(),
+                )
             } else {
                 Boolean::constant(should_we_select)
             };
@@ -1007,7 +882,9 @@ mod test {
                 should_we_select = !should_we_select;
             }
 
-            let q = p.conditionally_select(cs.namespace(|| "select"), &b).unwrap();
+            let q = p
+                .conditionally_select(cs.namespace(|| "select"), &b)
+                .unwrap();
 
             assert!(cs.is_satisfied());
 
@@ -1048,28 +925,20 @@ mod test {
 
             let mut cs = TestConstraintSystem::<Bls12>::new();
 
-            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || {
-                Ok(x0)
-            }).unwrap();
-            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || {
-                Ok(y0)
-            }).unwrap();
+            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || Ok(x0)).unwrap();
+            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || Ok(y0)).unwrap();
 
-            let num_x1 = AllocatedNum::alloc(cs.namespace(|| "x1"), || {
-                Ok(x1)
-            }).unwrap();
-            let num_y1 = AllocatedNum::alloc(cs.namespace(|| "y1"), || {
-                Ok(y1)
-            }).unwrap();
+            let num_x1 = AllocatedNum::alloc(cs.namespace(|| "x1"), || Ok(x1)).unwrap();
+            let num_y1 = AllocatedNum::alloc(cs.namespace(|| "y1"), || Ok(y1)).unwrap();
 
             let p1 = EdwardsPoint {
                 x: num_x0,
-                y: num_y0
+                y: num_y0,
             };
 
             let p2 = EdwardsPoint {
                 x: num_x1,
-                y: num_y1
+                y: num_y1,
             };
 
             let p3 = p1.add(cs.namespace(|| "addition"), &p2, params).unwrap();
@@ -1113,16 +982,12 @@ mod test {
 
             let mut cs = TestConstraintSystem::<Bls12>::new();
 
-            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || {
-                Ok(x0)
-            }).unwrap();
-            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || {
-                Ok(y0)
-            }).unwrap();
+            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || Ok(x0)).unwrap();
+            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || Ok(y0)).unwrap();
 
             let p1 = EdwardsPoint {
                 x: num_x0,
-                y: num_y0
+                y: num_y0,
             };
 
             let p2 = p1.double(cs.namespace(|| "doubling"), params).unwrap();
@@ -1166,28 +1031,20 @@ mod test {
 
             let mut cs = TestConstraintSystem::<Bls12>::new();
 
-            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || {
-                Ok(x0)
-            }).unwrap();
-            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || {
-                Ok(y0)
-            }).unwrap();
+            let num_x0 = AllocatedNum::alloc(cs.namespace(|| "x0"), || Ok(x0)).unwrap();
+            let num_y0 = AllocatedNum::alloc(cs.namespace(|| "y0"), || Ok(y0)).unwrap();
 
-            let num_x1 = AllocatedNum::alloc(cs.namespace(|| "x1"), || {
-                Ok(x1)
-            }).unwrap();
-            let num_y1 = AllocatedNum::alloc(cs.namespace(|| "y1"), || {
-                Ok(y1)
-            }).unwrap();
+            let num_x1 = AllocatedNum::alloc(cs.namespace(|| "x1"), || Ok(x1)).unwrap();
+            let num_y1 = AllocatedNum::alloc(cs.namespace(|| "y1"), || Ok(y1)).unwrap();
 
             let p1 = MontgomeryPoint {
                 x: num_x0.into(),
-                y: num_y0.into()
+                y: num_y0.into(),
             };
 
             let p2 = MontgomeryPoint {
                 x: num_x1.into(),
-                y: num_y1.into()
+                y: num_y1.into(),
             };
 
             let p3 = p1.add(cs.namespace(|| "addition"), &p2, params).unwrap();

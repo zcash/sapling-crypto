@@ -2,11 +2,11 @@
 //! See section 5.4.6 of the Sapling protocol specification.
 
 use ff::{Field, PrimeField, PrimeFieldRepr};
-use rand::{Rng, Rand};
+use rand::{Rand, Rng};
 use std::io::{self, Read, Write};
 
-use jubjub::{FixedGenerators, JubjubEngine, JubjubParams, Unknown, edwards::Point};
-use util::{hash_to_scalar};
+use jubjub::{edwards::Point, FixedGenerators, JubjubEngine, JubjubParams, Unknown};
+use util::hash_to_scalar;
 
 fn read_scalar<E: JubjubEngine, R: Read>(reader: R) -> io::Result<E::Fs> {
     let mut s_repr = <E::Fs as PrimeField>::Repr::default();
@@ -147,10 +147,15 @@ impl<E: JubjubEngine> PublicKey<E> {
             Err(_) => return false,
         };
         // 0 = h_G(-S . P_G + R + c . vk)
-        self.0.mul(c, params).add(&r, params).add(
-            &params.generator(p_g).mul(s, params).negate().into(),
-            params
-        ).mul_by_cofactor(params).eq(&Point::zero())
+        self.0
+            .mul(c, params)
+            .add(&r, params)
+            .add(
+                &params.generator(p_g).mul(s, params).negate().into(),
+                params,
+            )
+            .mul_by_cofactor(params)
+            .eq(&Point::zero())
     }
 }
 
@@ -167,8 +172,7 @@ pub fn batch_verify<'a, E: JubjubEngine, R: Rng>(
     batch: &[BatchEntry<'a, E>],
     p_g: FixedGenerators,
     params: &E::Params,
-) -> bool
-{
+) -> bool {
     let mut acc = Point::<E, Unknown>::zero();
 
     for entry in batch {
@@ -204,10 +208,10 @@ pub fn batch_verify<'a, E: JubjubEngine, R: Rng>(
 
 #[cfg(test)]
 mod tests {
-    use pairing::bls12_381::Bls12;
+    use paired::bls12_381::Bls12;
     use rand::thread_rng;
 
-    use jubjub::{JubjubBls12, fs::Fs, edwards};
+    use jubjub::{edwards, fs::Fs, JubjubBls12};
 
     use super::*;
 
@@ -230,8 +234,16 @@ mod tests {
         assert!(vk2.verify(msg2, &sig2, p_g, params));
 
         let mut batch = vec![
-            BatchEntry { vk: vk1, msg: msg1, sig: sig1 },
-            BatchEntry { vk: vk2, msg: msg2, sig: sig2 }
+            BatchEntry {
+                vk: vk1,
+                msg: msg1,
+                sig: sig1,
+            },
+            BatchEntry {
+                vk: vk2,
+                msg: msg2,
+                sig: sig2,
+            },
         ];
 
         assert!(batch_verify(rng, &batch, p_g, params));

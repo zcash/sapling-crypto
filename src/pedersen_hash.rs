@@ -1,17 +1,16 @@
+use ff::{Field, PrimeField, PrimeFieldRepr};
 use jubjub::*;
-use ff::{PrimeField, PrimeFieldRepr, Field};
 
 #[derive(Copy, Clone)]
 pub enum Personalization {
     NoteCommitment,
-    MerkleTree(usize)
+    MerkleTree(usize),
 }
 
 impl Personalization {
     pub fn get_bits(&self) -> Vec<bool> {
         match *self {
-            Personalization::NoteCommitment =>
-                vec![true, true, true, true, true, true],
+            Personalization::NoteCommitment => vec![true, true, true, true, true, true],
             Personalization::MerkleTree(num) => {
                 assert!(num < 63);
 
@@ -24,12 +23,16 @@ impl Personalization {
 pub fn pedersen_hash<E, I>(
     personalization: Personalization,
     bits: I,
-    params: &E::Params
+    params: &E::Params,
 ) -> edwards::Point<E, PrimeOrder>
-    where I: IntoIterator<Item=bool>,
-          E: JubjubEngine
+where
+    I: IntoIterator<Item = bool>,
+    E: JubjubEngine,
 {
-    let mut bits = personalization.get_bits().into_iter().chain(bits.into_iter());
+    let mut bits = personalization
+        .get_bits()
+        .into_iter()
+        .chain(bits.into_iter());
 
     let mut result = edwards::Point::zero();
     let mut generators = params.pedersen_hash_exp_table().iter();
@@ -79,7 +82,8 @@ pub fn pedersen_hash<E, I>(
             break;
         }
 
-        let mut table: &[Vec<edwards::Point<E, _>>] = &generators.next().expect("we don't have enough generators");
+        let mut table: &[Vec<edwards::Point<E, _>>] =
+            &generators.next().expect("we don't have enough generators");
         let window = JubjubBls12::pedersen_hash_exp_window_size();
         let window_mask = (1 << window) - 1;
 
