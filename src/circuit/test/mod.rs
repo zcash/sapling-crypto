@@ -11,7 +11,7 @@ use byteorder::{BigEndian, ByteOrder};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
-use blake2_rfc::blake2s::Blake2s;
+use blake2s_simd::Params;
 
 #[derive(Debug)]
 enum NamedObject {
@@ -86,7 +86,7 @@ fn proc_lc<E: Engine>(terms: &[(Variable, E::Fr)]) -> BTreeMap<OrderedVariable, 
     map
 }
 
-fn hash_lc<E: Engine>(terms: &[(Variable, E::Fr)], h: &mut Blake2s) {
+fn hash_lc<E: Engine>(terms: &[(Variable, E::Fr)], h: &mut blake2s_simd::State) {
     let map = proc_lc::<E>(terms);
 
     let mut buf = [0u8; 9 + 32];
@@ -216,7 +216,9 @@ impl<E: Engine> TestConstraintSystem<E> {
     }
 
     pub fn hash(&self) -> String {
-        let mut h = Blake2s::new(32);
+        let mut params = Params::new();
+        params.hash_length(32);
+        let mut h = params.to_state();
         {
             let mut buf = [0u8; 24];
 

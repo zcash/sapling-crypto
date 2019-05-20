@@ -10,7 +10,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 
 use jubjub::{edwards, FixedGenerators, JubjubEngine, JubjubParams, PrimeOrder};
 
-use blake2_rfc::blake2s::Blake2s;
+use blake2s_simd::Params;
 
 #[derive(Clone)]
 pub struct ValueCommitment<E: JubjubEngine> {
@@ -70,7 +70,13 @@ impl<E: JubjubEngine> ViewingKey<E> {
         self.ak.write(&mut preimage[0..32]).unwrap();
         self.nk.write(&mut preimage[32..64]).unwrap();
 
-        let mut h = Blake2s::with_params(32, &[], &[], constants::CRH_IVK_PERSONALIZATION);
+        let mut params = Params::new();
+        params.hash_length(32);
+        params.personal(constants::CRH_IVK_PERSONALIZATION);
+        params.key(&[]);
+        params.salt(&[]);
+
+        let mut h = params.to_state();
         h.update(&preimage);
         let mut h = h.finalize().as_ref().to_vec();
 
@@ -211,9 +217,15 @@ impl<E: JubjubEngine> Note<E> {
         let mut nf_preimage = [0u8; 64];
         viewing_key.nk.write(&mut nf_preimage[0..32]).unwrap();
         rho.write(&mut nf_preimage[32..64]).unwrap();
-        let mut h = Blake2s::with_params(32, &[], &[], constants::PRF_NF_PERSONALIZATION);
-        h.update(&nf_preimage);
 
+        let mut params = Params::new();
+        params.hash_length(32);
+        params.personal(constants::PRF_NF_PERSONALIZATION);
+        params.key(&[]);
+        params.salt(&[]);
+
+        let mut h = params.to_state();
+        h.update(&nf_preimage);
         h.finalize().as_ref().to_vec()
     }
 

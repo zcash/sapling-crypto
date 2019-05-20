@@ -411,7 +411,7 @@ pub fn blake2s<E: Engine, CS: ConstraintSystem<E>>(
 mod test {
     use super::blake2s;
     use bellperson::ConstraintSystem;
-    use blake2_rfc::blake2s::Blake2s;
+    use blake2s_simd::Params;
     use circuit::boolean::{AllocatedBit, Boolean};
     use circuit::test::TestConstraintSystem;
     use paired::bls12_381::Bls12;
@@ -489,10 +489,14 @@ mod test {
         let mut rng = XorShiftRng::from_seed([0x5dbe6259, 0x8d313d76, 0x3237db17, 0xe5bc0654]);
 
         for input_len in (0..32).chain((32..256).filter(|a| a % 8 == 0)) {
-            let mut h = Blake2s::with_params(32, &[], &[], b"12345678");
+            let mut params = Params::new();
+            params.hash_length(32);
+            params.personal(b"12345678");
+            params.key(&[]);
+            params.salt(&[]);
 
             let data: Vec<u8> = (0..input_len).map(|_| rng.gen()).collect();
-
+            let mut h = params.to_state();
             h.update(&data);
 
             let hash_result = h.finalize();

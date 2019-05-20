@@ -1,5 +1,6 @@
 extern crate bellperson;
-extern crate blake2_rfc;
+extern crate blake2b_simd;
+extern crate blake2s_simd;
 extern crate byteorder;
 extern crate digest;
 extern crate ff;

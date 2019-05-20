@@ -2,7 +2,7 @@ use jubjub::{edwards, JubjubEngine, PrimeOrder};
 
 use ff::PrimeField;
 
-use blake2_rfc::blake2s::Blake2s;
+use blake2s_simd::Params;
 use constants;
 
 /// Produces a random point in the Jubjub curve.
@@ -18,7 +18,12 @@ pub fn group_hash<E: JubjubEngine>(
     // Check to see that scalar field is 255 bits
     assert!(E::Fr::NUM_BITS == 255);
 
-    let mut h = Blake2s::with_params(32, &[], &[], personalization);
+    let mut p = Params::new();
+    p.hash_length(32);
+    p.personal(personalization);
+    p.key(&[]);
+    p.salt(&[]);
+    let mut h = p.to_state();
     h.update(constants::GH_FIRST_BLOCK);
     h.update(tag);
     let h = h.finalize().as_ref().to_vec();
