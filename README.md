@@ -1,6 +1,6 @@
-# sapling-crypto
+# fil-sapling-crypto
 
-This repository contains a (work-in-progress) implementation of Zcash's "Sapling" cryptography.
+> This repo is fork of the great [sapling-crpyto](https://github.com/zcash-hackworks/sapling-crypto/) library.
 
 ## License
 
