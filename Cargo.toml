@@ -1,22 +1,23 @@
 [package]
+name = "fil-sapling-crypto"
+
 authors = ["Sean Bowe <sean@z.cash>"]
 description = "Cryptographic library for Zcash Sapling"
 documentation = "https://github.com/zcash-hackworks/sapling"
-homepage = "https://github.com/zcash-hackworks/sapling"
+homepage = "https://github.com/filecoin-project/sapling-crypto"
 license = "MIT/Apache-2.0"
-name = "sapling-crypto"
-repository = "https://github.com/zcash-hackworks/sapling"
-version = "0.0.2"
+repository = "https://github.com/filecoin-project/sapling-crypto"
+version = "0.1.1-alpha.0"
 
 [dependencies]
 rand = "0.4"
 digest = "0.7"
 byteorder = "1"
 ff = { version = "0.4.0", features = ["derive"] }
-paired = { version = "0.15", features = ["expose-arith"] }
-bellperson = "0.2"
-blake2b_simd = "0.5.0"
-blake2s_simd = { git = "https://github.com/oconnor663/blake2s_simd" }
+paired = { version = "~0.15", features = ["expose-arith"] }
+bellperson = "~0.2"
+blake2b_simd = "~0.5"
+blake2s_simd = "~0.5"
 
 [dev-dependencies]
 hex-literal = "0.1"
@@ -24,3 +25,7 @@ rust-crypto = "0.2"
 
 [features]
 default = []
+
+[package.metadata.release]
+pre-release-commit-message = "chore(release): release {{version}}"
+pro-release-commit-message = "chore(release): starting development cycle for {{next_version}}"

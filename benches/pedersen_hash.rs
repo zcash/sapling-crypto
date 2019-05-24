@@ -1,8 +1,8 @@
 #![feature(test)]
 
+extern crate fil_sapling_crypto;
 extern crate paired;
 extern crate rand;
-extern crate sapling_crypto;
 extern crate test;
 
 use paired::bls12_381::Bls12;

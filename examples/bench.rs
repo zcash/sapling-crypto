@@ -1,14 +1,14 @@
 extern crate bellperson;
+extern crate fil_sapling_crypto;
 extern crate paired;
 extern crate rand;
-extern crate sapling_crypto;
 
 use bellperson::groth16::*;
+use fil_sapling_crypto::circuit::sapling::Spend;
+use fil_sapling_crypto::jubjub::{edwards, fs, JubjubBls12};
+use fil_sapling_crypto::primitives::{Diversifier, ProofGenerationKey, ValueCommitment};
 use paired::bls12_381::{Bls12, Fr};
 use rand::{Rng, SeedableRng, XorShiftRng};
-use sapling_crypto::circuit::sapling::Spend;
-use sapling_crypto::jubjub::{edwards, fs, JubjubBls12};
-use sapling_crypto::primitives::{Diversifier, ProofGenerationKey, ValueCommitment};
 use std::time::{Duration, Instant};
 
 const TREE_DEPTH: usize = 32;
