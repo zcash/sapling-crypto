@@ -81,6 +81,7 @@ criterion = "0.4"
 incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
 proptest = "1"
 rand_xorshift = "0.3"
+wagyu-zcash-parameters = "0.2"
 
 [target.'cfg(unix)'.dev-dependencies]
 pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
