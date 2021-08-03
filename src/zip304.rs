@@ -2,6 +2,9 @@
 //!
 //! [ZIP 304]: https://zips.z.cash/zip-0304
 
+use core::{fmt, str::FromStr};
+
+use base64::{prelude::BASE64_STANDARD, Engine};
 use bellman::{
     gadgets::multipack,
     groth16::{verify_proof, Proof},
@@ -86,6 +89,71 @@ impl Signature {
         bytes[64..256].copy_from_slice(&self.zkproof);
         bytes[256..320].copy_from_slice(&<[u8; 64]>::from(self.spend_auth_sig));
         bytes
+    }
+}
+
+/// Errors that can occur when parsing a ZIP 304 signature from a string.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ParseError {
+    Base64(base64::DecodeSliceError),
+    InvalidLength,
+    InvalidPrefix,
+}
+
+impl From<base64::DecodeSliceError> for ParseError {
+    fn from(e: base64::DecodeSliceError) -> Self {
+        ParseError::Base64(e)
+    }
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParseError::Base64(e) => write!(f, "Invalid Base64: {}", e),
+            ParseError::InvalidLength => {
+                write!(
+                    f,
+                    "Signature length is invalid (should be 435 characters including prefix)"
+                )
+            }
+            ParseError::InvalidPrefix => write!(f, "Invalid prefix (should be 'zip304:')"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ParseError::Base64(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl FromStr for Signature {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.split_at(7) {
+            ("zip304:", encoded) => {
+                if encoded.len() == 428 {
+                    // We need an extra byte to decode into.
+                    let mut bytes = [0; 321];
+                    assert_eq!(BASE64_STANDARD.decode_slice(encoded, &mut bytes)?, 320);
+                    Ok(Signature::from_bytes(&bytes[..320].try_into().unwrap()))
+                } else {
+                    Err(ParseError::InvalidLength)
+                }
+            }
+            _ => Err(ParseError::InvalidPrefix),
+        }
+    }
+}
+
+impl fmt::Display for Signature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "zip304:{}", BASE64_STANDARD.encode(self.to_bytes()))
     }
 }
 
@@ -298,10 +366,12 @@ impl std::error::Error for InvalidSignature {}
 
 #[cfg(test)]
 mod tests {
+    use std::string::ToString;
+
     use crate::{
         circuit::SpendParameters,
         keys::ExpandedSpendingKey,
-        zip304::{sign_message, verify_message},
+        zip304::{sign_message, verify_message, Signature},
         Diversifier,
     };
 
@@ -357,5 +427,36 @@ mod tests {
         // ... and the signatures are unlinkable
         assert_ne!(&sig1.to_bytes()[..], &sig1_b.to_bytes()[..]);
         assert_ne!(sig1.nullifier, sig1_b.nullifier);
+    }
+
+    #[test]
+    fn encoding_round_trip() {
+        let (spend_buf, _) = wagyu_zcash_parameters::load_sapling_parameters();
+        let params = SpendParameters::read(&spend_buf[..], false)
+            .expect("Sapling parameters should be valid");
+
+        let expsk = ExpandedSpendingKey::from_spending_key(&[42; 32][..]);
+        let addr = {
+            let diversifier = Diversifier([0; 11]);
+            expsk
+                .proof_generation_key()
+                .to_viewing_key()
+                .to_payment_address(diversifier)
+                .unwrap()
+        };
+
+        let msg = b"Foo bar";
+        let sig = sign_message(&expsk, addr.clone(), 1, msg, &params);
+
+        let sigs_equal = |a: Signature, b: &Signature| {
+            a.nullifier == b.nullifier
+                && a.rk == b.rk
+                && a.zkproof == b.zkproof
+                && a.spend_auth_sig == b.spend_auth_sig
+        };
+
+        assert!(sigs_equal(Signature::from_bytes(&sig.to_bytes()), &sig));
+
+        assert!(sigs_equal(sig.to_string().parse().unwrap(), &sig));
     }
 }
