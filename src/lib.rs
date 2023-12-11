@@ -1,4 +1,11 @@
-//! Structs and constants specific to the Sapling shielded pool.
+//! # sapling
+//!
+//! ## Nomenclature
+//!
+//! All types in the `sapling-crypto` crate, unless otherwise specified, are
+//! Sapling-specific types. For example, [`PaymentAddress`] is documented as being a
+//! shielded payment address; we implicitly mean it is an Sapling payment address (as
+//! opposed to e.g. an Orchard payment address, which is also shielded).
 
 // Catch documentation errors caused by code changes.
 #![deny(rustdoc::broken_intra_doc_links)]
