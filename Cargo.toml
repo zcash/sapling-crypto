@@ -15,7 +15,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 ff = "0.13"
-group = "0.13"
+group = { version = "0.13", features = ["wnaf-memuse"] }
 
 bls12_381 = "0.8"
 jubjub = "0.10"
@@ -43,10 +43,10 @@ tracing = "0.1"
 
 # Note Commitment Trees
 bitvec = "1"
-incrementalmerkletree = "0.5"
+incrementalmerkletree = { version = "0.5", features = ["legacy-api"] }
 
 # Note encryption
-zcash_note_encryption = "0.4"
+zcash_note_encryption = { version = "0.4", features = ["pre-zip-212"] }
 
 # Secret management
 subtle = "2.2.3"
@@ -64,9 +64,13 @@ zip32 = "0.1"
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
+incrementalmerkletree = { version = "0.5", features = ["legacy-api", "test-dependencies"] }
 proptest = "1"
 rand_xorshift = "0.3"
 
 [features]
 multicore = ["bellman/multicore"]
-test-dependencies = ["proptest"]
+test-dependencies = [
+    "incrementalmerkletree/test-dependencies",
+    "proptest",
+]
