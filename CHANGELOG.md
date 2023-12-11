@@ -24,6 +24,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `SpendDescriptionInfo::value`
   - `SaplingOutputInfo`
   - `ProverProgress`
+  - `BundleType`
 - `sapling_crypto::bundle` module:
   - The following types moved from
     `zcash_primitives::transaction::components::sapling`:
@@ -102,10 +103,18 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
     generic parameters and returns `(UnauthorizedBundle, SaplingMetadata)`. The
     caller can then use `Bundle::<InProgress<Unproven, _>>::create_proofs` to
     create spend and output proofs for the bundle.
+  - `SaplingBuilder::build` now takes a `BundleType` argument that instructs
+    it how to pad the bundle with dummy outputs.
+  - `SaplingBuilder::bundle_output_count` has been changed to use a padding
+    rule to compute its result. It also now returns a `Result<usize, &'static str>`
+    instead of a bare `usize` in order to be able to indicate that current
+    state of the builder will produce a bundle that is incompatible with
+    the specified bundle type.
   - `Error` has new error variants:
     - `Error::DuplicateSignature`
     - `Error::InvalidExternalSignature`
     - `Error::MissingSignatures`
+    - `Error::BundleTypeNotSatisfiable`
 - `sapling_crypto::bundle`:
   - `Bundle` now has a second generic parameter `V`.
   - `Bundle::value_balance` now returns `&V` instead of
