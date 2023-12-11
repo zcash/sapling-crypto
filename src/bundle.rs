@@ -50,10 +50,9 @@ pub trait MapAuth<A: Authorization, B: Authorization> {
 
 /// The identity map.
 ///
-/// This can be used with [`TransactionData::map_authorization`] when you want to map the
-/// authorization of a subset of the transaction's bundles.
-///
-/// [`TransactionData::map_authorization`]: crate::transaction::TransactionData::map_authorization
+/// This can be used with [`Bundle::map_authorization`] when you want to map the
+/// authorization of a subset of a transaction's bundles (excluding the Sapling bundle) in
+/// a higher-level transaction type.
 impl MapAuth<Authorized, Authorized> for () {
     fn map_spend_proof(
         &mut self,

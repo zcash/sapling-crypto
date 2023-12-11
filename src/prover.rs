@@ -38,12 +38,12 @@ pub trait SpendProver {
 
     /// Create the proof for a Sapling [`SpendDescription`].
     ///
-    /// [`SpendDescription`]: crate::transaction::components::SpendDescription
+    /// [`SpendDescription`]: crate::bundle::SpendDescription
     fn create_proof<R: RngCore>(&self, circuit: circuit::Spend, rng: &mut R) -> Self::Proof;
 
     /// Encodes the given Sapling [`SpendDescription`] proof, erasing its type.
     ///
-    /// [`SpendDescription`]: crate::transaction::components::SpendDescription
+    /// [`SpendDescription`]: crate::bundle::SpendDescription
     fn encode_proof(proof: Self::Proof) -> GrothProofBytes;
 }
 
@@ -65,12 +65,12 @@ pub trait OutputProver {
 
     /// Create the proof for a Sapling [`OutputDescription`].
     ///
-    /// [`OutputDescription`]: crate::transaction::components::OutputDescription
+    /// [`OutputDescription`]: crate::bundle::OutputDescription
     fn create_proof<R: RngCore>(&self, circuit: circuit::Output, rng: &mut R) -> Self::Proof;
 
     /// Encodes the given Sapling [`OutputDescription`] proof, erasing its type.
     ///
-    /// [`OutputDescription`]: crate::transaction::components::OutputDescription
+    /// [`OutputDescription`]: crate::bundle::OutputDescription
     fn encode_proof(proof: Self::Proof) -> GrothProofBytes;
 }
 
