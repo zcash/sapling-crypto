@@ -1,46 +1,43 @@
-use jubjub::{
-    JubjubEngine,
-    PrimeOrder,
-    edwards
-};
+//! Implementation of [group hashing into Jubjub][grouphash].
+//!
+//! [grouphash]: https://zips.z.cash/protocol/protocol.pdf#concretegrouphashjubjub
 
-use pairing::{
-    PrimeField
-};
+use ff::PrimeField;
+use group::{cofactor::CofactorGroup, Group, GroupEncoding};
 
-use blake2_rfc::blake2s::Blake2s;
-use constants;
+use super::constants;
+use blake2s_simd::Params;
 
 /// Produces a random point in the Jubjub curve.
 /// The point is guaranteed to be prime order
 /// and not the identity.
-pub fn group_hash<E: JubjubEngine>(
-    tag: &[u8],
-    personalization: &[u8],
-    params: &E::Params
-) -> Option<edwards::Point<E, PrimeOrder>>
-{
+#[allow(clippy::assertions_on_constants)]
+pub fn group_hash(tag: &[u8], personalization: &[u8]) -> Option<jubjub::SubgroupPoint> {
     assert_eq!(personalization.len(), 8);
 
     // Check to see that scalar field is 255 bits
-    assert!(E::Fr::NUM_BITS == 255);
+    assert!(bls12_381::Scalar::NUM_BITS == 255);
 
-    let mut h = Blake2s::with_params(32, &[], &[], personalization);
-    h.update(constants::GH_FIRST_BLOCK);
-    h.update(tag);
-    let h = h.finalize().as_ref().to_vec();
-    assert!(h.len() == 32);
+    let h = Params::new()
+        .hash_length(32)
+        .personal(personalization)
+        .to_state()
+        .update(constants::GH_FIRST_BLOCK)
+        .update(tag)
+        .finalize();
 
-    match edwards::Point::<E, _>::read(&h[..], params) {
-        Ok(p) => {
-            let p = p.mul_by_cofactor(params);
+    let p = jubjub::ExtendedPoint::from_bytes(h.as_array());
+    if p.is_some().into() {
+        // <ExtendedPoint as CofactorGroup>::clear_cofactor is implemented using
+        // ExtendedPoint::mul_by_cofactor in the jubjub crate.
+        let p = CofactorGroup::clear_cofactor(&p.unwrap());
 
-            if p != edwards::Point::zero() {
-                Some(p)
-            } else {
-                None
-            }
-        },
-        Err(_) => None
+        if p.is_identity().into() {
+            None
+        } else {
+            Some(p)
+        }
+    } else {
+        None
     }
 }
