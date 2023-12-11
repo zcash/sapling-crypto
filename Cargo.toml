@@ -64,9 +64,13 @@ zip32 = "0.1"
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
+criterion = "0.4"
 incrementalmerkletree = { version = "0.5", features = ["legacy-api", "test-dependencies"] }
 proptest = "1"
 rand_xorshift = "0.3"
+
+[target.'cfg(unix)'.dev-dependencies]
+pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
 
 [features]
 multicore = ["bellman/multicore"]
