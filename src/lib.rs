@@ -1,5 +1,8 @@
 //! Structs and constants specific to the Sapling shielded pool.
 
+// Catch documentation errors caused by code changes.
+#![deny(rustdoc::broken_intra_doc_links)]
+
 mod address;
 pub mod builder;
 pub mod bundle;
