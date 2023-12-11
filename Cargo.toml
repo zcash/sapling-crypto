@@ -80,5 +80,9 @@ test-dependencies = [
 ]
 
 [[bench]]
+name = "circuit"
+harness = false
+
+[[bench]]
 name = "pedersen_hash"
 harness = false
