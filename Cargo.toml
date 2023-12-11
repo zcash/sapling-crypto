@@ -78,3 +78,7 @@ test-dependencies = [
     "incrementalmerkletree/test-dependencies",
     "proptest",
 ]
+
+[[bench]]
+name = "pedersen_hash"
+harness = false
