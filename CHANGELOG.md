@@ -83,13 +83,15 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
     the `PreparedSpendVerifyingKey` and `PreparedOutputVerifyingKey`
     newtypes.
   - `SaplingVerificationContext::final_check` now takes its `value_balance`
-    argument as `V: Into<i64>` instead of `Amount`.
+    argument as `V: Into<i64>` instead of
+    `zcash_primitives::transaction::components::Amount`.
 - `sapling_crypto::address::PaymentAddress::create_note` now takes its `value`
   argument as a `NoteValue` instead of as a bare `u64`.
 - `sapling_crypto::builder`:
-  - `SaplingBuilder` no longer has a `P: consensus::Parameters` type parameter.
+  - `SaplingBuilder` no longer has a `P: zcash_primitives::consensus::Parameters`
+    type parameter.
   - `SaplingBuilder::new` now takes a `Zip212Enforcement` argument instead of a
-    `P: consensus::Parameters` argument and a target height.
+    `P: zcash_primitives::consensus::Parameters` argument and a target height.
   - `SaplingBuilder::add_spend` now takes `extsk` by reference. Also, it no
     longer takes a `diversifier` argument as the diversifier may be obtained
     from the note.
@@ -106,7 +108,8 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
     - `Error::MissingSignatures`
 - `sapling_crypto::bundle`:
   - `Bundle` now has a second generic parameter `V`.
-  - `Bundle::value_balance` now returns `&V` instead of `&Amount`.
+  - `Bundle::value_balance` now returns `&V` instead of
+    `&zcash_primitives::transaction::components::Amount`.
   - `Authorized::binding_sig` now has type `redjubjub::Signature<Binding>`.
   - `Authorized::AuthSig` now has type `redjubjub::Signature<SpendAuth>`.
   - `SpendDescription::temporary_zcashd_from_parts` now takes `rk` as
@@ -126,23 +129,27 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `ProofGenerationKey.ak` now has type `SpendValidatingKey`.
   - `ViewingKey.ak` now has type `SpendValidatingKey`.
 - `sapling_crypto::note_encryption`:
-  - `SaplingDomain` no longer has a `P: consensus::Parameters` type parameter.
+  - `SaplingDomain` no longer has a `P: zcash_primitives::consensus::Parameters`
+    type parameter.
   - The following methods now take a `Zip212Enforcement` argument instead of a
-    `P: consensus::Parameters` argument:
+    `P: zcash_primitives::consensus::Parameters` argument:
     - `plaintext_version_is_valid`
     - `try_sapling_note_decryption`
     - `try_sapling_compact_note_decryption`
     - `try_sapling_output_recovery_with_ock`
     - `try_sapling_output_recovery`
-  - `SaplingDomain::Memo` now has type `[u8; 512]` instead of `MemoBytes`.
+  - `SaplingDomain::Memo` now has type `[u8; 512]` instead of
+    `zcash_primitives::memo::MemoBytes`.
   - `sapling_note_encryption` now takes `memo` as a `[u8; 512]` instead of
-    `MemoBytes`.
-  - The following methods now return `[u8; 512]` instead of `MemoBytes`:
+    `zcash_primitives::memo::MemoBytes`.
+  - The following methods now return `[u8; 512]` instead of
+    `zcash_primitives::memo::MemoBytes`:
     - `try_sapling_note_decryption`
     - `try_sapling_output_recovery_with_ock`
     - `try_sapling_output_recovery`
 - `sapling_crypto::util::generate_random_rseed` now takes a `Zip212Enforcement`
-  argument instead of a `P: consensus::Parameters` argument and a height.
+  argument instead of a `P: zcash_primitives::consensus::Parameters` argument
+  and a height.
 - `sapling_crypto::value`:
   - `TrapdoorSum::into_bsk` now returns `redjubjub::SigningKey<Binding>` instead
     of `sapling_crypto::redjubjub::PrivateKey`.
