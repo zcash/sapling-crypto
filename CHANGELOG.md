@@ -18,6 +18,8 @@ and this library adheres to Rust's notion of
 - MSRV is now 1.70
 - Updated to `incrementalmerkletree 0.8.1`, `redjubjub 0.8`, `zcash_spec 0.2`,
   `zip32 0.2`
+- `sapling_crypto::builder::SaplingBuilder::add_output` now takes `[u8; 512]` 
+  for its `memo` argument instead of an optional value.
 
 ## [0.4.0] - 2024-12-16
 

@@ -363,17 +363,13 @@ impl OutputInfo {
         ovk: Option<OutgoingViewingKey>,
         to: PaymentAddress,
         value: NoteValue,
-        memo: Option<[u8; 512]>,
+        memo: [u8; 512],
     ) -> Self {
         Self {
             ovk,
             to,
             value,
-            memo: memo.unwrap_or_else(|| {
-                let mut memo = [0; 512];
-                memo[0] = 0xf6;
-                memo
-            }),
+            memo,
         }
     }
 
@@ -401,7 +397,7 @@ impl OutputInfo {
             }
         };
 
-        Self::new(None, dummy_to, NoteValue::ZERO, None)
+        Self::new(None, dummy_to, NoteValue::ZERO, [0u8; 512])
     }
 
     fn prepare<R: RngCore>(
@@ -655,7 +651,7 @@ impl Builder {
         ovk: Option<OutgoingViewingKey>,
         to: PaymentAddress,
         value: NoteValue,
-        memo: Option<[u8; 512]>,
+        memo: [u8; 512],
     ) -> Result<(), Error> {
         let output = OutputInfo::new(ovk, to, value, memo);
 
