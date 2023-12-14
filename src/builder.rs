@@ -93,10 +93,8 @@ impl SpendDescriptionInfo {
 
     fn build<Pr: SpendProver>(
         self,
-        anchor: Option<bls12_381::Scalar>,
+        anchor: bls12_381::Scalar,
     ) -> Result<SpendDescription<InProgress<Unproven, Unsigned>>, Error> {
-        let anchor = anchor.expect("Sapling anchor must be set if Sapling spends are present.");
-
         // Construct the value commitment.
         let cv = ValueCommitment::derive(self.note.value(), self.rcv.clone());
 
@@ -471,7 +469,12 @@ impl SaplingBuilder {
         // Create the unauthorized Spend and Output descriptions.
         let shielded_spends = spend_infos
             .into_iter()
-            .map(|a| a.build::<SP>(self.anchor))
+            .map(|a| {
+                a.build::<SP>(
+                    self.anchor
+                        .expect("Sapling anchor must be set if Sapling spends are present."),
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let shielded_outputs = output_infos
             .into_iter()
