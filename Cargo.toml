@@ -74,6 +74,7 @@ pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
 
 [features]
 multicore = ["bellman/multicore"]
+temporary-zcashd = []
 test-dependencies = [
     "incrementalmerkletree/test-dependencies",
     "proptest",
