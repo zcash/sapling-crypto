@@ -105,11 +105,6 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
     create spend and output proofs for the bundle.
   - `SaplingBuilder::build` now takes a `BundleType` argument that instructs
     it how to pad the bundle with dummy outputs.
-  - `SaplingBuilder::bundle_output_count` has been changed to use a padding
-    rule to compute its result. It also now returns a `Result<usize, &'static str>`
-    instead of a bare `usize` in order to be able to indicate that current
-    state of the builder will produce a bundle that is incompatible with
-    the specified bundle type.
   - `Error` has new error variants:
     - `Error::DuplicateSignature`
     - `Error::InvalidExternalSignature`
@@ -178,6 +173,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
 - `sapling_crypto::redjubjub` module (use the `redjubjub` crate instead).
 - `sapling_crypto::spend_sig` (use `redjubjub::SigningKey::{randomize, sign}`
   instead).
+- `sapling_crypto::builder::SaplingBuilder::bundle_output_count`
 
 ## [0.0.1] - 2017-12-06
 Initial release to reserve crate name.

@@ -29,19 +29,18 @@ use crate::{
 /// with dummy outputs if necessary. See <https://github.com/zcash/zcash/issues/3615>.
 const MIN_SHIELDED_OUTPUTS: usize = 2;
 
-/// An enumeration of rules for construction of dummy actions that may be applied to Sapling bundle
-/// construction.
+/// An enumeration of rules for Sapling bundle construction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BundleType {
-    /// A transactional bundle will be padded if necessary to contain at least 2 actions,
-    /// irrespective of whether any genuine actions are required.
+    /// A transactional bundle will be padded if necessary to contain at least 2 outputs,
+    /// irrespective of whether any genuine outputs are required.
     Transactional,
-    /// A coinbase bundle is required to have no non-dummy spends. No padding is performed.
+    /// A coinbase bundle is required to have no spends. No output padding is performed.
     Coinbase,
 }
 
 impl BundleType {
-    /// Returns the number of logical actions that builder will produce in constructing a bundle
+    /// Returns the number of logical outputs that a builder will produce in constructing a bundle
     /// of this type, given the specified numbers of spends and outputs.
     ///
     /// Returns an error if the specified number of spends and outputs is incompatible with
@@ -353,17 +352,6 @@ impl SaplingBuilder {
         &self.outputs
     }
 
-    /// Returns the number of outputs that will be present in the Sapling bundle built by
-    /// this builder.
-    ///
-    /// This may be larger than the number of outputs that have been added to the builder,
-    /// depending on whether padding is going to be applied.
-    pub fn bundle_output_count(&self, padding_rule: &BundleType) -> Result<usize, Error> {
-        padding_rule
-            .num_outputs(self.spends.len(), self.outputs.len())
-            .map_err(|_| Error::BundleTypeNotSatisfiable)
-    }
-
     /// Returns the net value represented by the spends and outputs added to this builder,
     /// or an error if the values added to this builder overflow the range of a Zcash
     /// monetary amount.
@@ -443,10 +431,12 @@ impl SaplingBuilder {
     pub fn build<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         self,
         mut rng: R,
-        padding_rule: &BundleType,
+        bundle_type: &BundleType,
     ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
         let value_balance = self.try_value_balance()?;
-        let bundle_output_count = self.bundle_output_count(padding_rule)?;
+        let bundle_output_count = bundle_type
+            .num_outputs(self.spends.len(), self.outputs.len())
+            .map_err(|_| Error::BundleTypeNotSatisfiable)?;
 
         // Record initial positions of spends and outputs
         let mut indexed_spends: Vec<_> = self.spends.into_iter().enumerate().collect();
