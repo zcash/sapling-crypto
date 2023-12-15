@@ -24,6 +24,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `SpendDescriptionInfo::value`
   - `SaplingOutputInfo`
   - `ProverProgress`
+  - `BundleType`
 - `sapling_crypto::bundle` module:
   - The following types moved from
     `zcash_primitives::transaction::components::sapling`:
@@ -102,10 +103,13 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
     generic parameters and returns `(UnauthorizedBundle, SaplingMetadata)`. The
     caller can then use `Bundle::<InProgress<Unproven, _>>::create_proofs` to
     create spend and output proofs for the bundle.
+  - `SaplingBuilder::build` now takes a `BundleType` argument that instructs
+    it how to pad the bundle with dummy outputs.
   - `Error` has new error variants:
     - `Error::DuplicateSignature`
     - `Error::InvalidExternalSignature`
     - `Error::MissingSignatures`
+    - `Error::BundleTypeNotSatisfiable`
 - `sapling_crypto::bundle`:
   - `Bundle` now has a second generic parameter `V`.
   - `Bundle::value_balance` now returns `&V` instead of
@@ -169,6 +173,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
 - `sapling_crypto::redjubjub` module (use the `redjubjub` crate instead).
 - `sapling_crypto::spend_sig` (use `redjubjub::SigningKey::{randomize, sign}`
   instead).
+- `sapling_crypto::builder::SaplingBuilder::bundle_output_count`
 
 ## [0.0.1] - 2017-12-06
 Initial release to reserve crate name.

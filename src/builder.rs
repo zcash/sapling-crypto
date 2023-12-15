@@ -29,6 +29,40 @@ use crate::{
 /// with dummy outputs if necessary. See <https://github.com/zcash/zcash/issues/3615>.
 const MIN_SHIELDED_OUTPUTS: usize = 2;
 
+/// An enumeration of rules for Sapling bundle construction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BundleType {
+    /// A transactional bundle will be padded if necessary to contain at least 2 outputs,
+    /// irrespective of whether any genuine outputs are required.
+    Transactional,
+    /// A coinbase bundle is required to have no spends. No output padding is performed.
+    Coinbase,
+}
+
+impl BundleType {
+    /// Returns the number of logical outputs that a builder will produce in constructing a bundle
+    /// of this type, given the specified numbers of spends and outputs.
+    ///
+    /// Returns an error if the specified number of spends and outputs is incompatible with
+    /// this bundle type.
+    pub fn num_outputs(
+        &self,
+        num_spends: usize,
+        num_outputs: usize,
+    ) -> Result<usize, &'static str> {
+        match self {
+            BundleType::Transactional => Ok(core::cmp::max(num_outputs, MIN_SHIELDED_OUTPUTS)),
+            BundleType::Coinbase => {
+                if num_spends == 0 {
+                    Ok(num_outputs)
+                } else {
+                    Err("Spends not allowed in coinbase bundles")
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     AnchorMismatch,
@@ -43,6 +77,8 @@ pub enum Error {
     /// A bundle could not be built because required signatures were missing.
     MissingSignatures,
     SpendProof,
+    /// The bundle being constructed violated the construction rules for the requested bundle type.
+    BundleTypeNotSatisfiable,
 }
 
 impl fmt::Display for Error {
@@ -58,6 +94,9 @@ impl fmt::Display for Error {
             Error::InvalidExternalSignature => write!(f, "External signature was invalid"),
             Error::MissingSignatures => write!(f, "Required signatures were missing during build"),
             Error::SpendProof => write!(f, "Failed to create Sapling spend proof"),
+            Error::BundleTypeNotSatisfiable => {
+                f.write_str("Bundle structure did not conform to requested bundle type.")
+            }
         }
     }
 }
@@ -311,19 +350,6 @@ impl SaplingBuilder {
         &self.outputs
     }
 
-    /// Returns the number of outputs that will be present in the Sapling bundle built by
-    /// this builder.
-    ///
-    /// This may be larger than the number of outputs that have been added to the builder,
-    /// depending on whether padding is going to be applied.
-    pub fn bundle_output_count(&self) -> usize {
-        // This matches the padding behaviour in `Self::build`.
-        match self.spends.len() {
-            0 => self.outputs.len(),
-            _ => std::cmp::max(MIN_SHIELDED_OUTPUTS, self.outputs.len()),
-        }
-    }
-
     /// Returns the net value represented by the spends and outputs added to this builder,
     /// or an error if the values added to this builder overflow the range of a Zcash
     /// monetary amount.
@@ -403,8 +429,12 @@ impl SaplingBuilder {
     pub fn build<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         self,
         mut rng: R,
+        bundle_type: &BundleType,
     ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
         let value_balance = self.try_value_balance()?;
+        let bundle_output_count = bundle_type
+            .num_outputs(self.spends.len(), self.outputs.len())
+            .map_err(|_| Error::BundleTypeNotSatisfiable)?;
 
         // Record initial positions of spends and outputs
         let mut indexed_spends: Vec<_> = self.spends.into_iter().enumerate().collect();
@@ -422,10 +452,8 @@ impl SaplingBuilder {
         tx_metadata.output_indices.resize(indexed_outputs.len(), 0);
 
         // Pad Sapling outputs
-        if !indexed_spends.is_empty() {
-            while indexed_outputs.len() < MIN_SHIELDED_OUTPUTS {
-                indexed_outputs.push(None);
-            }
+        while indexed_outputs.len() < bundle_output_count {
+            indexed_outputs.push(None);
         }
 
         // Randomize order of inputs and outputs
@@ -879,7 +907,7 @@ pub mod testing {
         frontier::testing::arb_commitment_tree, witness::IncrementalWitness,
     };
 
-    use super::SaplingBuilder;
+    use super::{BundleType, SaplingBuilder};
 
     #[allow(dead_code)]
     fn arb_bundle<V: fmt::Debug + From<i64>>(
@@ -916,7 +944,10 @@ pub mod testing {
                     }
 
                     let (bundle, _) = builder
-                        .build::<MockSpendProver, MockOutputProver, _, _>(&mut rng)
+                        .build::<MockSpendProver, MockOutputProver, _, _>(
+                            &mut rng,
+                            &BundleType::Transactional,
+                        )
                         .unwrap()
                         .unwrap();
 
