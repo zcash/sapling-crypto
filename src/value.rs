@@ -56,6 +56,9 @@ pub const MAX_NOTE_VALUE: u64 = u64::MAX;
 pub struct NoteValue(u64);
 
 impl NoteValue {
+    /// The zero note value.
+    pub const ZERO: NoteValue = NoteValue(0);
+
     /// Returns the raw underlying value.
     pub fn inner(&self) -> u64 {
         self.0

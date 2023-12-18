@@ -14,17 +14,18 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
 - `sapling_crypto::SaplingVerificationContext` (moved from
   `zcash_proofs::sapling`).
 - `sapling_crypto::builder` (moved from
-  `zcash_primitives::transaction::components::sapling::builder`). Additional
+  `zcash_primitives::transaction::components::sapling::builder`). Further
   additions to this module:
   - `UnauthorizedBundle`
   - `InProgress`
   - `{InProgressProofs, Unproven, Proven}`
   - `{InProgressSignatures, Unsigned, PartiallyAuthorized}`
   - `{MaybeSigned, SigningParts}`
-  - `SpendDescriptionInfo::value`
-  - `SaplingOutputInfo`
+  - `SpendInfo`
+  - `OutputInfo`
   - `ProverProgress`
   - `BundleType`
+  - `bundle` bundle builder function.
 - `sapling_crypto::bundle` module:
   - The following types moved from
     `zcash_primitives::transaction::components::sapling`:
@@ -64,6 +65,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
 - `sapling_crypto::prover::{SpendProver, OutputProver}`
 - `sapling_crypto::tree::Node::{from_bytes, to_bytes}`
 - `sapling_crypto::value`:
+  - `NoteValue::ZERO`
   - `ValueCommitTrapdoor::from_bytes`
   - `impl Sub<TrapdoorSum> for TrapdoorSum`
   - `impl Sub<CommitmentSum> for CommitmentSum`
@@ -168,6 +170,8 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `OutputDescription::read`
   - `OutputDescription::{write_v4, write_v5_without_proof}`
   - `OutputDescriptionV5::read`
+- `sapling_crypto::builder`:
+  - `SpendDescriptionInfo`
 - `sapling_crypto::note_encryption::SaplingDomain::for_height` (use
   `SaplingDomain::new` instead).
 - `sapling_crypto::redjubjub` module (use the `redjubjub` crate instead).

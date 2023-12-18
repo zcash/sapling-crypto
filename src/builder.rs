@@ -1,7 +1,7 @@
 //! Types and functions for building Sapling transaction components.
 
 use core::fmt;
-use std::marker::PhantomData;
+use std::{iter, marker::PhantomData};
 
 use group::ff::Field;
 use rand::{seq::SliceRandom, RngCore};
@@ -34,7 +34,7 @@ const MIN_SHIELDED_OUTPUTS: usize = 2;
 pub enum BundleType {
     /// A transactional bundle will be padded if necessary to contain at least 2 outputs,
     /// irrespective of whether any genuine outputs are required.
-    Transactional,
+    Transactional { anchor: Node },
     /// A coinbase bundle is required to have no spends. No output padding is performed.
     Coinbase,
 }
@@ -51,7 +51,9 @@ impl BundleType {
         num_outputs: usize,
     ) -> Result<usize, &'static str> {
         match self {
-            BundleType::Transactional => Ok(core::cmp::max(num_outputs, MIN_SHIELDED_OUTPUTS)),
+            BundleType::Transactional { .. } => {
+                Ok(core::cmp::max(num_outputs, MIN_SHIELDED_OUTPUTS))
+            }
             BundleType::Coinbase => {
                 if num_spends == 0 {
                     Ok(num_outputs)
@@ -101,46 +103,75 @@ impl fmt::Display for Error {
     }
 }
 
+/// A struct containing the information necessary to add a spend to a bundle.
 #[derive(Debug, Clone)]
-pub struct SpendDescriptionInfo {
+pub struct SpendInfo {
     proof_generation_key: ProofGenerationKey,
     note: Note,
-    alpha: jubjub::Fr,
     merkle_path: MerklePath,
-    rcv: ValueCommitTrapdoor,
 }
 
-impl SpendDescriptionInfo {
-    fn new_internal<R: RngCore>(
-        mut rng: &mut R,
-        extsk: &ExtendedSpendingKey,
+impl SpendInfo {
+    /// Constructs a [`SpendInfo`] from its constituent parts.
+    pub fn new(
+        proof_generation_key: ProofGenerationKey,
         note: Note,
         merkle_path: MerklePath,
     ) -> Self {
-        SpendDescriptionInfo {
-            proof_generation_key: extsk.expsk.proof_generation_key(),
+        Self {
+            proof_generation_key,
             note,
-            alpha: jubjub::Fr::random(&mut rng),
             merkle_path,
-            rcv: ValueCommitTrapdoor::random(rng),
         }
     }
 
+    /// Returns the value of the note to be spent.
     pub fn value(&self) -> NoteValue {
         self.note.value()
     }
 
-    fn build<Pr: SpendProver>(
+    fn has_matching_anchor(&self, anchor: Node) -> bool {
+        if self.note.value() == NoteValue::ZERO {
+            true
+        } else {
+            let node = Node::from_cmu(&self.note.cmu());
+            self.merkle_path.root(node) == anchor
+        }
+    }
+
+    fn prepare<R: RngCore>(self, rng: R) -> PreparedSpendInfo {
+        PreparedSpendInfo {
+            proof_generation_key: self.proof_generation_key,
+            note: self.note,
+            merkle_path: self.merkle_path,
+            rcv: ValueCommitTrapdoor::random(rng),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PreparedSpendInfo {
+    proof_generation_key: ProofGenerationKey,
+    note: Note,
+    merkle_path: MerklePath,
+    rcv: ValueCommitTrapdoor,
+}
+
+impl PreparedSpendInfo {
+    fn build<Pr: SpendProver, R: RngCore>(
         self,
-        anchor: bls12_381::Scalar,
+        mut rng: R,
     ) -> Result<SpendDescription<InProgress<Unproven, Unsigned>>, Error> {
         // Construct the value commitment.
+        let alpha = jubjub::Fr::random(&mut rng);
         let cv = ValueCommitment::derive(self.note.value(), self.rcv.clone());
+        let node = Node::from_cmu(&self.note.cmu());
+        let anchor = *self.merkle_path.root(node).inner();
 
         let ak = self.proof_generation_key.ak.clone();
 
         // This is the result of the re-randomization, we compute it for the caller
-        let rk = ak.randomize(&self.alpha);
+        let rk = ak.randomize(&alpha);
 
         let nullifier = self.note.nf(
             &self.proof_generation_key.to_viewing_key().nk,
@@ -153,7 +184,7 @@ impl SpendDescriptionInfo {
             *self.note.recipient().diversifier(),
             *self.note.rseed(),
             self.note.value(),
-            self.alpha,
+            alpha,
             self.rcv,
             anchor,
             self.merkle_path.clone(),
@@ -166,10 +197,7 @@ impl SpendDescriptionInfo {
             nullifier,
             rk,
             zkproof,
-            SigningParts {
-                ak,
-                alpha: self.alpha,
-            },
+            SigningParts { ak, alpha },
         ))
     }
 }
@@ -177,16 +205,46 @@ impl SpendDescriptionInfo {
 /// A struct containing the information required in order to construct a
 /// Sapling output to a transaction.
 #[derive(Clone)]
-pub struct SaplingOutputInfo {
+pub struct OutputInfo {
     /// `None` represents the `ovk = ⊥` case.
     ovk: Option<OutgoingViewingKey>,
-    note: Note,
-    memo: Option<[u8; 512]>,
-    rcv: ValueCommitTrapdoor,
+    to: PaymentAddress,
+    value: NoteValue,
+    memo: [u8; 512],
 }
 
-impl SaplingOutputInfo {
-    fn dummy<R: RngCore>(mut rng: &mut R, zip212_enforcement: Zip212Enforcement) -> Self {
+impl OutputInfo {
+    /// Constructs a new [`OutputInfo`] from its constituent parts.
+    pub fn new(
+        ovk: Option<OutgoingViewingKey>,
+        to: PaymentAddress,
+        value: NoteValue,
+        memo: Option<[u8; 512]>,
+    ) -> Self {
+        Self {
+            ovk,
+            to,
+            value,
+            memo: memo.unwrap_or_else(|| {
+                let mut memo = [0; 512];
+                memo[0] = 0xf6;
+                memo
+            }),
+        }
+    }
+
+    /// Returns the recipient of the new output.
+    pub fn recipient(&self) -> PaymentAddress {
+        self.to
+    }
+
+    /// Returns the value of the output.
+    pub fn value(&self) -> NoteValue {
+        self.value
+    }
+
+    /// Constructs a new dummy Sapling output.
+    pub fn dummy<R: RngCore>(mut rng: &mut R) -> Self {
         // This is a dummy output
         let dummy_to = {
             let mut diversifier = Diversifier([0; 11]);
@@ -199,50 +257,41 @@ impl SaplingOutputInfo {
             }
         };
 
-        Self::new_internal(
-            rng,
-            None,
-            dummy_to,
-            NoteValue::from_raw(0),
-            None,
-            zip212_enforcement,
-        )
+        Self::new(None, dummy_to, NoteValue::ZERO, None)
     }
 
-    fn new_internal<R: RngCore>(
+    fn prepare<R: RngCore>(
+        self,
         rng: &mut R,
-        ovk: Option<OutgoingViewingKey>,
-        to: PaymentAddress,
-        value: NoteValue,
-        memo: Option<[u8; 512]>,
         zip212_enforcement: Zip212Enforcement,
-    ) -> Self {
+    ) -> PreparedOutputInfo {
         let rseed = generate_random_rseed_internal(zip212_enforcement, rng);
 
-        let note = Note::from_parts(to, value, rseed);
+        let note = Note::from_parts(self.to, self.value, rseed);
 
-        SaplingOutputInfo {
-            ovk,
+        PreparedOutputInfo {
+            ovk: self.ovk,
             note,
-            memo,
+            memo: self.memo,
             rcv: ValueCommitTrapdoor::random(rng),
         }
     }
+}
 
+struct PreparedOutputInfo {
+    /// `None` represents the `ovk = ⊥` case.
+    ovk: Option<OutgoingViewingKey>,
+    note: Note,
+    memo: [u8; 512],
+    rcv: ValueCommitTrapdoor,
+}
+
+impl PreparedOutputInfo {
     fn build<Pr: OutputProver, R: RngCore>(
         self,
         rng: &mut R,
     ) -> OutputDescription<circuit::Output> {
-        let encryptor = sapling_note_encryption::<R>(
-            self.ovk,
-            self.note.clone(),
-            self.memo.unwrap_or_else(|| {
-                let mut memo = [0; 512];
-                memo[0] = 0xf6;
-                memo
-            }),
-            rng,
-        );
+        let encryptor = sapling_note_encryption::<R>(self.ovk, self.note.clone(), self.memo, rng);
 
         // Construct the value commitment.
         let cv = ValueCommitment::derive(self.note.value(), self.rcv.clone());
@@ -271,14 +320,6 @@ impl SaplingOutputInfo {
             out_ciphertext,
             zkproof,
         )
-    }
-
-    pub fn recipient(&self) -> PaymentAddress {
-        self.note.recipient()
-    }
-
-    pub fn value(&self) -> NoteValue {
-        self.note.value()
     }
 }
 
@@ -320,33 +361,33 @@ impl SaplingMetadata {
     }
 }
 
+/// A mutable builder type for constructing Sapling bundles.
 pub struct SaplingBuilder {
-    anchor: Option<bls12_381::Scalar>,
     value_balance: ValueSum,
-    spends: Vec<SpendDescriptionInfo>,
-    outputs: Vec<SaplingOutputInfo>,
+    spends: Vec<SpendInfo>,
+    outputs: Vec<OutputInfo>,
     zip212_enforcement: Zip212Enforcement,
+    bundle_type: BundleType,
 }
 
 impl SaplingBuilder {
-    pub fn new(zip212_enforcement: Zip212Enforcement) -> Self {
+    pub fn new(zip212_enforcement: Zip212Enforcement, bundle_type: BundleType) -> Self {
         SaplingBuilder {
-            anchor: None,
             value_balance: ValueSum::zero(),
             spends: vec![],
             outputs: vec![],
             zip212_enforcement,
+            bundle_type,
         }
     }
 
-    /// Returns the list of Sapling inputs that will be consumed by the transaction being
-    /// constructed.
-    pub fn inputs(&self) -> &[SpendDescriptionInfo] {
+    /// Returns the list of Sapling inputs that have been added to the builder.
+    pub fn inputs(&self) -> &[SpendInfo] {
         &self.spends
     }
 
-    /// Returns the Sapling outputs that will be produced by the transaction being constructed
-    pub fn outputs(&self) -> &[SaplingOutputInfo] {
+    /// Returns the Sapling outputs that have been added to the builder.
+    pub fn outputs(&self) -> &[OutputInfo] {
         &self.outputs
     }
 
@@ -371,28 +412,28 @@ impl SaplingBuilder {
     ///
     /// Returns an error if the given Merkle path does not have the same anchor as the
     /// paths for previous Sapling notes.
-    pub fn add_spend<R: RngCore>(
+    pub fn add_spend(
         &mut self,
-        mut rng: R,
         extsk: &ExtendedSpendingKey,
         note: Note,
         merkle_path: MerklePath,
     ) -> Result<(), Error> {
+        let spend = SpendInfo::new(extsk.expsk.proof_generation_key(), note, merkle_path);
+
         // Consistency check: all anchors must equal the first one
-        let node = Node::from_cmu(&note.cmu());
-        if let Some(anchor) = self.anchor {
-            let path_root: bls12_381::Scalar = merkle_path.root(node).into();
-            if path_root != anchor {
-                return Err(Error::AnchorMismatch);
+        match self.bundle_type {
+            BundleType::Transactional { anchor } => {
+                if !spend.has_matching_anchor(anchor) {
+                    return Err(Error::AnchorMismatch);
+                }
             }
-        } else {
-            self.anchor = Some(merkle_path.root(node).into())
+            BundleType::Coinbase => {
+                return Err(Error::BundleTypeNotSatisfiable);
+            }
         }
 
-        self.value_balance = (self.value_balance + note.value()).ok_or(Error::InvalidAmount)?;
+        self.value_balance = (self.value_balance + spend.value()).ok_or(Error::InvalidAmount)?;
         self.try_value_balance::<i64>()?;
-
-        let spend = SpendDescriptionInfo::new_internal(&mut rng, extsk, note, merkle_path);
 
         self.spends.push(spend);
 
@@ -403,20 +444,12 @@ impl SaplingBuilder {
     #[allow(clippy::too_many_arguments)]
     pub fn add_output<R: RngCore>(
         &mut self,
-        mut rng: R,
         ovk: Option<OutgoingViewingKey>,
         to: PaymentAddress,
         value: NoteValue,
         memo: Option<[u8; 512]>,
     ) -> Result<(), Error> {
-        let output = SaplingOutputInfo::new_internal(
-            &mut rng,
-            ovk,
-            to,
-            value,
-            memo,
-            self.zip212_enforcement,
-        );
+        let output = OutputInfo::new(ovk, to, value, memo);
 
         self.value_balance = (self.value_balance - value).ok_or(Error::InvalidAddress)?;
         self.try_value_balance::<i64>()?;
@@ -426,115 +459,150 @@ impl SaplingBuilder {
         Ok(())
     }
 
+    /// Constructs the Sapling bundle from the builder's accumulated state.
     pub fn build<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         self,
-        mut rng: R,
-        bundle_type: &BundleType,
+        rng: R,
     ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
-        let value_balance = self.try_value_balance()?;
-        let bundle_output_count = bundle_type
-            .num_outputs(self.spends.len(), self.outputs.len())
-            .map_err(|_| Error::BundleTypeNotSatisfiable)?;
-
-        // Record initial positions of spends and outputs
-        let mut indexed_spends: Vec<_> = self.spends.into_iter().enumerate().collect();
-        let mut indexed_outputs: Vec<_> = self
-            .outputs
-            .into_iter()
-            .enumerate()
-            .map(|(i, o)| Some((i, o)))
-            .collect();
-
-        // Set up the transaction metadata that will be used to record how
-        // inputs and outputs are shuffled.
-        let mut tx_metadata = SaplingMetadata::empty();
-        tx_metadata.spend_indices.resize(indexed_spends.len(), 0);
-        tx_metadata.output_indices.resize(indexed_outputs.len(), 0);
-
-        // Pad Sapling outputs
-        while indexed_outputs.len() < bundle_output_count {
-            indexed_outputs.push(None);
-        }
-
-        // Randomize order of inputs and outputs
-        indexed_spends.shuffle(&mut rng);
-        indexed_outputs.shuffle(&mut rng);
-
-        // Record the transaction metadata and create dummy outputs.
-        let spend_infos = indexed_spends
-            .into_iter()
-            .enumerate()
-            .map(|(i, (pos, spend))| {
-                // Record the post-randomized spend location
-                tx_metadata.spend_indices[pos] = i;
-
-                spend
-            })
-            .collect::<Vec<_>>();
-        let output_infos = indexed_outputs
-            .into_iter()
-            .enumerate()
-            .map(|(i, output)| {
-                if let Some((pos, output)) = output {
-                    // Record the post-randomized output location
-                    tx_metadata.output_indices[pos] = i;
-
-                    output
-                } else {
-                    // This is a dummy output
-                    SaplingOutputInfo::dummy(&mut rng, self.zip212_enforcement)
-                }
-            })
-            .collect::<Vec<_>>();
-
-        // Compute the transaction binding signing key.
-        let bsk = {
-            let spends: TrapdoorSum = spend_infos.iter().map(|spend| &spend.rcv).sum();
-            let outputs: TrapdoorSum = output_infos.iter().map(|output| &output.rcv).sum();
-            (spends - outputs).into_bsk()
-        };
-
-        // Create the unauthorized Spend and Output descriptions.
-        let shielded_spends = spend_infos
-            .into_iter()
-            .map(|a| {
-                a.build::<SP>(
-                    self.anchor
-                        .expect("Sapling anchor must be set if Sapling spends are present."),
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let shielded_outputs = output_infos
-            .into_iter()
-            .map(|a| a.build::<OP, _>(&mut rng))
-            .collect::<Vec<_>>();
-
-        // Verify that bsk and bvk are consistent.
-        let bvk = {
-            let spends = shielded_spends
-                .iter()
-                .map(|spend| spend.cv())
-                .sum::<CommitmentSum>();
-            let outputs = shielded_outputs
-                .iter()
-                .map(|output| output.cv())
-                .sum::<CommitmentSum>();
-            (spends - outputs)
-                .into_bvk(i64::try_from(self.value_balance).map_err(|_| Error::InvalidAmount)?)
-        };
-        assert_eq!(redjubjub::VerificationKey::from(&bsk), bvk);
-
-        Ok(Bundle::from_parts(
-            shielded_spends,
-            shielded_outputs,
-            value_balance,
-            InProgress {
-                sigs: Unsigned { bsk },
-                _proof_state: PhantomData::default(),
-            },
+        bundle::<SP, OP, _, _>(
+            rng,
+            self.spends,
+            self.outputs,
+            self.bundle_type,
+            self.zip212_enforcement,
         )
-        .map(|b| (b, tx_metadata)))
     }
+}
+
+/// Constructs a new Sapling transaction bundle of the given type from the specified set of spends
+/// and outputs.
+pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
+    mut rng: R,
+    spends: Vec<SpendInfo>,
+    outputs: Vec<OutputInfo>,
+    bundle_type: BundleType,
+    zip212_enforcement: Zip212Enforcement,
+) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
+    match bundle_type {
+        BundleType::Transactional { anchor } => {
+            for spend in &spends {
+                if !spend.has_matching_anchor(anchor) {
+                    return Err(Error::AnchorMismatch);
+                }
+            }
+        }
+        BundleType::Coinbase => {
+            if !spends.is_empty() {
+                return Err(Error::BundleTypeNotSatisfiable);
+            }
+        }
+    }
+
+    let requested_output_count = outputs.len();
+    let bundle_output_count = bundle_type
+        .num_outputs(spends.len(), requested_output_count)
+        .map_err(|_| Error::BundleTypeNotSatisfiable)?;
+    assert!(requested_output_count <= bundle_output_count);
+
+    // Set up the transaction metadata that will be used to record how
+    // inputs and outputs are shuffled.
+    let mut tx_metadata = SaplingMetadata::empty();
+    tx_metadata.spend_indices.resize(spends.len(), 0);
+    tx_metadata.output_indices.resize(requested_output_count, 0);
+
+    // Record initial spend positions
+    let mut indexed_spends: Vec<_> = spends.into_iter().enumerate().collect();
+    // Create any required dummy outputs and record initial output positions
+    let mut indexed_outputs: Vec<_> = outputs
+        .into_iter()
+        .chain(iter::repeat_with(|| OutputInfo::dummy(&mut rng)))
+        .enumerate()
+        .take(bundle_output_count)
+        .collect();
+
+    // Randomize order of inputs and outputs
+    indexed_spends.shuffle(&mut rng);
+    indexed_outputs.shuffle(&mut rng);
+
+    // Record the transaction metadata and create prepared spends and outputs.
+    let spend_infos = indexed_spends
+        .into_iter()
+        .enumerate()
+        .map(|(i, (pos, spend))| {
+            // Record the post-randomized spend location
+            tx_metadata.spend_indices[pos] = i;
+
+            spend.prepare(&mut rng)
+        })
+        .collect::<Vec<_>>();
+    let output_infos = indexed_outputs
+        .into_iter()
+        .enumerate()
+        .map(|(i, (pos, output))| {
+            // Record the post-randomized output location. Due to how `indexed_outputs` is
+            // constructed, all non-dummy positions will be less than requested_output_count
+            if pos < requested_output_count {
+                tx_metadata.output_indices[pos] = i;
+            }
+
+            output.prepare(&mut rng, zip212_enforcement)
+        })
+        .collect::<Vec<_>>();
+
+    // Compute the transaction binding signing key.
+    let bsk = {
+        let spends: TrapdoorSum = spend_infos.iter().map(|spend| &spend.rcv).sum();
+        let outputs: TrapdoorSum = output_infos.iter().map(|output| &output.rcv).sum();
+        (spends - outputs).into_bsk()
+    };
+
+    // Compute the Sapling value balance of the bundle for comparison to `bvk` and `bsk`
+    let input_total = spend_infos
+        .iter()
+        .try_fold(ValueSum::zero(), |balance, spend| {
+            (balance + spend.note.value()).ok_or(Error::InvalidAmount)
+        })?;
+    let value_balance = output_infos
+        .iter()
+        .try_fold(input_total, |balance, output| {
+            (balance - output.note.value()).ok_or(Error::InvalidAmount)
+        })?;
+    let value_balance_i64 = i64::try_from(value_balance).map_err(|_| Error::InvalidAmount)?;
+
+    // Create the unauthorized Spend and Output descriptions.
+    let shielded_spends = spend_infos
+        .into_iter()
+        .map(|a| a.build::<SP, _>(&mut rng))
+        .collect::<Result<Vec<_>, _>>()?;
+    let shielded_outputs = output_infos
+        .into_iter()
+        .map(|a| a.build::<OP, _>(&mut rng))
+        .collect::<Vec<_>>();
+
+    // Verify that bsk and bvk are consistent.
+    let bvk = {
+        let spends = shielded_spends
+            .iter()
+            .map(|spend| spend.cv())
+            .sum::<CommitmentSum>();
+        let outputs = shielded_outputs
+            .iter()
+            .map(|output| output.cv())
+            .sum::<CommitmentSum>();
+        (spends - outputs).into_bvk(value_balance_i64)
+    };
+    assert_eq!(redjubjub::VerificationKey::from(&bsk), bvk);
+
+    Ok(Bundle::from_parts(
+        shielded_spends,
+        shielded_outputs,
+        V::try_from(value_balance_i64).map_err(|_| Error::InvalidAmount)?,
+        InProgress {
+            sigs: Unsigned { bsk },
+            _proof_state: PhantomData::default(),
+        },
+    )
+    .map(|b| (b, tx_metadata)))
 }
 
 /// Type alias for an in-progress bundle that has no proofs or signatures.
@@ -902,9 +970,10 @@ pub mod testing {
         testing::{arb_node, arb_note},
         value::testing::arb_positive_note_value,
         zip32::testing::arb_extended_spending_key,
+        Node, NOTE_COMMITMENT_TREE_DEPTH,
     };
     use incrementalmerkletree::{
-        frontier::testing::arb_commitment_tree, witness::IncrementalWitness,
+        frontier::testing::arb_commitment_tree, witness::IncrementalWitness, Hashable, Level,
     };
 
     use super::{BundleType, SaplingBuilder};
@@ -933,21 +1002,31 @@ pub mod testing {
             })
             .prop_map(
                 move |(extsk, spendable_notes, commitment_trees, rng_seed, fake_sighash_bytes)| {
-                    let mut builder = SaplingBuilder::new(zip212_enforcement);
+                    let anchor = spendable_notes
+                        .first()
+                        .zip(commitment_trees.first())
+                        .map_or_else(
+                            || Node::empty_root(Level::from(NOTE_COMMITMENT_TREE_DEPTH)),
+                            |(note, tree)| {
+                                let node = Node::from_cmu(&note.cmu());
+                                Node::from_scalar(*tree.root(node).inner())
+                            },
+                        );
+                    let mut builder = SaplingBuilder::new(
+                        zip212_enforcement,
+                        BundleType::Transactional { anchor },
+                    );
                     let mut rng = StdRng::from_seed(rng_seed);
 
                     for (note, path) in spendable_notes
                         .into_iter()
                         .zip(commitment_trees.into_iter())
                     {
-                        builder.add_spend(&mut rng, &extsk, note, path).unwrap();
+                        builder.add_spend(&extsk, note, path).unwrap();
                     }
 
                     let (bundle, _) = builder
-                        .build::<MockSpendProver, MockOutputProver, _, _>(
-                            &mut rng,
-                            &BundleType::Transactional,
-                        )
+                        .build::<MockSpendProver, MockOutputProver, _, _>(&mut rng)
                         .unwrap()
                         .unwrap();
 
