@@ -441,8 +441,7 @@ impl SaplingBuilder {
     }
 
     /// Adds a Sapling address to send funds to.
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_output<R: RngCore>(
+    pub fn add_output(
         &mut self,
         ovk: Option<OutgoingViewingKey>,
         to: PaymentAddress,
