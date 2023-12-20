@@ -101,6 +101,11 @@ impl Node {
     pub fn to_bytes(&self) -> [u8; 32] {
         self.0.to_repr()
     }
+
+    /// Returns the wrapped value
+    pub(crate) fn inner(&self) -> &jubjub::Base {
+        &self.0
+    }
 }
 
 impl Hashable for Node {
