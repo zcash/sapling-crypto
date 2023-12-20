@@ -91,21 +91,22 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
 - `sapling_crypto::address::PaymentAddress::create_note` now takes its `value`
   argument as a `NoteValue` instead of as a bare `u64`.
 - `sapling_crypto::builder`:
-  - `SaplingBuilder` no longer has a `P: zcash_primitives::consensus::Parameters`
+  - `SaplingBuilder` has been renamed to `Builder`
+  - `Builder` no longer has a `P: zcash_primitives::consensus::Parameters`
     type parameter.
-  - `SaplingBuilder::new` now takes a `Zip212Enforcement` argument instead of a
+  - `Builder::new` now takes a `Zip212Enforcement` argument instead of a
     `P: zcash_primitives::consensus::Parameters` argument and a target height.
-  - `SaplingBuilder::add_spend` now takes `extsk` by reference. Also, it no
+  - `Builder::add_spend` now takes `extsk` by reference. Also, it no
     longer takes a `diversifier` argument as the diversifier may be obtained
     from the note.
-  - `SaplingBuilder::add_output` now takes an `Option<[u8; 512]>` memo instead
+  - `Builder::add_output` now takes an `Option<[u8; 512]>` memo instead
     of a `MemoBytes`.
-  - `SaplingBuilder::build` no longer takes a prover, proving context, progress
+  - `Builder::build` no longer takes a prover, proving context, progress
     notifier, or target height. Instead, it has `SpendProver, OutputProver`
     generic parameters and returns `(UnauthorizedBundle, SaplingMetadata)`. The
     caller can then use `Bundle::<InProgress<Unproven, _>>::create_proofs` to
     create spend and output proofs for the bundle.
-  - `SaplingBuilder::build` now takes a `BundleType` argument that instructs
+  - `Builder::build` now takes a `BundleType` argument that instructs
     it how to pad the bundle with dummy outputs.
   - `Error` has new error variants:
     - `Error::DuplicateSignature`

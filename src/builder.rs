@@ -323,7 +323,7 @@ impl PreparedOutputInfo {
     }
 }
 
-/// Metadata about a transaction created by a [`SaplingBuilder`].
+/// Metadata about a transaction created by a [`Builder`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaplingMetadata {
     spend_indices: Vec<usize>,
@@ -339,22 +339,22 @@ impl SaplingMetadata {
     }
 
     /// Returns the index within the transaction of the [`SpendDescription`] corresponding
-    /// to the `n`-th call to [`SaplingBuilder::add_spend`].
+    /// to the `n`-th call to [`Builder::add_spend`].
     ///
     /// Note positions are randomized when building transactions for indistinguishability.
     /// This means that the transaction consumer cannot assume that e.g. the first spend
-    /// they added (via the first call to [`SaplingBuilder::add_spend`]) is the first
+    /// they added (via the first call to [`Builder::add_spend`]) is the first
     /// [`SpendDescription`] in the transaction.
     pub fn spend_index(&self, n: usize) -> Option<usize> {
         self.spend_indices.get(n).copied()
     }
 
     /// Returns the index within the transaction of the [`OutputDescription`] corresponding
-    /// to the `n`-th call to [`SaplingBuilder::add_output`].
+    /// to the `n`-th call to [`Builder::add_output`].
     ///
     /// Note positions are randomized when building transactions for indistinguishability.
     /// This means that the transaction consumer cannot assume that e.g. the first output
-    /// they added (via the first call to [`SaplingBuilder::add_output`]) is the first
+    /// they added (via the first call to [`Builder::add_output`]) is the first
     /// [`OutputDescription`] in the transaction.
     pub fn output_index(&self, n: usize) -> Option<usize> {
         self.output_indices.get(n).copied()
@@ -362,7 +362,7 @@ impl SaplingMetadata {
 }
 
 /// A mutable builder type for constructing Sapling bundles.
-pub struct SaplingBuilder {
+pub struct Builder {
     value_balance: ValueSum,
     spends: Vec<SpendInfo>,
     outputs: Vec<OutputInfo>,
@@ -370,9 +370,9 @@ pub struct SaplingBuilder {
     bundle_type: BundleType,
 }
 
-impl SaplingBuilder {
+impl Builder {
     pub fn new(zip212_enforcement: Zip212Enforcement, bundle_type: BundleType) -> Self {
-        SaplingBuilder {
+        Builder {
             value_balance: ValueSum::zero(),
             spends: vec![],
             outputs: vec![],
@@ -606,7 +606,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
 
 /// Type alias for an in-progress bundle that has no proofs or signatures.
 ///
-/// This is returned by [`SaplingBuilder::build`].
+/// This is returned by [`Builder::build`].
 pub type UnauthorizedBundle<V> = Bundle<InProgress<Unproven, Unsigned>, V>;
 
 /// Marker trait representing bundle proofs in the process of being created.
@@ -975,7 +975,7 @@ pub mod testing {
         frontier::testing::arb_commitment_tree, witness::IncrementalWitness, Hashable, Level,
     };
 
-    use super::{BundleType, SaplingBuilder};
+    use super::{Builder, BundleType};
 
     #[allow(dead_code)]
     fn arb_bundle<V: fmt::Debug + From<i64>>(
@@ -1011,10 +1011,8 @@ pub mod testing {
                                 Node::from_scalar(*tree.root(node).inner())
                             },
                         );
-                    let mut builder = SaplingBuilder::new(
-                        zip212_enforcement,
-                        BundleType::Transactional { anchor },
-                    );
+                    let mut builder =
+                        Builder::new(zip212_enforcement, BundleType::Transactional { anchor });
                     let mut rng = StdRng::from_seed(rng_seed);
 
                     for (note, path) in spendable_notes
