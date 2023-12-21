@@ -1,6 +1,7 @@
 use core::fmt::Debug;
 
 use memuse::DynamicUsage;
+
 use redjubjub::{Binding, SpendAuth};
 
 use zcash_note_encryption::{
@@ -36,75 +37,6 @@ impl Authorization for Authorized {
     type SpendProof = GrothProofBytes;
     type OutputProof = GrothProofBytes;
     type AuthSig = redjubjub::Signature<SpendAuth>;
-}
-
-/// A map from one bundle authorization to another.
-///
-/// For use with [`Bundle::map_authorization`].
-pub trait MapAuth<A: Authorization, B: Authorization> {
-    fn map_spend_proof(&mut self, p: A::SpendProof) -> B::SpendProof;
-    fn map_output_proof(&mut self, p: A::OutputProof) -> B::OutputProof;
-    fn map_auth_sig(&mut self, s: A::AuthSig) -> B::AuthSig;
-    fn map_authorization(&mut self, a: A) -> B;
-}
-
-/// The identity map.
-///
-/// This can be used with [`Bundle::map_authorization`] when you want to map the
-/// authorization of a subset of a transaction's bundles (excluding the Sapling bundle) in
-/// a higher-level transaction type.
-impl MapAuth<Authorized, Authorized> for () {
-    fn map_spend_proof(
-        &mut self,
-        p: <Authorized as Authorization>::SpendProof,
-    ) -> <Authorized as Authorization>::SpendProof {
-        p
-    }
-
-    fn map_output_proof(
-        &mut self,
-        p: <Authorized as Authorization>::OutputProof,
-    ) -> <Authorized as Authorization>::OutputProof {
-        p
-    }
-
-    fn map_auth_sig(
-        &mut self,
-        s: <Authorized as Authorization>::AuthSig,
-    ) -> <Authorized as Authorization>::AuthSig {
-        s
-    }
-
-    fn map_authorization(&mut self, a: Authorized) -> Authorized {
-        a
-    }
-}
-
-/// A helper for implementing `MapAuth` with a set of closures.
-impl<A, B, F, G, H, I> MapAuth<A, B> for (F, G, H, I)
-where
-    A: Authorization,
-    B: Authorization,
-    F: FnMut(A::SpendProof) -> B::SpendProof,
-    G: FnMut(A::OutputProof) -> B::OutputProof,
-    H: FnMut(A::AuthSig) -> B::AuthSig,
-    I: FnMut(A) -> B,
-{
-    fn map_spend_proof(&mut self, p: A::SpendProof) -> B::SpendProof {
-        self.0(p)
-    }
-
-    fn map_output_proof(&mut self, p: A::OutputProof) -> B::OutputProof {
-        self.1(p)
-    }
-
-    fn map_auth_sig(&mut self, s: A::AuthSig) -> B::AuthSig {
-        self.2(s)
-    }
-
-    fn map_authorization(&mut self, a: A) -> B {
-        self.3(a)
-    }
 }
 
 /// A fallible map from one bundle authorization to another.
@@ -200,7 +132,14 @@ impl<A: Authorization, V> Bundle<A, V> {
     }
 
     /// Transitions this bundle from one authorization state to another.
-    pub fn map_authorization<B: Authorization, F: MapAuth<A, B>>(self, mut f: F) -> Bundle<B, V> {
+    pub fn map_authorization<R, B: Authorization>(
+        self,
+        mut context: R,
+        mut spend_proof: impl FnMut(&mut R, A::SpendProof) -> B::SpendProof,
+        mut output_proof: impl FnMut(&mut R, A::OutputProof) -> B::OutputProof,
+        mut auth_sig: impl FnMut(&mut R, A::AuthSig) -> B::AuthSig,
+        mut auth: impl FnMut(&mut R, A) -> B,
+    ) -> Bundle<B, V> {
         Bundle {
             shielded_spends: self
                 .shielded_spends
@@ -210,8 +149,8 @@ impl<A: Authorization, V> Bundle<A, V> {
                     anchor: d.anchor,
                     nullifier: d.nullifier,
                     rk: d.rk,
-                    zkproof: f.map_spend_proof(d.zkproof),
-                    spend_auth_sig: f.map_auth_sig(d.spend_auth_sig),
+                    zkproof: spend_proof(&mut context, d.zkproof),
+                    spend_auth_sig: auth_sig(&mut context, d.spend_auth_sig),
                 })
                 .collect(),
             shielded_outputs: self
@@ -223,11 +162,11 @@ impl<A: Authorization, V> Bundle<A, V> {
                     ephemeral_key: o.ephemeral_key,
                     enc_ciphertext: o.enc_ciphertext,
                     out_ciphertext: o.out_ciphertext,
-                    zkproof: f.map_output_proof(o.zkproof),
+                    zkproof: output_proof(&mut context, o.zkproof),
                 })
                 .collect(),
             value_balance: self.value_balance,
-            authorization: f.map_authorization(self.authorization),
+            authorization: auth(&mut context, self.authorization),
         }
     }
 
