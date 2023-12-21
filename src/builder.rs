@@ -53,6 +53,30 @@ impl BundleType {
         bundle_required: false,
     };
 
+    /// Returns the number of logical spends that a builder will produce in constructing a bundle
+    /// of this type, given the specified numbers of spends and outputs.
+    ///
+    /// Returns an error if the specified number of spends and outputs is incompatible with
+    /// this bundle type.
+    pub fn num_spends(&self, requested_spends: usize) -> Result<usize, &'static str> {
+        match self {
+            BundleType::Transactional { bundle_required } => {
+                Ok(if *bundle_required || requested_spends > 0 {
+                    core::cmp::max(requested_spends, 1)
+                } else {
+                    0
+                })
+            }
+            BundleType::Coinbase => {
+                if requested_spends == 0 {
+                    Ok(0)
+                } else {
+                    Err("Spends not allowed in coinbase bundles")
+                }
+            }
+        }
+    }
+
     /// Returns the number of logical outputs that a builder will produce in constructing a bundle
     /// of this type, given the specified numbers of spends and outputs.
     ///
@@ -60,20 +84,20 @@ impl BundleType {
     /// this bundle type.
     pub fn num_outputs(
         &self,
-        num_spends: usize,
-        num_outputs: usize,
+        requested_spends: usize,
+        requested_outputs: usize,
     ) -> Result<usize, &'static str> {
         match self {
             BundleType::Transactional { bundle_required } => {
-                Ok(if *bundle_required || num_outputs > 0 {
-                    core::cmp::max(num_outputs, MIN_SHIELDED_OUTPUTS)
+                Ok(if *bundle_required || requested_outputs > 0 {
+                    core::cmp::max(requested_outputs, MIN_SHIELDED_OUTPUTS)
                 } else {
                     0
                 })
             }
             BundleType::Coinbase => {
-                if num_spends == 0 {
-                    Ok(num_outputs)
+                if requested_spends == 0 {
+                    Ok(requested_outputs)
                 } else {
                     Err("Spends not allowed in coinbase bundles")
                 }
@@ -550,6 +574,11 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         }
     }
 
+    let requested_spend_count = spends.len();
+    let bundle_spend_count = bundle_type
+        .num_spends(requested_spend_count)
+        .map_err(|_| Error::BundleTypeNotSatisfiable)?;
+
     let requested_output_count = outputs.len();
     let bundle_output_count = bundle_type
         .num_outputs(spends.len(), requested_output_count)
@@ -562,8 +591,14 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     tx_metadata.spend_indices.resize(spends.len(), 0);
     tx_metadata.output_indices.resize(requested_output_count, 0);
 
-    // Record initial spend positions
-    let mut indexed_spends: Vec<_> = spends.into_iter().enumerate().collect();
+    // Create any required dummy spends and record initial spend positions
+    let mut indexed_spends: Vec<_> = spends
+        .into_iter()
+        .chain(iter::repeat_with(|| SpendInfo::dummy(&mut rng)))
+        .enumerate()
+        .take(bundle_spend_count)
+        .collect();
+
     // Create any required dummy outputs and record initial output positions
     let mut indexed_outputs: Vec<_> = outputs
         .into_iter()
@@ -582,7 +617,9 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         .enumerate()
         .map(|(i, (pos, spend))| {
             // Record the post-randomized spend location
-            tx_metadata.spend_indices[pos] = i;
+            if pos < requested_spend_count {
+                tx_metadata.spend_indices[pos] = i;
+            }
 
             spend.prepare(&mut rng)
         })
