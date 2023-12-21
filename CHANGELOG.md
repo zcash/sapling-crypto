@@ -10,6 +10,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
 `zcash_primitives 0.13.0`.
 
 ### Added
+- `sapling_crypto::Anchor`
 - `sapling_crypto::BatchValidator` (moved from `zcash_proofs::sapling`).
 - `sapling_crypto::SaplingVerificationContext` (moved from
   `zcash_proofs::sapling`).

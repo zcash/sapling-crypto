@@ -22,7 +22,7 @@ use crate::{
         CommitmentSum, NoteValue, TrapdoorSum, ValueCommitTrapdoor, ValueCommitment, ValueSum,
     },
     zip32::ExtendedSpendingKey,
-    Diversifier, MerklePath, Node, Note, PaymentAddress, ProofGenerationKey, SaplingIvk,
+    Anchor, Diversifier, MerklePath, Node, Note, PaymentAddress, ProofGenerationKey, SaplingIvk,
 };
 
 /// If there are any shielded inputs, always have at least two shielded outputs, padding
@@ -146,12 +146,12 @@ impl SpendInfo {
         self.note.value()
     }
 
-    fn has_matching_anchor(&self, anchor: &Node) -> bool {
+    fn has_matching_anchor(&self, anchor: &Anchor) -> bool {
         if self.note.value() == NoteValue::ZERO {
             true
         } else {
             let node = Node::from_cmu(&self.note.cmu());
-            &self.merkle_path.root(node) == anchor
+            &Anchor::from(self.merkle_path.root(node)) == anchor
         }
     }
 
@@ -384,14 +384,14 @@ pub struct Builder {
     outputs: Vec<OutputInfo>,
     zip212_enforcement: Zip212Enforcement,
     bundle_type: BundleType,
-    anchor: Node,
+    anchor: Anchor,
 }
 
 impl Builder {
     pub fn new(
         zip212_enforcement: Zip212Enforcement,
         bundle_type: BundleType,
-        anchor: Node,
+        anchor: Anchor,
     ) -> Self {
         Builder {
             value_balance: ValueSum::zero(),
@@ -502,7 +502,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     mut rng: R,
     bundle_type: BundleType,
     zip212_enforcement: Zip212Enforcement,
-    anchor: Node,
+    anchor: Anchor,
     spends: Vec<SpendInfo>,
     outputs: Vec<OutputInfo>,
 ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
@@ -993,10 +993,10 @@ pub mod testing {
         testing::{arb_node, arb_note},
         value::testing::arb_positive_note_value,
         zip32::testing::arb_extended_spending_key,
-        Node, NOTE_COMMITMENT_TREE_DEPTH,
+        Anchor, Node,
     };
     use incrementalmerkletree::{
-        frontier::testing::arb_commitment_tree, witness::IncrementalWitness, Hashable, Level,
+        frontier::testing::arb_commitment_tree, witness::IncrementalWitness,
     };
 
     use super::{Builder, BundleType};
@@ -1029,10 +1029,10 @@ pub mod testing {
                         .first()
                         .zip(commitment_trees.first())
                         .map_or_else(
-                            || Node::empty_root(Level::from(NOTE_COMMITMENT_TREE_DEPTH)),
+                            || Anchor::empty_tree(),
                             |(note, tree)| {
                                 let node = Node::from_cmu(&note.cmu());
-                                Node::from_scalar(*tree.root(node).inner())
+                                Anchor::from(*tree.root(node).inner())
                             },
                         );
                     let mut builder = Builder::new(zip212_enforcement, BundleType::DEFAULT, anchor);

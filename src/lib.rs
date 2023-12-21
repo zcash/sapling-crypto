@@ -34,7 +34,8 @@ pub use bundle::Bundle;
 pub use keys::{Diversifier, NullifierDerivingKey, ProofGenerationKey, SaplingIvk, ViewingKey};
 pub use note::{nullifier::Nullifier, Note, Rseed};
 pub use tree::{
-    merkle_hash, CommitmentTree, IncrementalWitness, MerklePath, Node, NOTE_COMMITMENT_TREE_DEPTH,
+    merkle_hash, Anchor, CommitmentTree, IncrementalWitness, MerklePath, Node,
+    NOTE_COMMITMENT_TREE_DEPTH,
 };
 pub use verifier::{BatchValidator, SaplingVerificationContext};
 
