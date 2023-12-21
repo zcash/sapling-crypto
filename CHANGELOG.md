@@ -96,9 +96,12 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
     type parameter.
   - `Builder::new` now takes a `Zip212Enforcement` argument instead of a
     `P: zcash_primitives::consensus::Parameters` argument and a target height.
+    It also now takes as an argument the Sapling anchor to be used for all
+    spends in the bundle. 
   - `Builder::add_spend` now takes `extsk` by reference. Also, it no
     longer takes a `diversifier` argument as the diversifier may be obtained
-    from the note.
+    from the note. All calls to `add_spend` are now required to use an anchor
+    that corresponds to the anchor provided at builder construction.
   - `Builder::add_output` now takes an `Option<[u8; 512]>` memo instead
     of a `MemoBytes`.
   - `Builder::build` no longer takes a prover, proving context, progress

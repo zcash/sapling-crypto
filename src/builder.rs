@@ -34,12 +34,24 @@ const MIN_SHIELDED_OUTPUTS: usize = 2;
 pub enum BundleType {
     /// A transactional bundle will be padded if necessary to contain at least 2 outputs,
     /// irrespective of whether any genuine outputs are required.
-    Transactional { anchor: Node },
+    Transactional {
+        /// A flag that, when set to `true`, indicates that the resulting bundle should be produced
+        /// with the minimum required outputs irrespective of whether any outputs have been
+        /// requested; if no explicit outputs have been added, all of the outputs in the resulting
+        /// bundle will be dummies.
+        outputs_required: bool,
+    },
     /// A coinbase bundle is required to have no spends. No output padding is performed.
     Coinbase,
 }
 
 impl BundleType {
+    /// The default bundle type has all flags enabled, and does not require a bundle to be produced
+    /// if no spends or outputs have been added to the bundle.
+    pub const DEFAULT: BundleType = BundleType::Transactional {
+        outputs_required: false,
+    };
+
     /// Returns the number of logical outputs that a builder will produce in constructing a bundle
     /// of this type, given the specified numbers of spends and outputs.
     ///
@@ -51,8 +63,12 @@ impl BundleType {
         num_outputs: usize,
     ) -> Result<usize, &'static str> {
         match self {
-            BundleType::Transactional { .. } => {
-                Ok(core::cmp::max(num_outputs, MIN_SHIELDED_OUTPUTS))
+            BundleType::Transactional { outputs_required } => {
+                Ok(if *outputs_required || num_outputs > 0 {
+                    core::cmp::max(num_outputs, MIN_SHIELDED_OUTPUTS)
+                } else {
+                    0
+                })
             }
             BundleType::Coinbase => {
                 if num_spends == 0 {
@@ -130,12 +146,12 @@ impl SpendInfo {
         self.note.value()
     }
 
-    fn has_matching_anchor(&self, anchor: Node) -> bool {
+    fn has_matching_anchor(&self, anchor: &Node) -> bool {
         if self.note.value() == NoteValue::ZERO {
             true
         } else {
             let node = Node::from_cmu(&self.note.cmu());
-            self.merkle_path.root(node) == anchor
+            &self.merkle_path.root(node) == anchor
         }
     }
 
@@ -368,16 +384,22 @@ pub struct Builder {
     outputs: Vec<OutputInfo>,
     zip212_enforcement: Zip212Enforcement,
     bundle_type: BundleType,
+    anchor: Node,
 }
 
 impl Builder {
-    pub fn new(zip212_enforcement: Zip212Enforcement, bundle_type: BundleType) -> Self {
+    pub fn new(
+        zip212_enforcement: Zip212Enforcement,
+        bundle_type: BundleType,
+        anchor: Node,
+    ) -> Self {
         Builder {
             value_balance: ValueSum::zero(),
             spends: vec![],
             outputs: vec![],
             zip212_enforcement,
             bundle_type,
+            anchor,
         }
     }
 
@@ -422,8 +444,8 @@ impl Builder {
 
         // Consistency check: all anchors must equal the first one
         match self.bundle_type {
-            BundleType::Transactional { anchor } => {
-                if !spend.has_matching_anchor(anchor) {
+            BundleType::Transactional { .. } => {
+                if !spend.has_matching_anchor(&self.anchor) {
                     return Err(Error::AnchorMismatch);
                 }
             }
@@ -465,10 +487,11 @@ impl Builder {
     ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
         bundle::<SP, OP, _, _>(
             rng,
-            self.spends,
-            self.outputs,
             self.bundle_type,
             self.zip212_enforcement,
+            self.anchor,
+            self.spends,
+            self.outputs,
         )
     }
 }
@@ -477,15 +500,16 @@ impl Builder {
 /// and outputs.
 pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     mut rng: R,
-    spends: Vec<SpendInfo>,
-    outputs: Vec<OutputInfo>,
     bundle_type: BundleType,
     zip212_enforcement: Zip212Enforcement,
+    anchor: Node,
+    spends: Vec<SpendInfo>,
+    outputs: Vec<OutputInfo>,
 ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
     match bundle_type {
-        BundleType::Transactional { anchor } => {
+        BundleType::Transactional { .. } => {
             for spend in &spends {
-                if !spend.has_matching_anchor(anchor) {
+                if !spend.has_matching_anchor(&anchor) {
                     return Err(Error::AnchorMismatch);
                 }
             }
@@ -1011,8 +1035,7 @@ pub mod testing {
                                 Node::from_scalar(*tree.root(node).inner())
                             },
                         );
-                    let mut builder =
-                        Builder::new(zip212_enforcement, BundleType::Transactional { anchor });
+                    let mut builder = Builder::new(zip212_enforcement, BundleType::DEFAULT, anchor);
                     let mut rng = StdRng::from_seed(rng_seed);
 
                     for (note, path) in spendable_notes
