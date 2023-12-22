@@ -42,7 +42,6 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `Bundle::<InProgress<Proven, PartiallyAuthorized>>::finalize`
   - `Bundle::<InProgress<Proven, Unsigned>>::apply_signatures`
   - `Bundle::try_map_authorization`
-  - `TryMapAuth`
   - `testing` module, containing the following functions moved from
     `zcash_primitives::transaction::components::sapling::testing`:
     - `arb_output_description`

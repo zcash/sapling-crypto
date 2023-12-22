@@ -1048,16 +1048,17 @@ impl<V> Bundle<InProgress<Proven, PartiallyAuthorized>, V> {
     ///
     /// Returns an error if any signatures are missing.
     pub fn finalize(self) -> Result<Bundle<Authorized, V>, Error> {
-        self.try_map_authorization((
-            Ok,
-            Ok,
-            |maybe: MaybeSigned| maybe.finalize(),
-            |partial: InProgress<Proven, PartiallyAuthorized>| {
+        self.try_map_authorization::<(), _, _>(
+            (),
+            |_, v| Ok(v),
+            |_, v| Ok(v),
+            |_, maybe: MaybeSigned| maybe.finalize(),
+            |_, partial: InProgress<Proven, PartiallyAuthorized>| {
                 Ok(Authorized {
                     binding_sig: partial.sigs.binding_signature,
                 })
             },
-        ))
+        )
     }
 }
 

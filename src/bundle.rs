@@ -39,46 +39,6 @@ impl Authorization for Authorized {
     type AuthSig = redjubjub::Signature<SpendAuth>;
 }
 
-/// A fallible map from one bundle authorization to another.
-///
-/// For use with [`Bundle::try_map_authorization`].
-pub trait TryMapAuth<A: Authorization, B: Authorization> {
-    type Error;
-    fn try_map_spend_proof(&mut self, p: A::SpendProof) -> Result<B::SpendProof, Self::Error>;
-    fn try_map_output_proof(&mut self, p: A::OutputProof) -> Result<B::OutputProof, Self::Error>;
-    fn try_map_auth_sig(&mut self, s: A::AuthSig) -> Result<B::AuthSig, Self::Error>;
-    fn try_map_authorization(&mut self, a: A) -> Result<B, Self::Error>;
-}
-
-/// A helper for implementing `TryMapAuth` with a set of closures.
-impl<A, B, E, F, G, H, I> TryMapAuth<A, B> for (F, G, H, I)
-where
-    A: Authorization,
-    B: Authorization,
-    F: FnMut(A::SpendProof) -> Result<B::SpendProof, E>,
-    G: FnMut(A::OutputProof) -> Result<B::OutputProof, E>,
-    H: FnMut(A::AuthSig) -> Result<B::AuthSig, E>,
-    I: FnMut(A) -> Result<B, E>,
-{
-    type Error = E;
-
-    fn try_map_spend_proof(&mut self, p: A::SpendProof) -> Result<B::SpendProof, Self::Error> {
-        self.0(p)
-    }
-
-    fn try_map_output_proof(&mut self, p: A::OutputProof) -> Result<B::OutputProof, Self::Error> {
-        self.1(p)
-    }
-
-    fn try_map_auth_sig(&mut self, s: A::AuthSig) -> Result<B::AuthSig, Self::Error> {
-        self.2(s)
-    }
-
-    fn try_map_authorization(&mut self, a: A) -> Result<B, Self::Error> {
-        self.3(a)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Bundle<A: Authorization, V> {
     shielded_spends: Vec<SpendDescription<A>>,
@@ -171,10 +131,14 @@ impl<A: Authorization, V> Bundle<A, V> {
     }
 
     /// Transitions this bundle from one authorization state to another.
-    pub fn try_map_authorization<B: Authorization, F: TryMapAuth<A, B>>(
+    pub fn try_map_authorization<R, B: Authorization, Error>(
         self,
-        mut f: F,
-    ) -> Result<Bundle<B, V>, F::Error> {
+        mut context: R,
+        spend_proof: impl Fn(&mut R, A::SpendProof) -> Result<B::SpendProof, Error>,
+        output_proof: impl Fn(&mut R, A::OutputProof) -> Result<B::OutputProof, Error>,
+        auth_sig: impl Fn(&mut R, A::AuthSig) -> Result<B::AuthSig, Error>,
+        auth: impl Fn(&mut R, A) -> Result<B, Error>,
+    ) -> Result<Bundle<B, V>, Error> {
         Ok(Bundle {
             shielded_spends: self
                 .shielded_spends
@@ -185,8 +149,8 @@ impl<A: Authorization, V> Bundle<A, V> {
                         anchor: d.anchor,
                         nullifier: d.nullifier,
                         rk: d.rk,
-                        zkproof: f.try_map_spend_proof(d.zkproof)?,
-                        spend_auth_sig: f.try_map_auth_sig(d.spend_auth_sig)?,
+                        zkproof: spend_proof(&mut context, d.zkproof)?,
+                        spend_auth_sig: auth_sig(&mut context, d.spend_auth_sig)?,
                     })
                 })
                 .collect::<Result<_, _>>()?,
@@ -200,12 +164,12 @@ impl<A: Authorization, V> Bundle<A, V> {
                         ephemeral_key: o.ephemeral_key,
                         enc_ciphertext: o.enc_ciphertext,
                         out_ciphertext: o.out_ciphertext,
-                        zkproof: f.try_map_output_proof(o.zkproof)?,
+                        zkproof: output_proof(&mut context, o.zkproof)?,
                     })
                 })
                 .collect::<Result<_, _>>()?,
             value_balance: self.value_balance,
-            authorization: f.try_map_authorization(self.authorization)?,
+            authorization: auth(&mut context, self.authorization)?,
         })
     }
 }
