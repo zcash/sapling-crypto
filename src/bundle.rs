@@ -135,10 +135,10 @@ impl<A: Authorization, V> Bundle<A, V> {
     pub fn map_authorization<R, B: Authorization>(
         self,
         mut context: R,
-        mut spend_proof: impl FnMut(&mut R, A::SpendProof) -> B::SpendProof,
-        mut output_proof: impl FnMut(&mut R, A::OutputProof) -> B::OutputProof,
-        mut auth_sig: impl FnMut(&mut R, A::AuthSig) -> B::AuthSig,
-        mut auth: impl FnMut(&mut R, A) -> B,
+        spend_proof: impl Fn(&mut R, A::SpendProof) -> B::SpendProof,
+        output_proof: impl Fn(&mut R, A::OutputProof) -> B::OutputProof,
+        auth_sig: impl Fn(&mut R, A::AuthSig) -> B::AuthSig,
+        auth: impl FnOnce(&mut R, A) -> B,
     ) -> Bundle<B, V> {
         Bundle {
             shielded_spends: self
