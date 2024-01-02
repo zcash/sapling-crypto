@@ -36,10 +36,12 @@ pub enum BundleType {
     /// A transactional bundle will be padded if necessary to contain at least 2 outputs,
     /// irrespective of whether any genuine outputs are required.
     Transactional {
-        /// A flag that, when set to `true`, indicates that the resulting bundle should be produced
-        /// with the minimum required outputs irrespective of whether any outputs have been
-        /// requested; if no explicit outputs have been added, all of the outputs in the resulting
-        /// bundle will be dummies.
+        /// A flag that, when set to `true`, indicates that the resulting bundle should be
+        /// produced with the minimum required number of spends (1) and outputs (2 with
+        /// padding) to be usable on its own in a transaction, irrespective of whether any
+        /// spends or outputs have been requested. If no explicit spends or outputs have
+        /// been added, all of the spends and outputs in the resulting bundle will be
+        /// dummies.
         bundle_required: bool,
     },
     /// A coinbase bundle is required to have no spends. No output padding is performed.
@@ -47,8 +49,8 @@ pub enum BundleType {
 }
 
 impl BundleType {
-    /// The default bundle type has all flags enabled, and does not require a bundle to be produced
-    /// if no spends or outputs have been added to the bundle.
+    /// The default bundle type allows both spends and outputs, and does not require a
+    /// bundle to be produced if no spends or outputs have been added to the bundle.
     pub const DEFAULT: BundleType = BundleType::Transactional {
         bundle_required: false,
     };
@@ -173,16 +175,16 @@ impl SpendInfo {
         self.note.value()
     }
 
-    /// Defined in [Zcash Protocol Spec § 4.8.3: Dummy Notes (Sapling)][orcharddummynotes].
+    /// Defined in [Zcash Protocol Spec § 4.8.2: Dummy Notes (Sapling)][saplingdummynotes].
     ///
-    /// [orcharddummynotes]: https://zips.z.cash/protocol/nu5.pdf#orcharddummynotes
+    /// [saplingdummynotes]: https://zips.z.cash/protocol/protocol.pdf#saplingdummynotes
     fn dummy<R: RngCore>(mut rng: R) -> Self {
         let (sk, _, note) = Note::dummy(&mut rng);
         let merkle_path = MerklePath::from_parts(
             iter::repeat_with(|| Node::from_scalar(jubjub::Base::random(&mut rng)))
                 .take(NOTE_COMMITMENT_TREE_DEPTH.into())
                 .collect(),
-            Position::from(rng.next_u64()),
+            Position::from(0),
         )
         .expect("The path length corresponds to the length of the generated vector.");
 
@@ -997,7 +999,7 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, PartiallyAuthorized>, V> {
                 }
                 s => s,
             },
-            |_rng, partial| partial,
+            |_, partial| partial,
         )
     }
 
@@ -1048,7 +1050,7 @@ impl<V> Bundle<InProgress<Proven, PartiallyAuthorized>, V> {
     ///
     /// Returns an error if any signatures are missing.
     pub fn finalize(self) -> Result<Bundle<Authorized, V>, Error> {
-        self.try_map_authorization::<(), _, _>(
+        self.try_map_authorization(
             (),
             |_, v| Ok(v),
             |_, v| Ok(v),
