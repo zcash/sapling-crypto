@@ -8,7 +8,7 @@
 //!   single [`Bundle`].
 //! - `valueBalanceSapling`, which is a signed 63-bit integer. This is represented
 //!   by a user-defined type parameter on [`Bundle`], returned by
-//!   [`Bundle::value_balance`] and [`SaplingBuilder::value_balance`].
+//!   [`Bundle::value_balance`] and [`Builder::value_balance`].
 //!
 //! If your specific instantiation of the Sapling protocol requires a smaller bound on
 //! valid note values (for example, Zcash's `MAX_MONEY` fits into a 51-bit integer), you
@@ -17,7 +17,7 @@
 //! - Define your `valueBalanceSapling` type to enforce your valid value range. This can
 //!   be checked in its `TryFrom<i64>` implementation.
 //! - Define your own "amount" type for note values, and convert it to `NoteValue` prior
-//!   to calling [`SaplingBuilder::add_output`].
+//!   to calling [`Builder::add_output`].
 //!
 //! Inside the circuit, note values are constrained to be unsigned 64-bit integers.
 //!
@@ -33,8 +33,8 @@
 //!
 //! [`Bundle`]: crate::Bundle
 //! [`Bundle::value_balance`]: crate::Bundle::value_balance
-//! [`SaplingBuilder::value_balance`]: crate::builder::SaplingBuilder::value_balance
-//! [`SaplingBuilder::add_output`]: crate::builder::SaplingBuilder::add_output
+//! [`Builder::value_balance`]: crate::builder::Builder::value_balance
+//! [`Builder::add_output`]: crate::builder::Builder::add_output
 //! [Rust documentation]: https://doc.rust-lang.org/stable/std/primitive.i64.html
 
 use bitvec::{array::BitArray, order::Lsb0};

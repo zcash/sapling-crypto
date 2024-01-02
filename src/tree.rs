@@ -67,6 +67,43 @@ fn merkle_hash_field(depth: usize, lhs: &[u8; 32], rhs: &[u8; 32]) -> jubjub::Ba
     .get_u()
 }
 
+/// The root of a Sapling commitment tree.
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
+pub struct Anchor(jubjub::Base);
+
+impl From<jubjub::Base> for Anchor {
+    fn from(anchor_field: jubjub::Base) -> Anchor {
+        Anchor(anchor_field)
+    }
+}
+
+impl From<Node> for Anchor {
+    fn from(anchor: Node) -> Anchor {
+        Anchor(anchor.0)
+    }
+}
+
+impl Anchor {
+    /// The anchor of the empty Orchard note commitment tree.
+    ///
+    /// This anchor does not correspond to any valid anchor for a spend, so it
+    /// may only be used for coinbase bundles or in circumstances where Orchard
+    /// functionality is not active.
+    pub fn empty_tree() -> Anchor {
+        Anchor(Node::empty_root(NOTE_COMMITMENT_TREE_DEPTH.into()).0)
+    }
+
+    /// Parses an Orchard anchor from a byte encoding.
+    pub fn from_bytes(bytes: [u8; 32]) -> CtOption<Anchor> {
+        jubjub::Base::from_repr(bytes).map(Self)
+    }
+
+    /// Returns the byte encoding of this anchor.
+    pub fn to_bytes(self) -> [u8; 32] {
+        self.0.to_repr()
+    }
+}
+
 /// A node within the Sapling commitment tree.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Node(jubjub::Base);

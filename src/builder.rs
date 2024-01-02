@@ -4,14 +4,14 @@ use core::fmt;
 use std::{iter, marker::PhantomData};
 
 use group::ff::Field;
+use incrementalmerkletree::Position;
 use rand::{seq::SliceRandom, RngCore};
 use rand_core::CryptoRng;
 use redjubjub::{Binding, SpendAuth};
 
 use crate::{
     bundle::{
-        Authorization, Authorized, Bundle, GrothProofBytes, MapAuth, OutputDescription,
-        SpendDescription,
+        Authorization, Authorized, Bundle, GrothProofBytes, OutputDescription, SpendDescription,
     },
     circuit,
     keys::{OutgoingViewingKey, SpendAuthorizingKey, SpendValidatingKey},
@@ -22,7 +22,8 @@ use crate::{
         CommitmentSum, NoteValue, TrapdoorSum, ValueCommitTrapdoor, ValueCommitment, ValueSum,
     },
     zip32::ExtendedSpendingKey,
-    Diversifier, MerklePath, Node, Note, PaymentAddress, ProofGenerationKey, SaplingIvk,
+    Anchor, Diversifier, MerklePath, Node, Note, PaymentAddress, ProofGenerationKey, SaplingIvk,
+    NOTE_COMMITMENT_TREE_DEPTH,
 };
 
 /// If there are any shielded inputs, always have at least two shielded outputs, padding
@@ -34,12 +35,50 @@ const MIN_SHIELDED_OUTPUTS: usize = 2;
 pub enum BundleType {
     /// A transactional bundle will be padded if necessary to contain at least 2 outputs,
     /// irrespective of whether any genuine outputs are required.
-    Transactional { anchor: Node },
+    Transactional {
+        /// A flag that, when set to `true`, indicates that the resulting bundle should be
+        /// produced with the minimum required number of spends (1) and outputs (2 with
+        /// padding) to be usable on its own in a transaction, irrespective of whether any
+        /// spends or outputs have been requested. If no explicit spends or outputs have
+        /// been added, all of the spends and outputs in the resulting bundle will be
+        /// dummies.
+        bundle_required: bool,
+    },
     /// A coinbase bundle is required to have no spends. No output padding is performed.
     Coinbase,
 }
 
 impl BundleType {
+    /// The default bundle type allows both spends and outputs, and does not require a
+    /// bundle to be produced if no spends or outputs have been added to the bundle.
+    pub const DEFAULT: BundleType = BundleType::Transactional {
+        bundle_required: false,
+    };
+
+    /// Returns the number of logical spends that a builder will produce in constructing a bundle
+    /// of this type, given the specified numbers of spends and outputs.
+    ///
+    /// Returns an error if the specified number of spends and outputs is incompatible with
+    /// this bundle type.
+    pub fn num_spends(&self, requested_spends: usize) -> Result<usize, &'static str> {
+        match self {
+            BundleType::Transactional { bundle_required } => {
+                Ok(if *bundle_required || requested_spends > 0 {
+                    core::cmp::max(requested_spends, 1)
+                } else {
+                    0
+                })
+            }
+            BundleType::Coinbase => {
+                if requested_spends == 0 {
+                    Ok(0)
+                } else {
+                    Err("Spends not allowed in coinbase bundles")
+                }
+            }
+        }
+    }
+
     /// Returns the number of logical outputs that a builder will produce in constructing a bundle
     /// of this type, given the specified numbers of spends and outputs.
     ///
@@ -47,16 +86,20 @@ impl BundleType {
     /// this bundle type.
     pub fn num_outputs(
         &self,
-        num_spends: usize,
-        num_outputs: usize,
+        requested_spends: usize,
+        requested_outputs: usize,
     ) -> Result<usize, &'static str> {
         match self {
-            BundleType::Transactional { .. } => {
-                Ok(core::cmp::max(num_outputs, MIN_SHIELDED_OUTPUTS))
+            BundleType::Transactional { bundle_required } => {
+                Ok(if *bundle_required || requested_outputs > 0 {
+                    core::cmp::max(requested_outputs, MIN_SHIELDED_OUTPUTS)
+                } else {
+                    0
+                })
             }
             BundleType::Coinbase => {
-                if num_spends == 0 {
-                    Ok(num_outputs)
+                if requested_spends == 0 {
+                    Ok(requested_outputs)
                 } else {
                     Err("Spends not allowed in coinbase bundles")
                 }
@@ -109,6 +152,7 @@ pub struct SpendInfo {
     proof_generation_key: ProofGenerationKey,
     note: Note,
     merkle_path: MerklePath,
+    dummy_ask: Option<SpendAuthorizingKey>,
 }
 
 impl SpendInfo {
@@ -122,6 +166,7 @@ impl SpendInfo {
             proof_generation_key,
             note,
             merkle_path,
+            dummy_ask: None,
         }
     }
 
@@ -130,12 +175,33 @@ impl SpendInfo {
         self.note.value()
     }
 
-    fn has_matching_anchor(&self, anchor: Node) -> bool {
+    /// Defined in [Zcash Protocol Spec § 4.8.2: Dummy Notes (Sapling)][saplingdummynotes].
+    ///
+    /// [saplingdummynotes]: https://zips.z.cash/protocol/protocol.pdf#saplingdummynotes
+    fn dummy<R: RngCore>(mut rng: R) -> Self {
+        let (sk, _, note) = Note::dummy(&mut rng);
+        let merkle_path = MerklePath::from_parts(
+            iter::repeat_with(|| Node::from_scalar(jubjub::Base::random(&mut rng)))
+                .take(NOTE_COMMITMENT_TREE_DEPTH.into())
+                .collect(),
+            Position::from(0),
+        )
+        .expect("The path length corresponds to the length of the generated vector.");
+
+        SpendInfo {
+            proof_generation_key: sk.proof_generation_key(),
+            note,
+            merkle_path,
+            dummy_ask: Some(sk.ask),
+        }
+    }
+
+    fn has_matching_anchor(&self, anchor: &Anchor) -> bool {
         if self.note.value() == NoteValue::ZERO {
             true
         } else {
             let node = Node::from_cmu(&self.note.cmu());
-            self.merkle_path.root(node) == anchor
+            &Anchor::from(self.merkle_path.root(node)) == anchor
         }
     }
 
@@ -145,6 +211,7 @@ impl SpendInfo {
             note: self.note,
             merkle_path: self.merkle_path,
             rcv: ValueCommitTrapdoor::random(rng),
+            dummy_ask: self.dummy_ask,
         }
     }
 }
@@ -155,6 +222,7 @@ struct PreparedSpendInfo {
     note: Note,
     merkle_path: MerklePath,
     rcv: ValueCommitTrapdoor,
+    dummy_ask: Option<SpendAuthorizingKey>,
 }
 
 impl PreparedSpendInfo {
@@ -197,7 +265,10 @@ impl PreparedSpendInfo {
             nullifier,
             rk,
             zkproof,
-            SigningParts { ak, alpha },
+            SigningMetadata {
+                dummy_ask: self.dummy_ask,
+                parts: SigningParts { ak, alpha },
+            },
         ))
     }
 }
@@ -323,7 +394,7 @@ impl PreparedOutputInfo {
     }
 }
 
-/// Metadata about a transaction created by a [`SaplingBuilder`].
+/// Metadata about a transaction created by a [`Builder`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaplingMetadata {
     spend_indices: Vec<usize>,
@@ -339,22 +410,22 @@ impl SaplingMetadata {
     }
 
     /// Returns the index within the transaction of the [`SpendDescription`] corresponding
-    /// to the `n`-th call to [`SaplingBuilder::add_spend`].
+    /// to the `n`-th call to [`Builder::add_spend`].
     ///
     /// Note positions are randomized when building transactions for indistinguishability.
     /// This means that the transaction consumer cannot assume that e.g. the first spend
-    /// they added (via the first call to [`SaplingBuilder::add_spend`]) is the first
+    /// they added (via the first call to [`Builder::add_spend`]) is the first
     /// [`SpendDescription`] in the transaction.
     pub fn spend_index(&self, n: usize) -> Option<usize> {
         self.spend_indices.get(n).copied()
     }
 
     /// Returns the index within the transaction of the [`OutputDescription`] corresponding
-    /// to the `n`-th call to [`SaplingBuilder::add_output`].
+    /// to the `n`-th call to [`Builder::add_output`].
     ///
     /// Note positions are randomized when building transactions for indistinguishability.
     /// This means that the transaction consumer cannot assume that e.g. the first output
-    /// they added (via the first call to [`SaplingBuilder::add_output`]) is the first
+    /// they added (via the first call to [`Builder::add_output`]) is the first
     /// [`OutputDescription`] in the transaction.
     pub fn output_index(&self, n: usize) -> Option<usize> {
         self.output_indices.get(n).copied()
@@ -362,22 +433,28 @@ impl SaplingMetadata {
 }
 
 /// A mutable builder type for constructing Sapling bundles.
-pub struct SaplingBuilder {
+pub struct Builder {
     value_balance: ValueSum,
     spends: Vec<SpendInfo>,
     outputs: Vec<OutputInfo>,
     zip212_enforcement: Zip212Enforcement,
     bundle_type: BundleType,
+    anchor: Anchor,
 }
 
-impl SaplingBuilder {
-    pub fn new(zip212_enforcement: Zip212Enforcement, bundle_type: BundleType) -> Self {
-        SaplingBuilder {
+impl Builder {
+    pub fn new(
+        zip212_enforcement: Zip212Enforcement,
+        bundle_type: BundleType,
+        anchor: Anchor,
+    ) -> Self {
+        Builder {
             value_balance: ValueSum::zero(),
             spends: vec![],
             outputs: vec![],
             zip212_enforcement,
             bundle_type,
+            anchor,
         }
     }
 
@@ -422,8 +499,8 @@ impl SaplingBuilder {
 
         // Consistency check: all anchors must equal the first one
         match self.bundle_type {
-            BundleType::Transactional { anchor } => {
-                if !spend.has_matching_anchor(anchor) {
+            BundleType::Transactional { .. } => {
+                if !spend.has_matching_anchor(&self.anchor) {
                     return Err(Error::AnchorMismatch);
                 }
             }
@@ -441,8 +518,7 @@ impl SaplingBuilder {
     }
 
     /// Adds a Sapling address to send funds to.
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_output<R: RngCore>(
+    pub fn add_output(
         &mut self,
         ovk: Option<OutgoingViewingKey>,
         to: PaymentAddress,
@@ -466,10 +542,11 @@ impl SaplingBuilder {
     ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
         bundle::<SP, OP, _, _>(
             rng,
-            self.spends,
-            self.outputs,
             self.bundle_type,
             self.zip212_enforcement,
+            self.anchor,
+            self.spends,
+            self.outputs,
         )
     }
 }
@@ -478,15 +555,16 @@ impl SaplingBuilder {
 /// and outputs.
 pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     mut rng: R,
-    spends: Vec<SpendInfo>,
-    outputs: Vec<OutputInfo>,
     bundle_type: BundleType,
     zip212_enforcement: Zip212Enforcement,
+    anchor: Anchor,
+    spends: Vec<SpendInfo>,
+    outputs: Vec<OutputInfo>,
 ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
     match bundle_type {
-        BundleType::Transactional { anchor } => {
+        BundleType::Transactional { .. } => {
             for spend in &spends {
-                if !spend.has_matching_anchor(anchor) {
+                if !spend.has_matching_anchor(&anchor) {
                     return Err(Error::AnchorMismatch);
                 }
             }
@@ -497,6 +575,11 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
             }
         }
     }
+
+    let requested_spend_count = spends.len();
+    let bundle_spend_count = bundle_type
+        .num_spends(requested_spend_count)
+        .map_err(|_| Error::BundleTypeNotSatisfiable)?;
 
     let requested_output_count = outputs.len();
     let bundle_output_count = bundle_type
@@ -510,8 +593,14 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     tx_metadata.spend_indices.resize(spends.len(), 0);
     tx_metadata.output_indices.resize(requested_output_count, 0);
 
-    // Record initial spend positions
-    let mut indexed_spends: Vec<_> = spends.into_iter().enumerate().collect();
+    // Create any required dummy spends and record initial spend positions
+    let mut indexed_spends: Vec<_> = spends
+        .into_iter()
+        .chain(iter::repeat_with(|| SpendInfo::dummy(&mut rng)))
+        .enumerate()
+        .take(bundle_spend_count)
+        .collect();
+
     // Create any required dummy outputs and record initial output positions
     let mut indexed_outputs: Vec<_> = outputs
         .into_iter()
@@ -530,7 +619,9 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         .enumerate()
         .map(|(i, (pos, spend))| {
             // Record the post-randomized spend location
-            tx_metadata.spend_indices[pos] = i;
+            if pos < requested_spend_count {
+                tx_metadata.spend_indices[pos] = i;
+            }
 
             spend.prepare(&mut rng)
         })
@@ -607,7 +698,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
 
 /// Type alias for an in-progress bundle that has no proofs or signatures.
 ///
-/// This is returned by [`SaplingBuilder::build`].
+/// This is returned by [`Builder::build`].
 pub type UnauthorizedBundle<V> = Bundle<InProgress<Unproven, Unsigned>, V>;
 
 /// Marker trait representing bundle proofs in the process of being created.
@@ -719,17 +810,7 @@ impl<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress>
         self.progress_notifier
             .update(self.progress, self.total_progress);
     }
-}
 
-impl<
-        'a,
-        S: InProgressSignatures,
-        SP: SpendProver,
-        OP: OutputProver,
-        R: RngCore,
-        U: ProverProgress,
-    > MapAuth<InProgress<Unproven, S>, InProgress<Proven, S>> for CreateProofs<'a, SP, OP, R, U>
-{
     fn map_spend_proof(&mut self, spend: circuit::Spend) -> GrothProofBytes {
         let proof = self.spend_prover.create_proof(spend, &mut self.rng);
         self.update_progress();
@@ -742,11 +823,10 @@ impl<
         OP::encode_proof(proof)
     }
 
-    fn map_auth_sig(&mut self, s: S::AuthSig) -> S::AuthSig {
-        s
-    }
-
-    fn map_authorization(&mut self, a: InProgress<Unproven, S>) -> InProgress<Proven, S> {
+    fn map_authorization<S: InProgressSignatures>(
+        &mut self,
+        a: InProgress<Unproven, S>,
+    ) -> InProgress<Proven, S> {
         InProgress {
             sigs: a.sigs,
             _proof_state: PhantomData::default(),
@@ -765,13 +845,21 @@ impl<S: InProgressSignatures, V> Bundle<InProgress<Unproven, S>, V> {
     ) -> Bundle<InProgress<Proven, S>, V> {
         let total_progress =
             self.shielded_spends().len() as u32 + self.shielded_outputs().len() as u32;
-        self.map_authorization(CreateProofs::new(
+        let mut cp = CreateProofs::new(
             spend_prover,
             output_prover,
             rng,
             progress_notifier,
             total_progress,
-        ))
+        );
+
+        self.map_authorization(
+            &mut cp,
+            |cp, spend| cp.map_spend_proof(spend),
+            |cp, output| cp.map_output_proof(output),
+            |_cp, sig| sig,
+            |cp, auth| cp.map_authorization(auth),
+        )
     }
 }
 
@@ -788,7 +876,7 @@ impl fmt::Debug for Unsigned {
 }
 
 impl InProgressSignatures for Unsigned {
-    type AuthSig = SigningParts;
+    type AuthSig = SigningMetadata;
 }
 
 /// The parts needed to sign a [`SpendDescription`].
@@ -808,6 +896,18 @@ pub struct PartiallyAuthorized {
     sighash: [u8; 32],
 }
 
+/// Container for metadata needed to sign a Sapling input.
+#[derive(Clone, Debug)]
+pub struct SigningMetadata {
+    /// If this action is spending a dummy note, this field holds that note's spend
+    /// authorizing key.
+    ///
+    /// These keys are used automatically in [`Bundle<Unauthorized>::prepare`] or
+    /// [`Bundle<Unauthorized>::apply_signatures`] to sign dummy spends.
+    dummy_ask: Option<SpendAuthorizingKey>,
+    parts: SigningParts,
+}
+
 impl InProgressSignatures for PartiallyAuthorized {
     type AuthSig = MaybeSigned;
 }
@@ -818,7 +918,7 @@ impl InProgressSignatures for PartiallyAuthorized {
 #[derive(Clone, Debug)]
 pub enum MaybeSigned {
     /// The information needed to sign this [`SpendDescription`].
-    SigningMetadata(SigningParts),
+    SigningParts(SigningParts),
     /// The signature for this [`SpendDescription`].
     Signature(redjubjub::Signature<SpendAuth>),
 }
@@ -841,18 +941,24 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, Unsigned>, V> {
         mut rng: R,
         sighash: [u8; 32],
     ) -> Bundle<InProgress<P, PartiallyAuthorized>, V> {
-        self.map_authorization((
-            |proof| proof,
-            |proof| proof,
-            MaybeSigned::SigningMetadata,
-            |auth: InProgress<P, Unsigned>| InProgress {
+        self.map_authorization(
+            &mut rng,
+            |_, proof| proof,
+            |_, proof| proof,
+            |rng, SigningMetadata { dummy_ask, parts }| match dummy_ask {
+                None => MaybeSigned::SigningParts(parts),
+                Some(ask) => {
+                    MaybeSigned::Signature(ask.randomize(&parts.alpha).sign(rng, &sighash))
+                }
+            },
+            |rng, auth: InProgress<P, Unsigned>| InProgress {
                 sigs: PartiallyAuthorized {
-                    binding_signature: auth.sigs.bsk.sign(&mut rng, &sighash),
+                    binding_signature: auth.sigs.bsk.sign(rng, &sighash),
                     sighash,
                 },
                 _proof_state: PhantomData::default(),
             },
-        ))
+        )
     }
 }
 
@@ -883,17 +989,18 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, PartiallyAuthorized>, V> {
     pub fn sign<R: RngCore + CryptoRng>(self, mut rng: R, ask: &SpendAuthorizingKey) -> Self {
         let expected_ak = ask.into();
         let sighash = self.authorization().sigs.sighash;
-        self.map_authorization((
-            |proof| proof,
-            |proof| proof,
-            |maybe| match maybe {
-                MaybeSigned::SigningMetadata(parts) if parts.ak == expected_ak => {
-                    MaybeSigned::Signature(ask.randomize(&parts.alpha).sign(&mut rng, &sighash))
+        self.map_authorization(
+            &mut rng,
+            |_, proof| proof,
+            |_, proof| proof,
+            |rng, maybe| match maybe {
+                MaybeSigned::SigningParts(parts) if parts.ak == expected_ak => {
+                    MaybeSigned::Signature(ask.randomize(&parts.alpha).sign(rng, &sighash))
                 }
                 s => s,
             },
-            |partial| partial,
-        ))
+            |_, partial| partial,
+        )
     }
 
     /// Appends externally computed [`redjubjub::Signature`]s.
@@ -911,24 +1018,25 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, PartiallyAuthorized>, V> {
     fn append_signature(self, signature: &redjubjub::Signature<SpendAuth>) -> Result<Self, Error> {
         let sighash = self.authorization().sigs.sighash;
         let mut signature_valid_for = 0usize;
-        let bundle = self.map_authorization((
-            |proof| proof,
-            |proof| proof,
-            |maybe| match maybe {
-                MaybeSigned::SigningMetadata(parts) => {
+        let bundle = self.map_authorization(
+            &mut signature_valid_for,
+            |_, proof| proof,
+            |_, proof| proof,
+            |ctx, maybe| match maybe {
+                MaybeSigned::SigningParts(parts) => {
                     let rk = parts.ak.randomize(&parts.alpha);
                     if rk.verify(&sighash, signature).is_ok() {
-                        signature_valid_for += 1;
+                        **ctx += 1;
                         MaybeSigned::Signature(*signature)
                     } else {
                         // Signature isn't for this input.
-                        MaybeSigned::SigningMetadata(parts)
+                        MaybeSigned::SigningParts(parts)
                     }
                 }
                 s => s,
             },
-            |partial| partial,
-        ));
+            |_, partial| partial,
+        );
         match signature_valid_for {
             0 => Err(Error::InvalidExternalSignature),
             1 => Ok(bundle),
@@ -942,16 +1050,17 @@ impl<V> Bundle<InProgress<Proven, PartiallyAuthorized>, V> {
     ///
     /// Returns an error if any signatures are missing.
     pub fn finalize(self) -> Result<Bundle<Authorized, V>, Error> {
-        self.try_map_authorization((
-            Ok,
-            Ok,
-            |maybe: MaybeSigned| maybe.finalize(),
-            |partial: InProgress<Proven, PartiallyAuthorized>| {
+        self.try_map_authorization(
+            (),
+            |_, v| Ok(v),
+            |_, v| Ok(v),
+            |_, maybe: MaybeSigned| maybe.finalize(),
+            |_, partial: InProgress<Proven, PartiallyAuthorized>| {
                 Ok(Authorized {
                     binding_sig: partial.sigs.binding_signature,
                 })
             },
-        ))
+        )
     }
 }
 
@@ -970,13 +1079,13 @@ pub mod testing {
         testing::{arb_node, arb_note},
         value::testing::arb_positive_note_value,
         zip32::testing::arb_extended_spending_key,
-        Node, NOTE_COMMITMENT_TREE_DEPTH,
+        Anchor, Node,
     };
     use incrementalmerkletree::{
-        frontier::testing::arb_commitment_tree, witness::IncrementalWitness, Hashable, Level,
+        frontier::testing::arb_commitment_tree, witness::IncrementalWitness,
     };
 
-    use super::{BundleType, SaplingBuilder};
+    use super::{Builder, BundleType};
 
     #[allow(dead_code)]
     fn arb_bundle<V: fmt::Debug + From<i64>>(
@@ -1005,17 +1114,11 @@ pub mod testing {
                     let anchor = spendable_notes
                         .first()
                         .zip(commitment_trees.first())
-                        .map_or_else(
-                            || Node::empty_root(Level::from(NOTE_COMMITMENT_TREE_DEPTH)),
-                            |(note, tree)| {
-                                let node = Node::from_cmu(&note.cmu());
-                                Node::from_scalar(*tree.root(node).inner())
-                            },
-                        );
-                    let mut builder = SaplingBuilder::new(
-                        zip212_enforcement,
-                        BundleType::Transactional { anchor },
-                    );
+                        .map_or_else(Anchor::empty_tree, |(note, tree)| {
+                            let node = Node::from_cmu(&note.cmu());
+                            Anchor::from(*tree.root(node).inner())
+                        });
+                    let mut builder = Builder::new(zip212_enforcement, BundleType::DEFAULT, anchor);
                     let mut rng = StdRng::from_seed(rng_seed);
 
                     for (note, path) in spendable_notes

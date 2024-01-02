@@ -2,6 +2,11 @@ use group::{ff::Field, GroupEncoding};
 use rand_core::{CryptoRng, RngCore};
 use zcash_spec::PrfExpand;
 
+use crate::{
+    keys::{ExpandedSpendingKey, FullViewingKey},
+    zip32::ExtendedSpendingKey,
+};
+
 use super::{
     keys::EphemeralSecretKey, value::NoteValue, Nullifier, NullifierDerivingKey, PaymentAddress,
 };
@@ -147,6 +152,28 @@ impl Note {
                 &PrfExpand::SAPLING_ESK.with(&rseed),
             ))),
         }
+    }
+
+    /// Generates a dummy spent note.
+    ///
+    /// Defined in [Zcash Protocol Spec § 4.8.2: Dummy Notes (Sapling)][saplingdummynotes].
+    ///
+    /// [saplingdummynotes]: https://zips.z.cash/protocol/nu5.pdf#saplingdummynotes
+    pub(crate) fn dummy<R: RngCore>(mut rng: R) -> (ExpandedSpendingKey, FullViewingKey, Self) {
+        let mut sk_bytes = [0; 32];
+        rng.fill_bytes(&mut sk_bytes);
+
+        let extsk = ExtendedSpendingKey::master(&sk_bytes[..]);
+        let fvk = extsk.to_diversifiable_full_viewing_key().fvk().clone();
+        let recipient = extsk.default_address();
+
+        let mut rseed_bytes = [0; 32];
+        rng.fill_bytes(&mut rseed_bytes);
+        let rseed = Rseed::AfterZip212(rseed_bytes);
+
+        let note = Note::from_parts(recipient.1, NoteValue::ZERO, rseed);
+
+        (extsk.expsk, fvk, note)
     }
 }
 

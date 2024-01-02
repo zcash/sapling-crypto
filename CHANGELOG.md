@@ -10,6 +10,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
 `zcash_primitives 0.13.0`.
 
 ### Added
+- `sapling_crypto::Anchor`
 - `sapling_crypto::BatchValidator` (moved from `zcash_proofs::sapling`).
 - `sapling_crypto::SaplingVerificationContext` (moved from
   `zcash_proofs::sapling`).
@@ -25,6 +26,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `OutputInfo`
   - `ProverProgress`
   - `BundleType`
+  - `SigningMetadata`
   - `bundle` bundle builder function.
 - `sapling_crypto::bundle` module:
   - The following types moved from
@@ -32,7 +34,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
     - `Bundle`
     - `SpendDescription, SpendDescriptionV5`
     - `OutputDescription, OutputDescriptionV5`
-    - `Authorization, Authorized, MapAuth`
+    - `Authorization, Authorized`
     - `GrothProofBytes`
   - `Bundle::<InProgress<Unproven, _>>::create_proofs`
   - `Bundle::<InProgress<_, Unsigned>>::prepare`
@@ -40,10 +42,6 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `Bundle::<InProgress<Proven, PartiallyAuthorized>>::finalize`
   - `Bundle::<InProgress<Proven, Unsigned>>::apply_signatures`
   - `Bundle::try_map_authorization`
-  - `TryMapAuth`
-  - `impl {MapAuth, TryMapAuth} for (FnMut, FnMut, FnMut, FnMut)`
-    helpers to enable calling `Bundle::{map_authorization, try_map_authorization}`
-    with a set of closures.
   - `testing` module, containing the following functions moved from
     `zcash_primitives::transaction::components::sapling::testing`:
     - `arb_output_description`
@@ -91,21 +89,26 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
 - `sapling_crypto::address::PaymentAddress::create_note` now takes its `value`
   argument as a `NoteValue` instead of as a bare `u64`.
 - `sapling_crypto::builder`:
-  - `SaplingBuilder` no longer has a `P: zcash_primitives::consensus::Parameters`
+  - `SaplingBuilder` has been renamed to `Builder`
+  - `MaybeSigned::SigningMetadata` has been renamed to `MaybeSigned::SigningParts`
+  - `Builder` no longer has a `P: zcash_primitives::consensus::Parameters`
     type parameter.
-  - `SaplingBuilder::new` now takes a `Zip212Enforcement` argument instead of a
+  - `Builder::new` now takes a `Zip212Enforcement` argument instead of a
     `P: zcash_primitives::consensus::Parameters` argument and a target height.
-  - `SaplingBuilder::add_spend` now takes `extsk` by reference. Also, it no
+    It also now takes as an argument the Sapling anchor to be used for all
+    spends in the bundle. 
+  - `Builder::add_spend` now takes `extsk` by reference. Also, it no
     longer takes a `diversifier` argument as the diversifier may be obtained
-    from the note.
-  - `SaplingBuilder::add_output` now takes an `Option<[u8; 512]>` memo instead
+    from the note. All calls to `add_spend` are now required to use an anchor
+    that corresponds to the anchor provided at builder construction.
+  - `Builder::add_output` now takes an `Option<[u8; 512]>` memo instead
     of a `MemoBytes`.
-  - `SaplingBuilder::build` no longer takes a prover, proving context, progress
+  - `Builder::build` no longer takes a prover, proving context, progress
     notifier, or target height. Instead, it has `SpendProver, OutputProver`
     generic parameters and returns `(UnauthorizedBundle, SaplingMetadata)`. The
     caller can then use `Bundle::<InProgress<Unproven, _>>::create_proofs` to
     create spend and output proofs for the bundle.
-  - `SaplingBuilder::build` now takes a `BundleType` argument that instructs
+  - `Builder::build` now takes a `BundleType` argument that instructs
     it how to pad the bundle with dummy outputs.
   - `Error` has new error variants:
     - `Error::DuplicateSignature`
@@ -116,6 +119,9 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `Bundle` now has a second generic parameter `V`.
   - `Bundle::value_balance` now returns `&V` instead of
     `&zcash_primitives::transaction::components::Amount`.
+  - `Bundle::map_authorization` now takes a context argument and explicit 
+    functions for each mappable field, rather than a `MapAuth` value, in 
+    order to simplify handling of context values.
   - `Authorized::binding_sig` now has type `redjubjub::Signature<Binding>`.
   - `Authorized::AuthSig` now has type `redjubjub::Signature<SpendAuth>`.
   - `SpendDescription::temporary_zcashd_from_parts` now takes `rk` as
@@ -126,7 +132,6 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
     `redjubjub::Signature<SpendAuth>` instead of
     `sapling_crypto::redjubjub::Signature`.
   - `testing::arb_bundle` now takes a `value_balance: V` argument.
-  - `MapAuth` trait methods now take `&mut self` instead of `&self`.
 - `sapling_crypto::circuit::ValueCommitmentOpening::value` is now represented as
   a `NoteValue` instead of as a bare `u64`.
 - `sapling_crypto::keys`:
@@ -170,6 +175,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `OutputDescription::read`
   - `OutputDescription::{write_v4, write_v5_without_proof}`
   - `OutputDescriptionV5::read`
+  - `MapAuth` trait
 - `sapling_crypto::builder`:
   - `SpendDescriptionInfo`
 - `sapling_crypto::note_encryption::SaplingDomain::for_height` (use
