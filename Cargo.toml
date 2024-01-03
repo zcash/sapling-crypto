@@ -80,6 +80,8 @@ rand_xorshift = "0.3"
 pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
 
 [features]
+default = ["multicore"]
+
 ## Enables multithreading support for creating proofs.
 multicore = ["bellman/multicore"]
 
