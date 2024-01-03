@@ -171,6 +171,7 @@ impl OutputProver for OutputParameters {
 }
 
 #[cfg(any(test, feature = "test-dependencies"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
 pub mod mock {
     use ff::Field;
 

@@ -13,6 +13,10 @@ homepage = "https://github.com/zcash/sapling-crypto"
 repository = "https://github.com/zcash/sapling-crypto"
 license = "MIT OR Apache-2.0"
 
+[package.metadata.docs.rs]
+features = ["test-dependencies"]
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 ff = "0.13"
 group = { version = "0.13", features = ["wnaf-memuse"] }
@@ -32,6 +36,9 @@ rand_core = "0.6"
 # Digests
 blake2b_simd = "1"
 blake2s_simd = "1"
+
+# Documentation
+document-features = "0.2"
 
 # Encodings
 byteorder = "1"
@@ -73,11 +80,19 @@ rand_xorshift = "0.3"
 pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
 
 [features]
+default = ["multicore"]
+
+## Enables multithreading support for creating proofs.
 multicore = ["bellman/multicore"]
+
+### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
+### should not be relied upon and will be removed in a future release.
 temporary-zcashd = []
+
+## Exposes APIs that are useful for testing, such as `proptest` strategies.
 test-dependencies = [
     "incrementalmerkletree/test-dependencies",
-    "proptest",
+    "dep:proptest",
 ]
 
 [[bench]]
