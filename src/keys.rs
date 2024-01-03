@@ -662,6 +662,7 @@ impl SharedSecret {
 }
 
 #[cfg(any(test, feature = "test-dependencies"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
 pub mod testing {
     use proptest::collection::vec;
     use proptest::prelude::*;

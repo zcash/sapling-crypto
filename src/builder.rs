@@ -1065,7 +1065,7 @@ impl<V> Bundle<InProgress<Proven, PartiallyAuthorized>, V> {
 }
 
 #[cfg(any(test, feature = "test-dependencies"))]
-pub mod testing {
+pub(crate) mod testing {
     use std::fmt;
 
     use proptest::collection::vec;
