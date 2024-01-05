@@ -285,7 +285,7 @@ impl ExpandedSpendingKey {
         writer.write_all(&self.to_bytes())
     }
 
-    /// Encodes the expanded spending key to the its seralized representation
+    /// Encodes the expanded spending key to its serialized representation
     /// as part of the encoding of the extended spending key as defined in
     /// [ZIP 32](https://zips.z.cash/zip-0032)
     pub fn to_bytes(&self) -> [u8; 96] {
