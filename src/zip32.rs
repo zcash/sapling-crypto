@@ -15,6 +15,7 @@ use std::io::{self, Read, Write};
 use std::ops::AddAssign;
 
 use super::{Diversifier, NullifierDerivingKey, PaymentAddress, ViewingKey};
+use crate::keys::ProofAuthorizingKey;
 use crate::{
     constants::PROOF_GENERATION_KEY_GENERATOR,
     keys::{
@@ -441,12 +442,12 @@ impl ExtendedSpendingKey {
                 let mut nsk =
                     jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_ZIP32_CHILD_I_NSK.with(i_l));
                 ask.add_assign(self.expsk.ask.to_scalar());
-                nsk.add_assign(&self.expsk.nsk);
+                nsk.add_assign(self.expsk.nsk.to_scalar());
                 let ovk = derive_child_ovk(&self.expsk.ovk, i_l);
                 ExpandedSpendingKey {
                     ask: SpendAuthorizingKey::from_scalar(ask)
                         .expect("negligible chance of ask == 0"),
-                    nsk,
+                    nsk: ProofAuthorizingKey::from_scalar(nsk),
                     ovk,
                 }
             },
@@ -478,7 +479,7 @@ impl ExtendedSpendingKey {
         let i_nsk =
             jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_ZIP32_INTERNAL_NSK.with(i.as_bytes()));
         let r = PrfExpand::SAPLING_ZIP32_INTERNAL_DK_OVK.with(i.as_bytes());
-        let nsk_internal = i_nsk + self.expsk.nsk;
+        let nsk_internal = ProofAuthorizingKey::from_scalar(i_nsk + self.expsk.nsk.to_scalar());
         let dk_internal = DiversifierKey(r[..32].try_into().unwrap());
         let ovk_internal = OutgoingViewingKey(r[32..].try_into().unwrap());
 
@@ -816,7 +817,7 @@ mod tests {
     use super::*;
 
     use super::{DiversifiableFullViewingKey, ExtendedSpendingKey};
-    use ff::PrimeField;
+
     use group::GroupEncoding;
 
     #[test]
@@ -1626,7 +1627,7 @@ mod tests {
 
         for (xsk, tv) in xsks.iter().zip(test_vectors.iter()) {
             assert_eq!(xsk.expsk.ask.to_bytes(), tv.ask.unwrap());
-            assert_eq!(xsk.expsk.nsk.to_repr().as_ref(), tv.nsk.unwrap());
+            assert_eq!(xsk.expsk.nsk.to_bytes(), tv.nsk.unwrap());
 
             assert_eq!(xsk.expsk.ovk.0, tv.ovk);
             assert_eq!(xsk.dk.0, tv.dk);
@@ -1638,10 +1639,7 @@ mod tests {
 
             let internal_xsk = xsk.derive_internal();
             assert_eq!(internal_xsk.expsk.ask.to_bytes(), tv.ask.unwrap());
-            assert_eq!(
-                internal_xsk.expsk.nsk.to_repr().as_ref(),
-                tv.internal_nsk.unwrap()
-            );
+            assert_eq!(internal_xsk.expsk.nsk.to_bytes(), tv.internal_nsk.unwrap());
 
             assert_eq!(internal_xsk.expsk.ovk.0, tv.internal_ovk);
             assert_eq!(internal_xsk.dk.0, tv.internal_dk);

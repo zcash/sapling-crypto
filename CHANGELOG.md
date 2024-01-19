@@ -7,6 +7,16 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `sapling_crypto::keys`:
+  - `ProofAuthorizingKey`
+  - `impl From<&ProofAuthorizingKey> for NullifierDerivingKey`
+
+### Changed
+- `sapling_crypto::keys`:
+  - `ExpandedSpendingKey.nsk` now has type `ProofAuthorizingKey`.
+  - `ProofGenerationKey.nsk` now has type `ProofAuthorizingKey`.
+
 ## [0.1.0] - 2024-01-26
 The crate has been completely rewritten. See [`zcash/librustzcash`] for the
 history of this rewrite.
