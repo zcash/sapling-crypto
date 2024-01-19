@@ -379,7 +379,7 @@ impl ExtendedSpendingKey {
         })
     }
 
-    /// Encodes the extended spending key to the its seralized representation as defined in
+    /// Encodes the extended spending key to its serialized representation as defined in
     /// [ZIP 32](https://zips.z.cash/zip-0032)
     pub fn to_bytes(&self) -> [u8; 169] {
         let mut result = [0u8; 169];
