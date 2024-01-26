@@ -6,6 +6,11 @@ and this library adheres to Rust's notion of
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0] - 2024-01-26
+The crate has been completely rewritten. See [`zcash/librustzcash`] for the
+history of this rewrite.
+
 The entries below are relative to the `zcash_primitives::sapling` module as of
 `zcash_primitives 0.13.0`.
 
