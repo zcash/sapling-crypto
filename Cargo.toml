@@ -1,6 +1,6 @@
 [package]
 name = "sapling-crypto"
-version = "0.0.1"
+version = "0.1.0"
 authors = [
     "Sean Bowe <sean@electriccoin.co>",
     "Jack Grigg <jack@electriccoin.co>",
