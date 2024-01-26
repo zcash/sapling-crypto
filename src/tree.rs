@@ -84,16 +84,16 @@ impl From<Node> for Anchor {
 }
 
 impl Anchor {
-    /// The anchor of the empty Orchard note commitment tree.
+    /// The anchor of the empty Sapling note commitment tree.
     ///
     /// This anchor does not correspond to any valid anchor for a spend, so it
-    /// may only be used for coinbase bundles or in circumstances where Orchard
+    /// may only be used for coinbase bundles or in circumstances where Sapling
     /// functionality is not active.
     pub fn empty_tree() -> Anchor {
         Anchor(Node::empty_root(NOTE_COMMITMENT_TREE_DEPTH.into()).0)
     }
 
-    /// Parses an Orchard anchor from a byte encoding.
+    /// Parses a Sapling anchor from a byte encoding.
     pub fn from_bytes(bytes: [u8; 32]) -> CtOption<Anchor> {
         jubjub::Base::from_repr(bytes).map(Self)
     }
