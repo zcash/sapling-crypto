@@ -14,7 +14,7 @@ use zip32::{ChainCode, ChildIndex, DiversifierIndex, Scope};
 use std::io::{self, Read, Write};
 use std::ops::AddAssign;
 
-use super::{Diversifier, NullifierDerivingKey, PaymentAddress, ViewingKey};
+use super::{Diversifier, NullifierDerivingKey, PaymentAddress};
 use crate::keys::ProofAuthorizingKey;
 use crate::{
     constants::PROOF_GENERATION_KEY_GENERATOR,
@@ -37,7 +37,7 @@ pub fn sapling_address(
     j: DiversifierIndex,
 ) -> Option<PaymentAddress> {
     dk.diversifier(j)
-        .and_then(|d_j| fvk.vk.to_payment_address(d_j))
+        .and_then(|d_j| fvk.to_payment_address(d_j))
 }
 
 /// Search the diversifier space starting at diversifier index `j` for
@@ -50,7 +50,7 @@ pub fn sapling_find_address(
     j: DiversifierIndex,
 ) -> Option<(DiversifierIndex, PaymentAddress)> {
     let (j, d_j) = dk.find_diversifier(j)?;
-    fvk.vk.to_payment_address(d_j).map(|addr| (j, addr))
+    fvk.to_payment_address(d_j).map(|addr| (j, addr))
 }
 
 /// Returns the payment address corresponding to the smallest valid diversifier
@@ -93,16 +93,14 @@ pub fn sapling_derive_internal_fvk(
         jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_ZIP32_INTERNAL_NSK.with(i.as_bytes()));
     let r = PrfExpand::SAPLING_ZIP32_INTERNAL_DK_OVK.with(i.as_bytes());
     // PROOF_GENERATION_KEY_GENERATOR = \mathcal{H}^Sapling
-    let nk_internal = NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * i_nsk + fvk.vk.nk.0);
+    let nk_internal = NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * i_nsk + fvk.nk.0);
     let dk_internal = DiversifierKey(r[..32].try_into().unwrap());
     let ovk_internal = OutgoingViewingKey(r[32..].try_into().unwrap());
 
     (
         FullViewingKey {
-            vk: ViewingKey {
-                ak: fvk.vk.ak.clone(),
-                nk: nk_internal,
-            },
+            ak: fvk.ak.clone(),
+            nk: nk_internal,
             ovk: ovk_internal,
         },
         dk_internal,
@@ -534,9 +532,7 @@ impl std::cmp::PartialEq for ExtendedFullViewingKey {
             && self.parent_fvk_tag == rhs.parent_fvk_tag
             && self.child_index == rhs.child_index
             && self.chain_code == rhs.chain_code
-            && self.fvk.vk.ak == rhs.fvk.vk.ak
-            && self.fvk.vk.nk == rhs.fvk.vk.nk
-            && self.fvk.ovk == rhs.fvk.ovk
+            && self.fvk == rhs.fvk
             && self.dk == rhs.dk
     }
 }
@@ -709,16 +705,16 @@ impl DiversifiableFullViewingKey {
     /// This API is provided so that nullifiers for change notes can be correctly computed.
     pub fn to_nk(&self, scope: Scope) -> NullifierDerivingKey {
         match scope {
-            Scope::External => self.fvk.vk.nk,
-            Scope::Internal => self.derive_internal().fvk.vk.nk,
+            Scope::External => self.fvk.nk,
+            Scope::Internal => self.derive_internal().fvk.nk,
         }
     }
 
     /// Derives an incoming viewing key corresponding to this full viewing key.
     pub fn to_ivk(&self, scope: Scope) -> SaplingIvk {
         match scope {
-            Scope::External => self.fvk.vk.ivk(),
-            Scope::Internal => self.derive_internal().fvk.vk.ivk(),
+            Scope::External => self.fvk.ivk(),
+            Scope::Internal => self.derive_internal().fvk.ivk(),
         }
     }
 
@@ -937,9 +933,7 @@ mod tests {
         // Check value -> bytes -> parsed round trip.
         let dfvk_bytes = dfvk.to_bytes();
         let dfvk_parsed = DiversifiableFullViewingKey::from_bytes(&dfvk_bytes).unwrap();
-        assert_eq!(dfvk_parsed.fvk.vk.ak, dfvk.fvk.vk.ak);
-        assert_eq!(dfvk_parsed.fvk.vk.nk, dfvk.fvk.vk.nk);
-        assert_eq!(dfvk_parsed.fvk.ovk, dfvk.fvk.ovk);
+        assert_eq!(dfvk_parsed.fvk, dfvk.fvk);
         assert_eq!(dfvk_parsed.dk, dfvk.dk);
 
         // Check bytes -> parsed -> bytes round trip.
@@ -1651,14 +1645,14 @@ mod tests {
         }
 
         for (xfvk, tv) in xfvks.iter().zip(test_vectors.iter()) {
-            assert_eq!(xfvk.fvk.vk.ak.to_bytes(), tv.ak);
-            assert_eq!(xfvk.fvk.vk.nk.0.to_bytes(), tv.nk);
+            assert_eq!(xfvk.fvk.ak.to_bytes(), tv.ak);
+            assert_eq!(xfvk.fvk.nk.0.to_bytes(), tv.nk);
 
             assert_eq!(xfvk.fvk.ovk.0, tv.ovk);
             assert_eq!(xfvk.dk.0, tv.dk);
             assert_eq!(xfvk.chain_code.as_bytes(), &tv.c);
 
-            assert_eq!(xfvk.fvk.vk.ivk().to_repr().as_ref(), tv.ivk);
+            assert_eq!(xfvk.fvk.ivk().to_repr().as_ref(), tv.ivk);
 
             let mut ser = vec![];
             xfvk.write(&mut ser).unwrap();
@@ -1695,17 +1689,14 @@ mod tests {
             }
 
             let internal_xfvk = xfvk.derive_internal();
-            assert_eq!(internal_xfvk.fvk.vk.ak.to_bytes(), tv.ak);
-            assert_eq!(internal_xfvk.fvk.vk.nk.0.to_bytes(), tv.internal_nk);
+            assert_eq!(internal_xfvk.fvk.ak.to_bytes(), tv.ak);
+            assert_eq!(internal_xfvk.fvk.nk.0.to_bytes(), tv.internal_nk);
 
             assert_eq!(internal_xfvk.fvk.ovk.0, tv.internal_ovk);
             assert_eq!(internal_xfvk.dk.0, tv.internal_dk);
             assert_eq!(internal_xfvk.chain_code.as_bytes(), &tv.c);
 
-            assert_eq!(
-                internal_xfvk.fvk.vk.ivk().to_repr().as_ref(),
-                tv.internal_ivk
-            );
+            assert_eq!(internal_xfvk.fvk.ivk().to_repr().as_ref(), tv.internal_ivk);
 
             let mut ser = vec![];
             internal_xfvk.write(&mut ser).unwrap();

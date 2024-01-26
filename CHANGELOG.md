@@ -17,6 +17,10 @@ and this library adheres to Rust's notion of
   - `ExpandedSpendingKey.nsk` now has type `ProofAuthorizingKey`.
   - `ProofGenerationKey.nsk` now has type `ProofAuthorizingKey`.
 
+### Removed
+- `sapling_crypto::keys`:
+  - `ViewingKey` (use `FullViewingKey` instead).
+
 ## [0.1.0] - 2024-01-26
 The crate has been completely rewritten. See [`zcash/librustzcash`] for the
 history of this rewrite.
