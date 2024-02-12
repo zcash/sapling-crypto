@@ -9,7 +9,7 @@ use std::io::{self, Read, Write};
 
 use super::{
     address::PaymentAddress,
-    constants::{self, PROOF_GENERATION_KEY_GENERATOR},
+    constants::PROOF_GENERATION_KEY_GENERATOR,
     note_encryption::KDF_SAPLING_PERSONALIZATION,
     spec::{
         crh_ivk, diversify_hash, ka_sapling_agree, ka_sapling_agree_prepared,
@@ -203,6 +203,78 @@ impl SpendValidatingKey {
     }
 }
 
+/// A proof authorizing key, used to create [Spend] proofs.
+///
+/// $\mathsf{nsk}$ as defined in [Zcash Protocol Spec § 4.2.2: Sapling Key Components][saplingkeycomponents].
+///
+/// [Spend]: crate::circuit::Spend
+/// [saplingkeycomponents]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
+#[derive(Clone)]
+pub struct ProofAuthorizingKey(jubjub::Scalar);
+
+impl PartialEq for ProofAuthorizingKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.ct_eq(&other.0).into()
+    }
+}
+
+impl ProofAuthorizingKey {
+    /// Constructs a `ProofAuthorizingKey` from a raw scalar.
+    pub(crate) fn from_scalar(nsk: jubjub::Scalar) -> Self {
+        Self(nsk)
+    }
+
+    /// For circuit tests only.
+    #[cfg(test)]
+    pub(crate) fn random<R: RngCore>(rng: R) -> Self {
+        Self::from_scalar(jubjub::Scalar::random(rng))
+    }
+
+    /// Derives a `ProofAuthorizingKey` from a spending key.
+    fn from_spending_key(sk: &[u8]) -> Self {
+        Self::from_scalar(jubjub::Scalar::from_bytes_wide(
+            &PrfExpand::SAPLING_NSK.with(sk),
+        ))
+    }
+
+    /// Parses a `ProofAuthorizingKey` from its encoded form.
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        <[u8; 32]>::try_from(bytes)
+            .ok()
+            .and_then(|b| jubjub::Scalar::from_repr(b).into())
+            .map(Self::from_scalar)
+    }
+
+    /// Converts this proof authorizing key to its serialized form.
+    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+        self.0.to_repr()
+    }
+
+    /// Converts this spend authorizing key to a raw scalar.
+    ///
+    /// Only used for ZIP 32 child derivation and proof creation.
+    pub(crate) fn to_scalar(&self) -> jubjub::Scalar {
+        self.0
+    }
+}
+
+/// A key used to derive [`Nullifier`]s from [`Note`]s.
+///
+/// $\mathsf{nk}$ as defined in [Zcash Protocol Spec § 4.2.2: Sapling Key Components][saplingkeycomponents].
+///
+/// [`Nullifier`]: crate::note::nullifier::Nullifier
+/// [`Note`]: crate::note::Note
+/// [saplingkeycomponents]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
+/// A key used to derive the nullifier for a Sapling note.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct NullifierDerivingKey(pub jubjub::SubgroupPoint);
+
+impl From<&ProofAuthorizingKey> for NullifierDerivingKey {
+    fn from(nsk: &ProofAuthorizingKey) -> Self {
+        NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * nsk.0)
+    }
+}
+
 /// An outgoing viewing key
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OutgoingViewingKey(pub [u8; 32]);
@@ -211,7 +283,7 @@ pub struct OutgoingViewingKey(pub [u8; 32]);
 #[derive(Clone)]
 pub struct ExpandedSpendingKey {
     pub ask: SpendAuthorizingKey,
-    pub nsk: jubjub::Fr,
+    pub nsk: ProofAuthorizingKey,
     pub ovk: OutgoingViewingKey,
 }
 
@@ -232,7 +304,7 @@ impl ExpandedSpendingKey {
     pub fn from_spending_key(sk: &[u8]) -> Self {
         let ask =
             SpendAuthorizingKey::from_spending_key(sk).expect("negligible chance of ask == 0");
-        let nsk = jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_NSK.with(sk));
+        let nsk = ProofAuthorizingKey::from_spending_key(sk);
         let mut ovk = OutgoingViewingKey([0u8; 32]);
         ovk.0
             .copy_from_slice(&PrfExpand::SAPLING_OVK.with(sk)[..32]);
@@ -242,7 +314,7 @@ impl ExpandedSpendingKey {
     pub fn proof_generation_key(&self) -> ProofGenerationKey {
         ProofGenerationKey {
             ak: (&self.ask).into(),
-            nsk: self.nsk,
+            nsk: self.nsk.clone(),
         }
     }
 
@@ -258,8 +330,7 @@ impl ExpandedSpendingKey {
         }
 
         let ask = SpendAuthorizingKey::from_bytes(&b[0..32]).ok_or(DecodingError::InvalidAsk)?;
-        let nsk = Option::from(jubjub::Fr::from_repr(b[32..64].try_into().unwrap()))
-            .ok_or(DecodingError::InvalidNsk)?;
+        let nsk = ProofAuthorizingKey::from_bytes(&b[32..64]).ok_or(DecodingError::InvalidNsk)?;
         let ovk = OutgoingViewingKey(b[64..96].try_into().unwrap());
 
         Ok(ExpandedSpendingKey { ask, nsk, ovk })
@@ -291,7 +362,7 @@ impl ExpandedSpendingKey {
     pub fn to_bytes(&self) -> [u8; 96] {
         let mut result = [0u8; 96];
         result[0..32].copy_from_slice(&self.ask.to_bytes());
-        result[32..64].copy_from_slice(&self.nsk.to_repr());
+        result[32..64].copy_from_slice(&self.nsk.to_bytes());
         result[64..96].copy_from_slice(&self.ovk.0);
         result
     }
@@ -300,7 +371,7 @@ impl ExpandedSpendingKey {
 #[derive(Clone)]
 pub struct ProofGenerationKey {
     pub ak: SpendValidatingKey,
-    pub nsk: jubjub::Fr,
+    pub nsk: ProofAuthorizingKey,
 }
 
 impl fmt::Debug for ProofGenerationKey {
@@ -315,65 +386,43 @@ impl ProofGenerationKey {
     pub fn to_viewing_key(&self) -> ViewingKey {
         ViewingKey {
             ak: self.ak.clone(),
-            nk: NullifierDerivingKey(constants::PROOF_GENERATION_KEY_GENERATOR * self.nsk),
+            nk: (&self.nsk).into(),
         }
     }
 }
 
-/// A key used to derive the nullifier for a Sapling note.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct NullifierDerivingKey(pub jubjub::SubgroupPoint);
-
-#[derive(Debug, Clone)]
-pub struct ViewingKey {
-    pub ak: SpendValidatingKey,
-    pub nk: NullifierDerivingKey,
-}
-
-impl ViewingKey {
-    pub fn rk(&self, ar: jubjub::Fr) -> redjubjub::VerificationKey<SpendAuth> {
-        self.ak.randomize(&ar)
-    }
-
-    pub fn ivk(&self) -> SaplingIvk {
-        SaplingIvk(crh_ivk(self.ak.to_bytes(), self.nk.0.to_bytes()))
-    }
-
-    pub fn to_payment_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
-        self.ivk().to_payment_address(diversifier)
-    }
-}
-
-/// A Sapling key that provides the capability to view incoming and outgoing transactions.
-#[derive(Debug)]
+/// A key that provides the capability to view incoming and outgoing transactions.
+///
+/// Modern Zcash wallets use multiple viewing keys scoped to external and internal
+/// operations. You should consider using [`DiversifiableFullViewingKey`] instead, which
+/// handles these details and ensures that you have a full and consistent view of wallet
+/// activity.
+///
+/// Defined in [Zcash Protocol Spec § 3.1: Payment Addresses and Keys][addressesandkeys].
+///
+/// [`DiversifiableFullViewingKey`]: crate::zip32::DiversifiableFullViewingKey
+/// [addressesandkeys]: https://zips.z.cash/protocol/protocol.pdf#addressesandkeys
+// TODO: Rename to `ScopedFullViewingKey` or `ScopedViewingKey` for API clarity.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FullViewingKey {
-    pub vk: ViewingKey,
-    pub ovk: OutgoingViewingKey,
-}
-
-impl Clone for FullViewingKey {
-    fn clone(&self) -> Self {
-        FullViewingKey {
-            vk: ViewingKey {
-                ak: self.vk.ak.clone(),
-                nk: self.vk.nk,
-            },
-            ovk: self.ovk,
-        }
-    }
+    ak: SpendValidatingKey,
+    nk: NullifierDerivingKey,
+    ovk: OutgoingViewingKey,
 }
 
 impl FullViewingKey {
     pub fn from_expanded_spending_key(expsk: &ExpandedSpendingKey) -> Self {
         FullViewingKey {
-            vk: ViewingKey {
-                ak: (&expsk.ask).into(),
-                nk: NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * expsk.nsk),
-            },
+            ak: (&expsk.ask).into(),
+            nk: (&expsk.nsk).into(),
             ovk: expsk.ovk,
         }
     }
 
+    /// Parses a full viewing key from its "raw" encoding as specified in
+    /// [Zcash Protocol Spec § 5.6.3.3: Sapling Full Viewing Keys][saplingfullviewingkeyencoding].
+    ///
+    /// [saplingfullviewingkeyencoding]: https://zips.z.cash/protocol/protocol.pdf#saplingfullviewingkeyencoding
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
         let ak = {
             let mut buf = [0u8; 32];
@@ -404,24 +453,46 @@ impl FullViewingKey {
         reader.read_exact(&mut ovk)?;
 
         Ok(FullViewingKey {
-            vk: ViewingKey { ak, nk },
+            ak,
+            nk,
             ovk: OutgoingViewingKey(ovk),
         })
     }
 
+    /// Serializes the full viewing key as specified in
+    /// [Zcash Protocol Spec § 5.6.3.3: Sapling Full Viewing Keys][saplingfullviewingkeyencoding].
+    ///
+    /// [saplingfullviewingkeyencoding]: https://zips.z.cash/protocol/protocol.pdf#saplingfullviewingkeyencoding
     pub fn write<W: Write>(&self, mut writer: W) -> io::Result<()> {
-        writer.write_all(&self.vk.ak.to_bytes())?;
-        writer.write_all(&self.vk.nk.0.to_bytes())?;
+        writer.write_all(&self.ak.to_bytes())?;
+        writer.write_all(&self.nk.0.to_bytes())?;
         writer.write_all(&self.ovk.0)?;
 
         Ok(())
     }
 
+    /// Serializes the full viewing key as specified in
+    /// [Zcash Protocol Spec § 5.6.3.3: Sapling Full Viewing Keys][saplingfullviewingkeyencoding].
+    ///
+    /// [saplingfullviewingkeyencoding]: https://zips.z.cash/protocol/protocol.pdf#saplingfullviewingkeyencoding
     pub fn to_bytes(&self) -> [u8; 96] {
         let mut result = [0u8; 96];
         self.write(&mut result[..])
             .expect("should be able to serialize a FullViewingKey");
         result
+    }
+
+    pub fn rk(&self, ar: jubjub::Fr) -> redjubjub::VerificationKey<SpendAuth> {
+        self.ak.randomize(&ar)
+    }
+
+    /// Derives an `IncomingViewingKey` for this full viewing key.
+    pub fn ivk(&self) -> SaplingIvk {
+        SaplingIvk(crh_ivk(self.ak.to_bytes(), self.nk.0.to_bytes()))
+    }
+
+    pub fn to_payment_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
+        self.ivk().to_payment_address(diversifier)
     }
 }
 
@@ -683,7 +754,7 @@ pub mod testing {
 
     prop_compose! {
         pub fn arb_incoming_viewing_key()(fvk in arb_full_viewing_key()) -> SaplingIvk {
-            fvk.vk.ivk()
+            fvk.ivk()
         }
     }
 }

@@ -25,6 +25,9 @@ use self::constants::{
 #[cfg(test)]
 use group::ff::PrimeFieldBits;
 
+#[cfg(test)]
+use crate::keys::ProofAuthorizingKey;
+
 mod constants;
 mod ecc;
 mod pedersen_hash;
@@ -190,7 +193,9 @@ impl Circuit<bls12_381::Scalar> for Spend {
             // Witness nsk as bits
             let nsk = boolean::field_into_boolean_vec_le(
                 cs.namespace(|| "nsk"),
-                self.proof_generation_key.as_ref().map(|k| k.nsk),
+                self.proof_generation_key
+                    .as_ref()
+                    .map(|k| k.nsk.to_scalar()),
             )?;
 
             // NB: We don't ensure that the bit representation of nsk
@@ -658,7 +663,7 @@ fn test_input_circuit_with_bls12_381() {
 
         let proof_generation_key = ProofGenerationKey {
             ak: SpendValidatingKey::fake_random(&mut rng),
-            nsk: jubjub::Fr::random(&mut rng),
+            nsk: ProofAuthorizingKey::random(&mut rng),
         };
 
         let viewing_key = proof_generation_key.to_viewing_key();
@@ -833,7 +838,7 @@ fn test_input_circuit_with_bls12_381_external_test_vectors() {
 
         let proof_generation_key = ProofGenerationKey {
             ak: SpendValidatingKey::fake_random(&mut rng),
-            nsk: jubjub::Fr::random(&mut rng),
+            nsk: ProofAuthorizingKey::random(&mut rng),
         };
 
         let viewing_key = proof_generation_key.to_viewing_key();
@@ -984,7 +989,7 @@ fn test_output_circuit_with_bls12_381() {
             randomness: jubjub::Fr::random(&mut rng),
         };
 
-        let nsk = jubjub::Fr::random(&mut rng);
+        let nsk = ProofAuthorizingKey::random(&mut rng);
         let ak = SpendValidatingKey::fake_random(&mut rng);
 
         let proof_generation_key = ProofGenerationKey { ak, nsk };
