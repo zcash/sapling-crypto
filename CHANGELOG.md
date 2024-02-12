@@ -7,6 +7,12 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Fixed
+- `sapling_crypto::builder::BundleType::num_outputs` now matches the previous
+  behaviour for Sapling bundle padding, by including dummy outputs if there are
+  no requested outputs but some requested spends, and `bundle_required` is set
+  to `false` (as in `BundleType::DEFAULT`).
+
 ## [0.1.0] - 2024-01-26
 The crate has been completely rewritten. See [`zcash/librustzcash`] for the
 history of this rewrite.
