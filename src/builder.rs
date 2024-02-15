@@ -90,13 +90,13 @@ impl BundleType {
         requested_outputs: usize,
     ) -> Result<usize, &'static str> {
         match self {
-            BundleType::Transactional { bundle_required } => {
-                Ok(if *bundle_required || requested_outputs > 0 {
+            BundleType::Transactional { bundle_required } => Ok(
+                if *bundle_required || requested_spends > 0 || requested_outputs > 0 {
                     core::cmp::max(requested_outputs, MIN_SHIELDED_OUTPUTS)
                 } else {
                     0
-                })
-            }
+                },
+            ),
             BundleType::Coinbase => {
                 if requested_spends == 0 {
                     Ok(requested_outputs)
