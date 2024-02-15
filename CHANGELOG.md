@@ -7,6 +7,7 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.1.1] - 2024-02-15
 ### Fixed
 - `sapling_crypto::builder::BundleType::num_outputs` now matches the previous
   behaviour for Sapling bundle padding, by including dummy outputs if there are
