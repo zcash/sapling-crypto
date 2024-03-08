@@ -7,7 +7,8 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
-## Added
+## [0.1.2] - 2024-03-08
+### Added
 - `sapling_crypto::zip32::IncomingViewingKey`
 - `sapling_crypto::zip32::DiversifiableFullViewingKey::to_external_ivk`
 

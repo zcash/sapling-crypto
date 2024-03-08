@@ -1051,6 +1051,25 @@ mod tests {
     }
 
     #[test]
+    fn ivk_round_trip() {
+        let ivk = {
+            let extsk = ExtendedSpendingKey::master(&[]);
+            #[allow(deprecated)]
+            let extfvk = extsk.to_extended_full_viewing_key();
+            DiversifiableFullViewingKey::from(extfvk).to_external_ivk()
+        };
+
+        // Check value -> bytes -> parsed round trip.
+        let ivk_bytes = ivk.to_bytes();
+        let ivk_parsed = IncomingViewingKey::from_bytes(&ivk_bytes).unwrap();
+        assert_eq!(ivk_parsed.dk, ivk.dk);
+        assert_eq!(ivk_parsed.ivk.0, ivk.ivk.0);
+
+        // Check bytes -> parsed -> bytes round trip.
+        assert_eq!(ivk_parsed.to_bytes(), ivk_bytes);
+    }
+
+    #[test]
     fn address() {
         let seed = [0; 32];
         let xsk_m = ExtendedSpendingKey::master(&seed);
@@ -1818,6 +1837,16 @@ mod tests {
             internal_xfvk.write(&mut ser).unwrap();
             assert_eq!(&ser[..], &tv.internal_xfvk[..]);
             assert_eq!(FvkFingerprint::from(&internal_xfvk.fvk).0, tv.internal_fp);
+
+            let dfvk = xfvk.to_diversifiable_full_viewing_key();
+            let ivk = dfvk.to_external_ivk();
+            let ivk_bytes = ivk.to_bytes();
+            assert_eq!(&ivk_bytes[..32], tv.dk);
+            assert_eq!(&ivk_bytes[32..], tv.ivk);
+
+            let ivk_rt = IncomingViewingKey::from_bytes(&ivk_bytes).unwrap();
+            assert_eq!(ivk.dk, ivk_rt.dk);
+            assert_eq!(ivk.ivk.0, ivk_rt.ivk.0);
         }
     }
 }
