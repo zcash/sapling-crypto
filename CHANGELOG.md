@@ -7,6 +7,10 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## Added
+- `sapling_crypto::zip32::IncomingViewingKey`
+- `sapling_crypto::zip32::DiversifiableFullViewingKey::to_external_ivk`
+
 ## [0.1.1] - 2024-02-15
 ### Fixed
 - `sapling_crypto::builder::BundleType::num_outputs` now matches the previous
