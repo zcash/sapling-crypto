@@ -171,7 +171,9 @@ impl From<Node> for bls12_381::Scalar {
 
 #[cfg(any(test, feature = "test-dependencies"))]
 pub(super) mod testing {
+    use ff::Field;
     use proptest::prelude::*;
+    use rand::distributions::{Distribution, Standard};
 
     use super::Node;
     use crate::note::testing::arb_cmu;
@@ -179,6 +181,19 @@ pub(super) mod testing {
     prop_compose! {
         pub fn arb_node()(cmu in arb_cmu()) -> Node {
             Node::from_cmu(&cmu)
+        }
+    }
+
+    impl Node {
+        /// Return a random fake `MerkleHashOrchard`.
+        pub fn random(rng: &mut impl RngCore) -> Self {
+            Standard.sample(rng)
+        }
+    }
+
+    impl Distribution<Node> for Standard {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Node {
+            Node::from_scalar(bls12_381::Scalar::random(rng))
         }
     }
 }
