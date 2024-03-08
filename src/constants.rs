@@ -239,7 +239,7 @@ lazy_static! {
 }
 
 /// Creates the exp table for the Pedersen hash generators.
-fn generate_pedersen_hash_exp_table() -> Vec<Vec<Vec<SubgroupPoint>>> {
+pub fn generate_pedersen_hash_exp_table() -> Vec<Vec<Vec<SubgroupPoint>>> {
     let window = PEDERSEN_HASH_EXP_WINDOW_SIZE;
 
     PEDERSEN_HASH_GENERATORS
