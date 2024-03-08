@@ -8,6 +8,7 @@ use aes::Aes256;
 use blake2b_simd::Params as Blake2bParams;
 use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 use fpe::ff1::{BinaryNumeralString, FF1};
+use subtle::CtOption;
 use zcash_spec::PrfExpand;
 use zip32::{ChainCode, ChildIndex, DiversifierIndex, Scope};
 
@@ -15,6 +16,7 @@ use std::io::{self, Read, Write};
 use std::ops::AddAssign;
 
 use super::{Diversifier, NullifierDerivingKey, PaymentAddress, ViewingKey};
+use crate::note_encryption::PreparedIncomingViewingKey;
 use crate::{
     constants::PROOF_GENERATION_KEY_GENERATOR,
     keys::{
@@ -714,10 +716,19 @@ impl DiversifiableFullViewingKey {
     }
 
     /// Derives an incoming viewing key corresponding to this full viewing key.
+    // TODO: This should be renamed "prepare" and return a PreparedIncomingViewingKey
     pub fn to_ivk(&self, scope: Scope) -> SaplingIvk {
         match scope {
             Scope::External => self.fvk.vk.ivk(),
             Scope::Internal => self.derive_internal().fvk.vk.ivk(),
+        }
+    }
+
+    /// Derives the external diversifiable incoming viewing key corresponding to this full viewing key.
+    pub fn to_external_ivk(&self) -> IncomingViewingKey {
+        IncomingViewingKey {
+            dk: self.dk,
+            ivk: self.to_ivk(Scope::External),
         }
     }
 
@@ -734,7 +745,7 @@ impl DiversifiableFullViewingKey {
     /// Returns `None` if the diversifier index does not produce a valid diversifier for
     /// this `DiversifiableFullViewingKey`.
     pub fn address(&self, j: DiversifierIndex) -> Option<PaymentAddress> {
-        sapling_address(&self.fvk, &self.dk, j)
+        self.to_external_ivk().address_at(j)
     }
 
     /// Finds the next valid payment address starting from the given diversifier index.
@@ -746,13 +757,13 @@ impl DiversifiableFullViewingKey {
     /// address constructed using that diversifier, or `None` if the maximum index was
     /// reached and no valid diversifier was found.
     pub fn find_address(&self, j: DiversifierIndex) -> Option<(DiversifierIndex, PaymentAddress)> {
-        sapling_find_address(&self.fvk, &self.dk, j)
+        self.to_external_ivk().find_address(j)
     }
 
     /// Returns the payment address corresponding to the smallest valid diversifier index,
     /// along with that index.
     pub fn default_address(&self) -> (DiversifierIndex, PaymentAddress) {
-        sapling_default_address(&self.fvk, &self.dk)
+        self.to_external_ivk().find_address(0u32).unwrap()
     }
 
     /// Returns the payment address corresponding to the specified diversifier, if any.
@@ -760,7 +771,7 @@ impl DiversifiableFullViewingKey {
     /// In general, it is preferable to use `find_address` instead, but this method is
     /// useful in some cases for matching keys to existing payment addresses.
     pub fn diversified_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
-        self.fvk.vk.to_payment_address(diversifier)
+        self.to_external_ivk().address(diversifier)
     }
 
     /// Returns the internal address corresponding to the smallest valid diversifier index,
@@ -808,6 +819,100 @@ impl DiversifiableFullViewingKey {
         }
 
         None
+    }
+}
+
+/// A Sapling key that provides the capability to decrypt incoming notes and generate diversified
+/// Sapling payment addresses.
+///
+/// This key is useful for detecting received funds and memos, but is not sufficient
+/// for determining balance.
+///
+/// It comprises the subset of the ZIP 32 extended full viewing key that is used for the
+/// Sapling item in a [ZIP 316 Unified Incoming Viewing Key][zip-0316-ufvk].
+///
+/// [zip-0316-ufvk]: https://zips.z.cash/zip-0316#encoding-of-unified-full-incoming-viewing-keys
+#[derive(Clone, Debug)]
+pub struct IncomingViewingKey {
+    dk: DiversifierKey,
+    ivk: SaplingIvk,
+}
+
+impl IncomingViewingKey {
+    /// Parses a `IncomingViewingKey` from its raw byte encoding.
+    ///
+    /// Returns `None` if the bytes do not contain a valid encoding of a diversifiable
+    /// Sapling incoming viewing key.
+    pub fn from_bytes(bytes: &[u8; 64]) -> CtOption<Self> {
+        jubjub::Fr::from_bytes(&bytes[32..].try_into().unwrap()).map(|fr| IncomingViewingKey {
+            dk: DiversifierKey::from_bytes(bytes[..32].try_into().unwrap()),
+            ivk: SaplingIvk(fr),
+        })
+    }
+
+    /// Returns the raw encoding of this `IncomingViewingKey`.
+    pub fn to_bytes(&self) -> [u8; 64] {
+        let mut bytes = [0; 64];
+        bytes[..32].copy_from_slice(&self.dk.as_bytes()[..]);
+        bytes[32..].copy_from_slice(&self.ivk.0.to_bytes()[..]);
+        bytes
+    }
+
+    /// Returns the prepared incoming viewing key for this IVK.
+    pub fn prepare(&self) -> PreparedIncomingViewingKey {
+        PreparedIncomingViewingKey::new(&self.ivk)
+    }
+
+    /// Attempts to produce a valid payment address for the given diversifier index.
+    ///
+    /// Returns `None` if the diversifier index does not produce a valid diversifier for
+    /// this `IncomingViewingKey`.
+    pub fn address_at(&self, j: impl Into<DiversifierIndex>) -> Option<PaymentAddress> {
+        self.dk
+            .diversifier(j.into())
+            .and_then(|d_j| self.ivk.to_payment_address(d_j))
+    }
+
+    /// Returns the payment address corresponding to the specified diversifier, if any.
+    ///
+    /// In general, it is preferable to use `find_address` instead, but this method is
+    /// useful in some cases for matching keys to existing payment addresses.
+    pub fn address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
+        self.ivk.to_payment_address(diversifier)
+    }
+
+    /// Finds the next valid payment address starting from the given diversifier index.
+    ///
+    /// This searches the diversifier space starting at `j` and incrementing, to find an
+    /// index which will produce a valid diversifier (a 50% probability for each index).
+    ///
+    /// Returns the index at which the valid diversifier was found along with the payment
+    /// address constructed using that diversifier, or `None` if the maximum index was
+    /// reached and no valid diversifier was found.
+    pub fn find_address(
+        &self,
+        j: impl Into<DiversifierIndex>,
+    ) -> Option<(DiversifierIndex, PaymentAddress)> {
+        let (j, d_j) = self.dk.find_diversifier(j.into())?;
+        self.ivk.to_payment_address(d_j).map(|addr| (j, addr))
+    }
+
+    /// Attempts to decrypt the given address's diversifier with this incoming viewing key.
+    ///
+    /// This method extracts the diversifier from the given address and decrypts it as a
+    /// diversifier index, then verifies that this diversifier index produces the same
+    /// address. Decryption is attempted using both the internal and external parts of the
+    /// full viewing key.
+    ///
+    /// Returns the decrypted diversifier index and its scope, or `None` if the address
+    /// was not generated from this key.
+    pub fn decrypt_diversifier(&self, addr: &PaymentAddress) -> Option<DiversifierIndex> {
+        let j = self.dk.diversifier_index(addr.diversifier());
+        if self.address_at(j).as_ref() == Some(addr) {
+            Some(j)
+        } else {
+            None
+        }
     }
 }
 
