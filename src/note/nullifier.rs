@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// Typesafe wrapper for nullifier values.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Nullifier(pub [u8; 32]);
 
 impl fmt::Debug for Nullifier {
