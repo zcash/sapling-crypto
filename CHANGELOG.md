@@ -7,6 +7,9 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `impl {PartialOrd, Ord} for sapling_crypto::note::Nullifier`
+
 ## [0.1.2] - 2024-03-08
 ### Added
 - `sapling_crypto::zip32::IncomingViewingKey`
