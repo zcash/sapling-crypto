@@ -7,8 +7,13 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.1.3] - 2024-03-25
+
 ### Added
 - `impl {PartialOrd, Ord} for sapling_crypto::note::Nullifier`
+- Additions under the `test-dependencies` feature flag:
+  - `sapling-crypto::tree::Node::random`
+  - `impl Distribution<sapling-crypto::tree::Node> for Standard`
 
 ## [0.1.2] - 2024-03-08
 ### Added
