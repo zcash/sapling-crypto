@@ -15,6 +15,7 @@ use crate::{
     value::ValueCommitment,
     Nullifier,
 };
+use crate::note_bytes::NoteBytes;
 
 pub type GrothProofBytes = [u8; GROTH_PROOF_SIZE];
 
@@ -404,7 +405,7 @@ impl<Proof: DynamicUsage> DynamicUsage for OutputDescription<Proof> {
     }
 }
 
-impl<A> ShieldedOutput<SaplingDomain, ENC_CIPHERTEXT_SIZE> for OutputDescription<A> {
+impl<A> ShieldedOutput<SaplingDomain> for OutputDescription<A> {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         self.ephemeral_key.clone()
     }
@@ -413,8 +414,12 @@ impl<A> ShieldedOutput<SaplingDomain, ENC_CIPHERTEXT_SIZE> for OutputDescription
         self.cmu.to_bytes()
     }
 
-    fn enc_ciphertext(&self) -> &[u8; ENC_CIPHERTEXT_SIZE] {
-        &self.enc_ciphertext
+    fn enc_ciphertext(&self) -> Option<NoteBytes<ENC_CIPHERTEXT_SIZE>> {
+        Some(NoteBytes(self.enc_ciphertext))
+    }
+
+    fn enc_ciphertext_compact(&self) -> <SaplingDomain as zcash_note_encryption::Domain>::CompactNoteCiphertextBytes {
+        todo!()
     }
 }
 

@@ -387,7 +387,7 @@ impl PreparedOutputInfo {
             cv,
             cmu,
             epk.to_bytes(),
-            enc_ciphertext,
+            enc_ciphertext.0,
             out_ciphertext,
             zkproof,
         )
