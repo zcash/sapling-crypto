@@ -11,8 +11,8 @@ use rand_core::RngCore;
 use zcash_note_encryption::{
     try_compact_note_decryption, try_note_decryption, try_output_recovery_with_ock,
     try_output_recovery_with_ovk, BatchDomain, Domain, EphemeralKeyBytes, NoteEncryption,
-    OutPlaintextBytes, OutgoingCipherKey, ShieldedOutput, COMPACT_NOTE_SIZE,
-    ENC_CIPHERTEXT_SIZE, NOTE_PLAINTEXT_SIZE, OUT_PLAINTEXT_SIZE,
+    OutPlaintextBytes, OutgoingCipherKey, ShieldedOutput,
+    AEAD_TAG_SIZE, OUT_PLAINTEXT_SIZE,
 };
 
 use crate::{
@@ -32,6 +32,16 @@ use crate::note_bytes::NoteBytes;
 
 pub const KDF_SAPLING_PERSONALIZATION: &[u8; 16] = b"Zcash_SaplingKDF";
 pub const PRF_OCK_PERSONALIZATION: &[u8; 16] = b"Zcash_Derive_ock";
+
+/// The size of a compact note.
+pub const COMPACT_NOTE_SIZE: usize = 1 + // version
+    11 + // diversifier
+    8  + // value
+    32; // rseed (or rcm prior to ZIP 212)
+/// The size of NotePlaintextBytes.
+pub const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE + 512;
+/// The size of an encrypted note plaintext.
+pub const ENC_CIPHERTEXT_SIZE: usize = NOTE_PLAINTEXT_SIZE + AEAD_TAG_SIZE;
 
 /// Sapling PRF^ock.
 ///
@@ -486,16 +496,11 @@ mod tests {
     use rand_core::{CryptoRng, RngCore};
 
     use zcash_note_encryption::{
-        batch, EphemeralKeyBytes, NoteEncryption, OutgoingCipherKey, ENC_CIPHERTEXT_SIZE,
-        NOTE_PLAINTEXT_SIZE, OUT_CIPHERTEXT_SIZE, OUT_PLAINTEXT_SIZE,
+        batch, EphemeralKeyBytes, NoteEncryption, OutgoingCipherKey,
+        OUT_CIPHERTEXT_SIZE, OUT_PLAINTEXT_SIZE,
     };
 
-    use super::{
-        prf_ock, sapling_note_encryption, try_sapling_compact_note_decryption,
-        try_sapling_note_decryption, try_sapling_output_recovery,
-        try_sapling_output_recovery_with_ock, CompactOutputDescription, SaplingDomain,
-        Zip212Enforcement,
-    };
+    use super::{prf_ock, sapling_note_encryption, try_sapling_compact_note_decryption, try_sapling_note_decryption, try_sapling_output_recovery, try_sapling_output_recovery_with_ock, CompactOutputDescription, SaplingDomain, Zip212Enforcement, NOTE_PLAINTEXT_SIZE, ENC_CIPHERTEXT_SIZE};
 
     use crate::{
         bundle::{GrothProofBytes, OutputDescription},
