@@ -1,6 +1,6 @@
 [package]
 name = "sapling-crypto"
-version = "0.1.3"
+version = "0.2.0"
 authors = [
     "Sean Bowe <sean@electriccoin.co>",
     "Jack Grigg <jack@electriccoin.co>",
@@ -50,7 +50,7 @@ tracing = "0.1"
 
 # Note Commitment Trees
 bitvec = "1"
-incrementalmerkletree = { version = "0.5", features = ["legacy-api"] }
+incrementalmerkletree = { version = "0.6", features = ["legacy-api"] }
 
 # Note encryption
 zcash_note_encryption = { version = "0.4", features = ["pre-zip-212"] }
@@ -72,7 +72,7 @@ zip32 = "0.1"
 [dev-dependencies]
 chacha20poly1305 = "0.10"
 criterion = "0.4"
-incrementalmerkletree = { version = "0.5", features = ["legacy-api", "test-dependencies"] }
+incrementalmerkletree = { version = "0.6", features = ["legacy-api", "test-dependencies"] }
 proptest = "1"
 rand_xorshift = "0.3"
 
