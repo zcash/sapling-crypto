@@ -7,6 +7,8 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.3.0] - 2024-10-02
+
 ### Changed
 - Updated to `incrementalmerkletree` version `0.7`.
 
