@@ -12,6 +12,11 @@ and this library adheres to Rust's notion of
   `sapling_crypto::keys::EphemeralSecretKey`, matching the existing public APIs
   that expose it.
 
+### Changed
+- `sapling_crypto::bundle::SpendDescriptionV5::into_spend_description` now
+  supports any `Authorization` for which the `SpendDescription` itself is fully
+  authorized.
+
 ## [0.3.0] - 2024-10-02
 
 ### Changed
