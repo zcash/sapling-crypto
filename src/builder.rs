@@ -369,7 +369,7 @@ impl PreparedOutputInfo {
 
         // Prepare the circuit that will be used to construct the proof.
         let zkproof = Pr::prepare_circuit(
-            encryptor.esk().0,
+            encryptor.esk(),
             self.note.recipient(),
             self.note.rcm(),
             self.note.value(),

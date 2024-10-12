@@ -7,6 +7,11 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Fixed
+- `sapling_crypto::prover::OutputProver::prepare_circuit` now takes `esk` as an
+  `sapling_crypto::keys::EphemeralSecretKey`, matching the existing public APIs
+  that expose it.
+
 ## [0.3.0] - 2024-10-02
 
 ### Changed
