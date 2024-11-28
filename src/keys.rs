@@ -108,7 +108,7 @@ impl SpendAuthorizingKey {
     }
 
     /// Converts this spend authorizing key to its serialized form.
-    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+    pub fn to_bytes(&self) -> [u8; 32] {
         <[u8; 32]>::from(self.0)
     }
 
@@ -193,7 +193,7 @@ impl SpendValidatingKey {
 
     /// Converts this spend validating key to its serialized form,
     /// `LEBS2OSP_256(repr_J(ak))`.
-    pub(crate) fn to_bytes(&self) -> [u8; 32] {
+    pub fn to_bytes(&self) -> [u8; 32] {
         <[u8; 32]>::from(self.0)
     }
 

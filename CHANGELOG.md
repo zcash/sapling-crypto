@@ -7,12 +7,23 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- Support for Partially-Created Zcash Transactions:
+  - `sapling_crypto::builder::Builder::build_for_pczt`
+  - `sapling_crypto::pczt` module.
+- `sapling_crypto::bundle::EffectsOnly`
+- `sapling_crypto::keys`:
+  - `SpendAuthorizingKey::to_bytes`
+  - `SpendValidatingKey::to_bytes`
+- `sapling_crypto::value::ValueSum::to_raw`
+
 ### Fixed
 - `sapling_crypto::prover::OutputProver::prepare_circuit` now takes `esk` as an
   `sapling_crypto::keys::EphemeralSecretKey`, matching the existing public APIs
   that expose it.
 
 ### Changed
+- `sapling_crypto::builder::Error` has a new variant `PcztRequiresZip212`.
 - `sapling_crypto::bundle::SpendDescriptionV5::into_spend_description` now
   supports any `Authorization` for which the `SpendDescription` itself is fully
   authorized.

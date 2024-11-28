@@ -93,6 +93,10 @@ impl Anchor {
         Anchor(Node::empty_root(NOTE_COMMITMENT_TREE_DEPTH.into()).0)
     }
 
+    pub(crate) fn inner(&self) -> jubjub::Base {
+        self.0
+    }
+
     /// Parses a Sapling anchor from a byte encoding.
     pub fn from_bytes(bytes: [u8; 32]) -> CtOption<Anchor> {
         jubjub::Base::from_repr(bytes).map(Self)

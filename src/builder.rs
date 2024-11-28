@@ -1,20 +1,22 @@
 //! Types and functions for building Sapling transaction components.
 
 use core::fmt;
-use std::{iter, marker::PhantomData};
+use std::{collections::BTreeMap, iter, marker::PhantomData};
 
 use group::ff::Field;
 use incrementalmerkletree::Position;
 use rand::{seq::SliceRandom, RngCore};
 use rand_core::CryptoRng;
 use redjubjub::{Binding, SpendAuth};
+use zcash_note_encryption::EphemeralKeyBytes;
 
 use crate::{
     bundle::{
         Authorization, Authorized, Bundle, GrothProofBytes, OutputDescription, SpendDescription,
     },
     circuit,
-    keys::{OutgoingViewingKey, SpendAuthorizingKey, SpendValidatingKey},
+    keys::{EphemeralSecretKey, OutgoingViewingKey, SpendAuthorizingKey, SpendValidatingKey},
+    note::ExtractedNoteCommitment,
     note_encryption::{sapling_note_encryption, Zip212Enforcement},
     prover::{OutputProver, SpendProver},
     util::generate_random_rseed_internal,
@@ -22,8 +24,8 @@ use crate::{
         CommitmentSum, NoteValue, TrapdoorSum, ValueCommitTrapdoor, ValueCommitment, ValueSum,
     },
     zip32::ExtendedSpendingKey,
-    Anchor, Diversifier, MerklePath, Node, Note, PaymentAddress, ProofGenerationKey, SaplingIvk,
-    NOTE_COMMITMENT_TREE_DEPTH,
+    Anchor, Diversifier, MerklePath, Node, Note, Nullifier, PaymentAddress, ProofGenerationKey,
+    SaplingIvk, NOTE_COMMITMENT_TREE_DEPTH,
 };
 
 /// If there are any shielded inputs, always have at least two shielded outputs, padding
@@ -121,6 +123,8 @@ pub enum Error {
     InvalidExternalSignature,
     /// A bundle could not be built because required signatures were missing.
     MissingSignatures,
+    /// [`Builder::build_for_pczt`] requires [`Zip212Enforcement::On`].
+    PcztRequiresZip212,
     SpendProof,
     /// The bundle being constructed violated the construction rules for the requested bundle type.
     BundleTypeNotSatisfiable,
@@ -138,6 +142,9 @@ impl fmt::Display for Error {
             Error::InvalidAmount => write!(f, "Invalid amount"),
             Error::InvalidExternalSignature => write!(f, "External signature was invalid"),
             Error::MissingSignatures => write!(f, "Required signatures were missing during build"),
+            Error::PcztRequiresZip212 => {
+                write!(f, "PCZTs require that ZIP 212 is enforced for outputs")
+            }
             Error::SpendProof => write!(f, "Failed to create Sapling spend proof"),
             Error::BundleTypeNotSatisfiable => {
                 f.write_str("Bundle structure did not conform to requested bundle type.")
@@ -226,15 +233,18 @@ struct PreparedSpendInfo {
 }
 
 impl PreparedSpendInfo {
-    fn build<Pr: SpendProver, R: RngCore>(
-        self,
+    fn build_inner<R: RngCore>(
+        &self,
         mut rng: R,
-    ) -> Result<SpendDescription<InProgress<Unproven, Unsigned>>, Error> {
+    ) -> (
+        ValueCommitment,
+        Nullifier,
+        redjubjub::VerificationKey<SpendAuth>,
+        jubjub::Scalar,
+    ) {
         // Construct the value commitment.
         let alpha = jubjub::Fr::random(&mut rng);
         let cv = ValueCommitment::derive(self.note.value(), self.rcv.clone());
-        let node = Node::from_cmu(&self.note.cmu());
-        let anchor = *self.merkle_path.root(node).inner();
 
         let ak = self.proof_generation_key.ak.clone();
 
@@ -246,6 +256,21 @@ impl PreparedSpendInfo {
             u64::try_from(self.merkle_path.position())
                 .expect("Sapling note commitment tree position must fit into a u64"),
         );
+
+        (cv, nullifier, rk, alpha)
+    }
+
+    fn build<Pr: SpendProver, R: RngCore>(
+        self,
+        rng: R,
+    ) -> Result<SpendDescription<InProgress<Unproven, Unsigned>>, Error> {
+        let (cv, nullifier, rk, alpha) = self.build_inner(rng);
+
+        // Construct the value commitment.
+        let node = Node::from_cmu(&self.note.cmu());
+        let anchor = *self.merkle_path.root(node).inner();
+
+        let ak = self.proof_generation_key.ak.clone();
 
         let zkproof = Pr::prepare_circuit(
             self.proof_generation_key,
@@ -270,6 +295,28 @@ impl PreparedSpendInfo {
                 parts: SigningParts { ak, alpha },
             },
         ))
+    }
+
+    fn into_pczt<R: RngCore>(self, rng: R) -> crate::pczt::Spend {
+        let (cv, nullifier, rk, alpha) = self.build_inner(rng);
+
+        crate::pczt::Spend {
+            cv,
+            nullifier,
+            rk,
+            zkproof: None,
+            spend_auth_sig: None,
+            recipient: Some(self.note.recipient()),
+            value: Some(self.note.value()),
+            rseed: Some(*self.note.rseed()),
+            rcv: Some(self.rcv),
+            proof_generation_key: Some(self.proof_generation_key),
+            witness: Some(self.merkle_path),
+            alpha: Some(alpha),
+            zip32_derivation: None,
+            dummy_ask: self.dummy_ask,
+            proprietary: BTreeMap::new(),
+        }
     }
 }
 
@@ -358,23 +405,24 @@ struct PreparedOutputInfo {
 }
 
 impl PreparedOutputInfo {
-    fn build<Pr: OutputProver, R: RngCore>(
-        self,
+    fn build_inner<P, R: RngCore>(
+        &self,
+        zkproof: impl FnOnce(&EphemeralSecretKey) -> P,
         rng: &mut R,
-    ) -> OutputDescription<circuit::Output> {
+    ) -> (
+        ValueCommitment,
+        ExtractedNoteCommitment,
+        EphemeralKeyBytes,
+        [u8; 580],
+        [u8; 80],
+        P,
+    ) {
         let encryptor = sapling_note_encryption::<R>(self.ovk, self.note.clone(), self.memo, rng);
 
         // Construct the value commitment.
         let cv = ValueCommitment::derive(self.note.value(), self.rcv.clone());
 
-        // Prepare the circuit that will be used to construct the proof.
-        let zkproof = Pr::prepare_circuit(
-            encryptor.esk(),
-            self.note.recipient(),
-            self.note.rcm(),
-            self.note.value(),
-            self.rcv,
-        );
+        let zkproof = zkproof(encryptor.esk());
 
         let cmu = self.note.cmu();
 
@@ -383,7 +431,7 @@ impl PreparedOutputInfo {
 
         let epk = encryptor.epk();
 
-        OutputDescription::from_parts(
+        (
             cv,
             cmu,
             epk.to_bytes(),
@@ -391,6 +439,62 @@ impl PreparedOutputInfo {
             out_ciphertext,
             zkproof,
         )
+    }
+
+    fn build<Pr: OutputProver, R: RngCore>(
+        self,
+        rng: &mut R,
+    ) -> OutputDescription<circuit::Output> {
+        let (cv, cmu, ephemeral_key, enc_ciphertext, out_ciphertext, zkproof) = self.build_inner(
+            |esk| {
+                Pr::prepare_circuit(
+                    esk,
+                    self.note.recipient(),
+                    self.note.rcm(),
+                    self.note.value(),
+                    self.rcv.clone(),
+                )
+            },
+            rng,
+        );
+
+        OutputDescription::from_parts(
+            cv,
+            cmu,
+            ephemeral_key,
+            enc_ciphertext,
+            out_ciphertext,
+            zkproof,
+        )
+    }
+
+    fn into_pczt<R: RngCore>(self, rng: &mut R) -> crate::pczt::Output {
+        let (cv, cmu, ephemeral_key, enc_ciphertext, out_ciphertext, _) =
+            self.build_inner(|_| (), rng);
+
+        let rseed = match self.note.rseed() {
+            crate::Rseed::BeforeZip212(_) => {
+                panic!("Builder::build_for_pczt should prevent pre-ZIP 212 outputs")
+            }
+            crate::Rseed::AfterZip212(rseed) => Some(*rseed),
+        };
+
+        crate::pczt::Output {
+            cv,
+            cmu,
+            ephemeral_key,
+            enc_ciphertext,
+            out_ciphertext,
+            zkproof: None,
+            recipient: Some(self.note.recipient()),
+            value: Some(self.note.value()),
+            rseed,
+            rcv: Some(self.rcv),
+            // TODO: Save this?
+            ock: None,
+            zip32_derivation: None,
+            proprietary: BTreeMap::new(),
+        }
     }
 }
 
@@ -549,18 +653,132 @@ impl Builder {
             self.outputs,
         )
     }
+
+    /// Builds a bundle containing the given spent notes and outputs along with their
+    /// metadata, for inclusion in a PCZT.
+    pub fn build_for_pczt(
+        self,
+        rng: impl RngCore,
+    ) -> Result<(crate::pczt::Bundle, SaplingMetadata), Error> {
+        match self.zip212_enforcement {
+            Zip212Enforcement::Off | Zip212Enforcement::GracePeriod => {
+                Err(Error::PcztRequiresZip212)
+            }
+            Zip212Enforcement::On => build_bundle::<_, (), (), _>(
+                rng,
+                self.bundle_type,
+                Zip212Enforcement::On,
+                self.anchor,
+                self.spends,
+                self.outputs,
+                |spend_infos, output_infos, value_sum, tx_metadata, mut rng| {
+                    // Create the PCZT Spends and Outputs.
+                    let spends = spend_infos
+                        .into_iter()
+                        .map(|a| a.into_pczt(&mut rng))
+                        .collect::<Vec<_>>();
+                    let outputs = output_infos
+                        .into_iter()
+                        .map(|a| a.into_pczt(&mut rng))
+                        .collect::<Vec<_>>();
+
+                    Ok((
+                        crate::pczt::Bundle {
+                            spends,
+                            outputs,
+                            value_sum,
+                            anchor: self.anchor,
+                            bsk: None,
+                        },
+                        tx_metadata,
+                    ))
+                },
+            ),
+        }
+    }
 }
 
 /// Constructs a new Sapling transaction bundle of the given type from the specified set of spends
 /// and outputs.
 pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
-    mut rng: R,
+    rng: R,
     bundle_type: BundleType,
     zip212_enforcement: Zip212Enforcement,
     anchor: Anchor,
     spends: Vec<SpendInfo>,
     outputs: Vec<OutputInfo>,
 ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
+    build_bundle::<_, SP, OP, _>(
+        rng,
+        bundle_type,
+        zip212_enforcement,
+        anchor,
+        spends,
+        outputs,
+        |spend_infos, output_infos, value_balance, tx_metadata, mut rng| {
+            let value_balance_i64 =
+                i64::try_from(value_balance).map_err(|_| Error::InvalidAmount)?;
+
+            // Compute the transaction binding signing key.
+            let bsk = {
+                let spends: TrapdoorSum = spend_infos.iter().map(|spend| &spend.rcv).sum();
+                let outputs: TrapdoorSum = output_infos.iter().map(|output| &output.rcv).sum();
+                (spends - outputs).into_bsk()
+            };
+
+            // Create the unauthorized Spend and Output descriptions.
+            let shielded_spends = spend_infos
+                .into_iter()
+                .map(|a| a.build::<SP, _>(&mut rng))
+                .collect::<Result<Vec<_>, _>>()?;
+            let shielded_outputs = output_infos
+                .into_iter()
+                .map(|a| a.build::<OP, _>(&mut rng))
+                .collect::<Vec<_>>();
+
+            // Verify that bsk and bvk are consistent.
+            let bvk = {
+                let spends = shielded_spends
+                    .iter()
+                    .map(|spend| spend.cv())
+                    .sum::<CommitmentSum>();
+                let outputs = shielded_outputs
+                    .iter()
+                    .map(|output| output.cv())
+                    .sum::<CommitmentSum>();
+                (spends - outputs).into_bvk(value_balance_i64)
+            };
+            assert_eq!(redjubjub::VerificationKey::from(&bsk), bvk);
+
+            Ok(Bundle::from_parts(
+                shielded_spends,
+                shielded_outputs,
+                V::try_from(value_balance_i64).map_err(|_| Error::InvalidAmount)?,
+                InProgress {
+                    sigs: Unsigned { bsk },
+                    _proof_state: PhantomData::default(),
+                },
+            )
+            .map(|b| (b, tx_metadata)))
+        },
+    )
+}
+
+fn build_bundle<B, SP, OP, R: RngCore>(
+    mut rng: R,
+    bundle_type: BundleType,
+    zip212_enforcement: Zip212Enforcement,
+    anchor: Anchor,
+    spends: Vec<SpendInfo>,
+    outputs: Vec<OutputInfo>,
+    finisher: impl FnOnce(
+        Vec<PreparedSpendInfo>,
+        Vec<PreparedOutputInfo>,
+        ValueSum,
+        SaplingMetadata,
+        R,
+    ) -> Result<B, Error>,
+) -> Result<B, Error> {
     match bundle_type {
         BundleType::Transactional { .. } => {
             for spend in &spends {
@@ -640,13 +858,6 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         })
         .collect::<Vec<_>>();
 
-    // Compute the transaction binding signing key.
-    let bsk = {
-        let spends: TrapdoorSum = spend_infos.iter().map(|spend| &spend.rcv).sum();
-        let outputs: TrapdoorSum = output_infos.iter().map(|output| &output.rcv).sum();
-        (spends - outputs).into_bsk()
-    };
-
     // Compute the Sapling value balance of the bundle for comparison to `bvk` and `bsk`
     let input_total = spend_infos
         .iter()
@@ -658,42 +869,8 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         .try_fold(input_total, |balance, output| {
             (balance - output.note.value()).ok_or(Error::InvalidAmount)
         })?;
-    let value_balance_i64 = i64::try_from(value_balance).map_err(|_| Error::InvalidAmount)?;
 
-    // Create the unauthorized Spend and Output descriptions.
-    let shielded_spends = spend_infos
-        .into_iter()
-        .map(|a| a.build::<SP, _>(&mut rng))
-        .collect::<Result<Vec<_>, _>>()?;
-    let shielded_outputs = output_infos
-        .into_iter()
-        .map(|a| a.build::<OP, _>(&mut rng))
-        .collect::<Vec<_>>();
-
-    // Verify that bsk and bvk are consistent.
-    let bvk = {
-        let spends = shielded_spends
-            .iter()
-            .map(|spend| spend.cv())
-            .sum::<CommitmentSum>();
-        let outputs = shielded_outputs
-            .iter()
-            .map(|output| output.cv())
-            .sum::<CommitmentSum>();
-        (spends - outputs).into_bvk(value_balance_i64)
-    };
-    assert_eq!(redjubjub::VerificationKey::from(&bsk), bvk);
-
-    Ok(Bundle::from_parts(
-        shielded_spends,
-        shielded_outputs,
-        V::try_from(value_balance_i64).map_err(|_| Error::InvalidAmount)?,
-        InProgress {
-            sigs: Unsigned { bsk },
-            _proof_state: PhantomData::default(),
-        },
-    )
-    .map(|b| (b, tx_metadata)))
+    finisher(spend_infos, output_infos, value_balance, tx_metadata, rng)
 }
 
 /// Type alias for an in-progress bundle that has no proofs or signatures.

@@ -25,6 +25,16 @@ pub trait Authorization: Debug {
     type AuthSig: Clone + Debug;
 }
 
+/// Marker type for a bundle that contains no authorizing data.
+#[derive(Debug)]
+pub struct EffectsOnly;
+
+impl Authorization for EffectsOnly {
+    type SpendProof = ();
+    type OutputProof = ();
+    type AuthSig = ();
+}
+
 /// Authorizing data for a bundle of Sapling spends and outputs, ready to be committed to
 /// the ledger.
 #[derive(Debug, Copy, Clone)]

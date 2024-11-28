@@ -26,6 +26,9 @@ jubjub = "0.10"
 redjubjub = "0.7"
 zcash_spec = "0.1"
 
+# Boilerplate
+getset = "0.1"
+
 # Circuits
 bellman = { version = "0.14", default-features = false, features = ["groth16"] }
 
