@@ -16,6 +16,7 @@ and this library adheres to Rust's notion of
   - `SpendAuthorizingKey::to_bytes`
   - `SpendValidatingKey::to_bytes`
 - `sapling_crypto::value::ValueSum::to_raw`
+- `sapling_crypto::zip32::DiversifiableFullViewingKey::to_internal_fvk`
 
 ### Fixed
 - `sapling_crypto::prover::OutputProver::prepare_circuit` now takes `esk` as an
