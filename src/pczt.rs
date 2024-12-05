@@ -24,6 +24,9 @@ pub use parse::ParseError;
 mod io_finalizer;
 pub use io_finalizer::IoFinalizerError;
 
+mod updater;
+pub use updater::{OutputUpdater, SpendUpdater, Updater, UpdaterError};
+
 mod prover;
 pub use prover::ProverError;
 
