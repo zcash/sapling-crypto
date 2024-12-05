@@ -23,7 +23,16 @@ and this library adheres to Rust's notion of
   that expose it.
 
 ### Changed
-- `sapling_crypto::builder::Error` has a new variant `PcztRequiresZip212`.
+- `sapling_crypto::builder`:
+  - `SpendInfo::new` now takes a `FullViewingKey` instead of a
+    `ProofGenerationKey`.
+  - `Builder::add_spend` now takes a `FullViewingKey` instead of an
+    `&ExtendedSpendingKey`.
+  - `Builder::build` and `bundle` now take an `&[ExtendedSpendingKey]` argument.
+  - `Error` has new variants:
+    - `MissingSpendingKey`
+    - `PcztRequiresZip212`
+    - `WrongSpendingKey`
 - `sapling_crypto::bundle::SpendDescriptionV5::into_spend_description` now
   supports any `Authorization` for which the `SpendDescription` itself is fully
   authorized.

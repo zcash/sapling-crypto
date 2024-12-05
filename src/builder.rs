@@ -15,7 +15,10 @@ use crate::{
         Authorization, Authorized, Bundle, GrothProofBytes, OutputDescription, SpendDescription,
     },
     circuit,
-    keys::{EphemeralSecretKey, OutgoingViewingKey, SpendAuthorizingKey, SpendValidatingKey},
+    keys::{
+        EphemeralSecretKey, ExpandedSpendingKey, FullViewingKey, OutgoingViewingKey,
+        SpendAuthorizingKey, SpendValidatingKey,
+    },
     note::ExtractedNoteCommitment,
     note_encryption::{sapling_note_encryption, Zip212Enforcement},
     prover::{OutputProver, SpendProver},
@@ -123,11 +126,15 @@ pub enum Error {
     InvalidExternalSignature,
     /// A bundle could not be built because required signatures were missing.
     MissingSignatures,
+    /// A required spending key was not provided.
+    MissingSpendingKey,
     /// [`Builder::build_for_pczt`] requires [`Zip212Enforcement::On`].
     PcztRequiresZip212,
     SpendProof,
     /// The bundle being constructed violated the construction rules for the requested bundle type.
     BundleTypeNotSatisfiable,
+    /// The wrong spending key was provided.
+    WrongSpendingKey,
 }
 
 impl fmt::Display for Error {
@@ -142,6 +149,7 @@ impl fmt::Display for Error {
             Error::InvalidAmount => write!(f, "Invalid amount"),
             Error::InvalidExternalSignature => write!(f, "External signature was invalid"),
             Error::MissingSignatures => write!(f, "Required signatures were missing during build"),
+            Error::MissingSpendingKey => write!(f, "A required spending key was not provided"),
             Error::PcztRequiresZip212 => {
                 write!(f, "PCZTs require that ZIP 212 is enforced for outputs")
             }
@@ -149,6 +157,7 @@ impl fmt::Display for Error {
             Error::BundleTypeNotSatisfiable => {
                 f.write_str("Bundle structure did not conform to requested bundle type.")
             }
+            Error::WrongSpendingKey => write!(f, "The wrong spending key was provided"),
         }
     }
 }
@@ -156,24 +165,20 @@ impl fmt::Display for Error {
 /// A struct containing the information necessary to add a spend to a bundle.
 #[derive(Debug, Clone)]
 pub struct SpendInfo {
-    proof_generation_key: ProofGenerationKey,
+    fvk: FullViewingKey,
     note: Note,
     merkle_path: MerklePath,
-    dummy_ask: Option<SpendAuthorizingKey>,
+    dummy_expsk: Option<ExpandedSpendingKey>,
 }
 
 impl SpendInfo {
     /// Constructs a [`SpendInfo`] from its constituent parts.
-    pub fn new(
-        proof_generation_key: ProofGenerationKey,
-        note: Note,
-        merkle_path: MerklePath,
-    ) -> Self {
+    pub fn new(fvk: FullViewingKey, note: Note, merkle_path: MerklePath) -> Self {
         Self {
-            proof_generation_key,
+            fvk,
             note,
             merkle_path,
-            dummy_ask: None,
+            dummy_expsk: None,
         }
     }
 
@@ -196,10 +201,13 @@ impl SpendInfo {
         .expect("The path length corresponds to the length of the generated vector.");
 
         SpendInfo {
-            proof_generation_key: sk.proof_generation_key(),
+            fvk: FullViewingKey {
+                vk: sk.proof_generation_key().to_viewing_key(),
+                ovk: sk.ovk,
+            },
             note,
             merkle_path,
-            dummy_ask: Some(sk.ask),
+            dummy_expsk: Some(sk),
         }
     }
 
@@ -214,22 +222,22 @@ impl SpendInfo {
 
     fn prepare<R: RngCore>(self, rng: R) -> PreparedSpendInfo {
         PreparedSpendInfo {
-            proof_generation_key: self.proof_generation_key,
+            fvk: self.fvk,
             note: self.note,
             merkle_path: self.merkle_path,
             rcv: ValueCommitTrapdoor::random(rng),
-            dummy_ask: self.dummy_ask,
+            dummy_expsk: self.dummy_expsk,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 struct PreparedSpendInfo {
-    proof_generation_key: ProofGenerationKey,
+    fvk: FullViewingKey,
     note: Note,
     merkle_path: MerklePath,
     rcv: ValueCommitTrapdoor,
-    dummy_ask: Option<SpendAuthorizingKey>,
+    dummy_expsk: Option<ExpandedSpendingKey>,
 }
 
 impl PreparedSpendInfo {
@@ -246,13 +254,13 @@ impl PreparedSpendInfo {
         let alpha = jubjub::Fr::random(&mut rng);
         let cv = ValueCommitment::derive(self.note.value(), self.rcv.clone());
 
-        let ak = self.proof_generation_key.ak.clone();
+        let ak = self.fvk.vk.ak.clone();
 
         // This is the result of the re-randomization, we compute it for the caller
         let rk = ak.randomize(&alpha);
 
         let nullifier = self.note.nf(
-            &self.proof_generation_key.to_viewing_key().nk,
+            &self.fvk.vk.nk,
             u64::try_from(self.merkle_path.position())
                 .expect("Sapling note commitment tree position must fit into a u64"),
         );
@@ -262,18 +270,30 @@ impl PreparedSpendInfo {
 
     fn build<Pr: SpendProver, R: RngCore>(
         self,
+        proof_generation_key: Option<ProofGenerationKey>,
         rng: R,
     ) -> Result<SpendDescription<InProgress<Unproven, Unsigned>>, Error> {
+        let proof_generation_key = match (proof_generation_key, self.dummy_expsk.as_ref()) {
+            (Some(proof_generation_key), None) => Ok(proof_generation_key),
+            (None, Some(expsk)) => Ok(expsk.proof_generation_key()),
+            (Some(_), Some(_)) => Err(Error::WrongSpendingKey),
+            (None, None) => Err(Error::MissingSpendingKey),
+        }?;
+        let expected_vk = proof_generation_key.to_viewing_key();
+        if (&expected_vk.ak, &expected_vk.nk) != (&self.fvk.vk.ak, &self.fvk.vk.nk) {
+            return Err(Error::WrongSpendingKey);
+        }
+
         let (cv, nullifier, rk, alpha) = self.build_inner(rng);
 
         // Construct the value commitment.
         let node = Node::from_cmu(&self.note.cmu());
         let anchor = *self.merkle_path.root(node).inner();
 
-        let ak = self.proof_generation_key.ak.clone();
+        let ak = self.fvk.vk.ak.clone();
 
         let zkproof = Pr::prepare_circuit(
-            self.proof_generation_key,
+            proof_generation_key,
             *self.note.recipient().diversifier(),
             *self.note.rseed(),
             self.note.value(),
@@ -291,7 +311,7 @@ impl PreparedSpendInfo {
             rk,
             zkproof,
             SigningMetadata {
-                dummy_ask: self.dummy_ask,
+                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask),
                 parts: SigningParts { ak, alpha },
             },
         ))
@@ -310,11 +330,11 @@ impl PreparedSpendInfo {
             value: Some(self.note.value()),
             rseed: Some(*self.note.rseed()),
             rcv: Some(self.rcv),
-            proof_generation_key: Some(self.proof_generation_key),
+            proof_generation_key: None,
             witness: Some(self.merkle_path),
             alpha: Some(alpha),
             zip32_derivation: None,
-            dummy_ask: self.dummy_ask,
+            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask),
             proprietary: BTreeMap::new(),
         }
     }
@@ -595,11 +615,11 @@ impl Builder {
     /// paths for previous Sapling notes.
     pub fn add_spend(
         &mut self,
-        extsk: &ExtendedSpendingKey,
+        fvk: FullViewingKey,
         note: Note,
         merkle_path: MerklePath,
     ) -> Result<(), Error> {
-        let spend = SpendInfo::new(extsk.expsk.proof_generation_key(), note, merkle_path);
+        let spend = SpendInfo::new(fvk, note, merkle_path);
 
         // Consistency check: all anchors must equal the first one
         match self.bundle_type {
@@ -642,6 +662,7 @@ impl Builder {
     /// Constructs the Sapling bundle from the builder's accumulated state.
     pub fn build<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         self,
+        extsks: &[ExtendedSpendingKey],
         rng: R,
     ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
         bundle::<SP, OP, _, _>(
@@ -651,6 +672,7 @@ impl Builder {
             self.anchor,
             self.spends,
             self.outputs,
+            extsks,
         )
     }
 
@@ -707,6 +729,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     anchor: Anchor,
     spends: Vec<SpendInfo>,
     outputs: Vec<OutputInfo>,
+    extsks: &[ExtendedSpendingKey],
 ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
     build_bundle::<_, SP, OP, _>(
         rng,
@@ -729,7 +752,21 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
             // Create the unauthorized Spend and Output descriptions.
             let shielded_spends = spend_infos
                 .into_iter()
-                .map(|a| a.build::<SP, _>(&mut rng))
+                .map(|a| {
+                    // Look up the proof generation key for non-dummy spends.
+                    let proof_generation_key = a
+                        .dummy_expsk
+                        .is_none()
+                        .then(|| {
+                            extsks.iter().find_map(|extsk| {
+                                let dfvk = extsk.to_diversifiable_full_viewing_key();
+                                (dfvk.fvk().to_bytes() == a.fvk.to_bytes())
+                                    .then(|| extsk.expsk.proof_generation_key())
+                            })
+                        })
+                        .flatten();
+                    a.build::<SP, _>(proof_generation_key, &mut rng)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             let shielded_outputs = output_infos
                 .into_iter()
@@ -1288,6 +1325,7 @@ pub(crate) mod testing {
             })
             .prop_map(
                 move |(extsk, spendable_notes, commitment_trees, rng_seed, fake_sighash_bytes)| {
+                    let dfvk = extsk.to_diversifiable_full_viewing_key();
                     let anchor = spendable_notes
                         .first()
                         .zip(commitment_trees.first())
@@ -1302,11 +1340,14 @@ pub(crate) mod testing {
                         .into_iter()
                         .zip(commitment_trees.into_iter())
                     {
-                        builder.add_spend(&extsk, note, path).unwrap();
+                        builder.add_spend(dfvk.fvk().clone(), note, path).unwrap();
                     }
 
                     let (bundle, _) = builder
-                        .build::<MockSpendProver, MockOutputProver, _, _>(&mut rng)
+                        .build::<MockSpendProver, MockOutputProver, _, _>(
+                            &[extsk.clone()],
+                            &mut rng,
+                        )
                         .unwrap()
                         .unwrap();
 
