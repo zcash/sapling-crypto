@@ -330,7 +330,10 @@ impl PreparedSpendInfo {
             value: Some(self.note.value()),
             rseed: Some(*self.note.rseed()),
             rcv: Some(self.rcv),
-            proof_generation_key: None,
+            proof_generation_key: self
+                .dummy_expsk
+                .as_ref()
+                .map(|expsk| expsk.proof_generation_key()),
             witness: Some(self.merkle_path),
             alpha: Some(alpha),
             zip32_derivation: None,
