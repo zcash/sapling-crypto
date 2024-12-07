@@ -18,7 +18,7 @@ pub struct Updater<'a>(&'a mut Bundle);
 impl<'a> Updater<'a> {
     /// Provides read access to the bundle being updated.
     pub fn bundle(&self) -> &Bundle {
-        &self.0
+        self.0
     }
 
     /// Updates the spend at the given index with information provided in the given
