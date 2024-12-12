@@ -705,6 +705,11 @@ impl DiversifiableFullViewingKey {
         &self.fvk
     }
 
+    /// Returns the internal [`FullViewingKey`] component of this diversifiable full viewing key.
+    pub fn to_internal_fvk(&self) -> FullViewingKey {
+        self.derive_internal().fvk
+    }
+
     /// Derives a nullifier-deriving key for the provided scope.
     ///
     /// This API is provided so that nullifiers for change notes can be correctly computed.

@@ -38,6 +38,20 @@ impl ValueSum {
     pub fn zero() -> Self {
         ValueSum(0)
     }
+
+    /// Instantiates a value sum from a raw encoding.
+    ///
+    /// Only intended for use with PCZTs.
+    pub(crate) fn from_raw(value_sum: i128) -> Self {
+        Self(value_sum)
+    }
+
+    /// Extracts the raw encoding of this value sum.
+    ///
+    /// Only intended for use with PCZTs.
+    pub fn to_raw(self) -> i128 {
+        self.0
+    }
 }
 
 impl Add<NoteValue> for ValueSum {

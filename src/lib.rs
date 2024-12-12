@@ -25,6 +25,7 @@ pub mod group_hash;
 pub mod keys;
 pub mod note;
 pub mod note_encryption;
+pub mod pczt;
 pub mod pedersen_hash;
 pub mod prover;
 mod spec;

@@ -7,12 +7,33 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- Support for Partially-Created Zcash Transactions:
+  - `sapling_crypto::builder::Builder::build_for_pczt`
+  - `sapling_crypto::pczt` module.
+- `sapling_crypto::bundle::EffectsOnly`
+- `sapling_crypto::keys`:
+  - `SpendAuthorizingKey::to_bytes`
+  - `SpendValidatingKey::to_bytes`
+- `sapling_crypto::value::ValueSum::to_raw`
+- `sapling_crypto::zip32::DiversifiableFullViewingKey::to_internal_fvk`
+
 ### Fixed
 - `sapling_crypto::prover::OutputProver::prepare_circuit` now takes `esk` as an
   `sapling_crypto::keys::EphemeralSecretKey`, matching the existing public APIs
   that expose it.
 
 ### Changed
+- `sapling_crypto::builder`:
+  - `SpendInfo::new` now takes a `FullViewingKey` instead of a
+    `ProofGenerationKey`.
+  - `Builder::add_spend` now takes a `FullViewingKey` instead of an
+    `&ExtendedSpendingKey`.
+  - `Builder::build` and `bundle` now take an `&[ExtendedSpendingKey]` argument.
+  - `Error` has new variants:
+    - `MissingSpendingKey`
+    - `PcztRequiresZip212`
+    - `WrongSpendingKey`
 - `sapling_crypto::bundle::SpendDescriptionV5::into_spend_description` now
   supports any `Authorization` for which the `SpendDescription` itself is fully
   authorized.
