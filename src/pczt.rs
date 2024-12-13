@@ -21,6 +21,9 @@ use crate::{
 mod parse;
 pub use parse::ParseError;
 
+mod verify;
+pub use verify::VerifyError;
+
 mod io_finalizer;
 pub use io_finalizer::IoFinalizerError;
 
