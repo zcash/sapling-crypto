@@ -34,21 +34,15 @@ impl super::Spend {
             .map(|proof_generation_key| proof_generation_key.to_viewing_key());
 
         match (expected_fvk, vk, self.value.as_ref()) {
-            // Dummy notes use random keys, which must be provided.
-            (_, Some(vk), Some(value)) if value.inner() == 0 => Ok(vk),
-            (_, None, Some(value)) if value.inner() == 0 => {
-                Err(VerifyError::MissingProofGenerationKey)
-            }
-            // If the `proof_generation_key` field has been pruned, assume the caller
-            // provided the correct FVK.
-            (Some(expected_fvk), None, _) => Ok(expected_fvk.vk.clone()),
-            // This is not a dummy note; if the FVK field is present, it must match.
             (Some(expected_fvk), Some(vk), _)
                 if vk.ak == expected_fvk.vk.ak && vk.nk == expected_fvk.vk.nk =>
             {
                 Ok(vk)
             }
+            // `expected_fvk` is ignored if the spent note is a dummy note.
+            (Some(_), Some(vk), Some(value)) if value.inner() == 0 => Ok(vk),
             (Some(_), Some(_), _) => Err(VerifyError::MismatchedFullViewingKey),
+            (Some(expected_fvk), None, _) => Ok(expected_fvk.vk.clone()),
             (None, Some(vk), _) => Ok(vk),
             (None, None, _) => Err(VerifyError::MissingProofGenerationKey),
         }
