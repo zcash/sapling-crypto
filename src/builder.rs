@@ -516,6 +516,7 @@ impl PreparedOutputInfo {
             // TODO: Save this?
             ock: None,
             zip32_derivation: None,
+            user_address: None,
             proprietary: BTreeMap::new(),
         }
     }

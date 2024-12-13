@@ -265,6 +265,13 @@ pub struct Output {
     /// The ZIP 32 derivation path at which the spending key can be found for the output.
     pub(crate) zip32_derivation: Option<Zip32Derivation>,
 
+    /// The user-facing address to which this output is being sent, if any.
+    ///
+    /// - This is set by an Updater.
+    /// - Signers must parse this address (if present) and confirm that it contains
+    ///   `recipient` (either directly, or e.g. as a receiver within a Unified Address).
+    pub(crate) user_address: Option<String>,
+
     /// Proprietary fields related to the note being created.
     pub(crate) proprietary: BTreeMap<String, Vec<u8>>,
 }
@@ -283,6 +290,7 @@ impl fmt::Debug for Output {
             .field("rseed", &self.rseed)
             .field("rcv", &self.rcv)
             .field("zip32_derivation", &self.zip32_derivation)
+            .field("user_address", &self.user_address)
             .field("proprietary", &self.proprietary)
             .finish_non_exhaustive()
     }
