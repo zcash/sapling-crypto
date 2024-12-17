@@ -7,6 +7,8 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.4.0] - 2024-12-16
+
 ### Added
 - Support for Partially-Created Zcash Transactions:
   - `sapling_crypto::builder::Builder::build_for_pczt`
