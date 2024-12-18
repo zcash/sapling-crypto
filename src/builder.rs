@@ -1,7 +1,8 @@
 //! Types and functions for building Sapling transaction components.
 
-use core::fmt;
-use std::{collections::BTreeMap, iter, marker::PhantomData};
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use core::{fmt, iter, marker::PhantomData};
 
 use group::ff::Field;
 use incrementalmerkletree::Position;
@@ -11,24 +12,27 @@ use redjubjub::{Binding, SpendAuth};
 use zcash_note_encryption::EphemeralKeyBytes;
 
 use crate::{
-    bundle::{
-        Authorization, Authorized, Bundle, GrothProofBytes, OutputDescription, SpendDescription,
-    },
-    circuit,
+    bundle::{Authorization, Authorized, Bundle, GrothProofBytes},
     keys::{
         EphemeralSecretKey, ExpandedSpendingKey, FullViewingKey, OutgoingViewingKey,
         SpendAuthorizingKey, SpendValidatingKey,
     },
     note::ExtractedNoteCommitment,
     note_encryption::{sapling_note_encryption, Zip212Enforcement},
-    prover::{OutputProver, SpendProver},
     util::generate_random_rseed_internal,
-    value::{
-        CommitmentSum, NoteValue, TrapdoorSum, ValueCommitTrapdoor, ValueCommitment, ValueSum,
-    },
+    value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
+    Anchor, Diversifier, MerklePath, Node, Note, Nullifier, PaymentAddress, SaplingIvk,
+    NOTE_COMMITMENT_TREE_DEPTH,
+};
+
+#[cfg(feature = "circuit")]
+use crate::{
+    bundle::{OutputDescription, SpendDescription},
+    circuit,
+    prover::{OutputProver, SpendProver},
+    value::{CommitmentSum, TrapdoorSum},
     zip32::ExtendedSpendingKey,
-    Anchor, Diversifier, MerklePath, Node, Note, Nullifier, PaymentAddress, ProofGenerationKey,
-    SaplingIvk, NOTE_COMMITMENT_TREE_DEPTH,
+    ProofGenerationKey,
 };
 
 /// If there are any shielded inputs, always have at least two shielded outputs, padding
@@ -268,6 +272,7 @@ impl PreparedSpendInfo {
         (cv, nullifier, rk, alpha)
     }
 
+    #[cfg(feature = "circuit")]
     fn build<Pr: SpendProver, R: RngCore>(
         self,
         proof_generation_key: Option<ProofGenerationKey>,
@@ -464,6 +469,7 @@ impl PreparedOutputInfo {
         )
     }
 
+    #[cfg(feature = "circuit")]
     fn build<Pr: OutputProver, R: RngCore>(
         self,
         rng: &mut R,
@@ -664,6 +670,7 @@ impl Builder {
     }
 
     /// Constructs the Sapling bundle from the builder's accumulated state.
+    #[cfg(feature = "circuit")]
     pub fn build<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
         self,
         extsks: &[ExtendedSpendingKey],
@@ -726,6 +733,7 @@ impl Builder {
 
 /// Constructs a new Sapling transaction bundle of the given type from the specified set of spends
 /// and outputs.
+#[cfg(feature = "circuit")]
 pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     rng: R,
     bundle_type: BundleType,
@@ -917,6 +925,7 @@ fn build_bundle<B, SP, OP, R: RngCore>(
 /// Type alias for an in-progress bundle that has no proofs or signatures.
 ///
 /// This is returned by [`Builder::build`].
+#[cfg(feature = "circuit")]
 pub type UnauthorizedBundle<V> = Bundle<InProgress<Unproven, Unsigned>, V>;
 
 /// Marker trait representing bundle proofs in the process of being created.
@@ -951,9 +960,11 @@ impl<P: InProgressProofs, S: InProgressSignatures> Authorization for InProgress<
 ///
 /// The [`SpendDescription`]s and [`OutputDescription`]s within the bundle contain the
 /// private data needed to create proofs.
+#[cfg(feature = "circuit")]
 #[derive(Clone, Copy, Debug)]
 pub struct Unproven;
 
+#[cfg(feature = "circuit")]
 impl InProgressProofs for Unproven {
     type SpendProof = circuit::Spend;
     type OutputProof = circuit::Output;
@@ -969,16 +980,19 @@ impl InProgressProofs for Proven {
 }
 
 /// Reports on the progress made towards creating proofs for a bundle.
+#[cfg(feature = "circuit")]
 pub trait ProverProgress {
     /// Updates the progress instance with the number of steps completed and the total
     /// number of steps.
     fn update(&mut self, cur: u32, end: u32);
 }
 
+#[cfg(feature = "circuit")]
 impl ProverProgress for () {
     fn update(&mut self, _: u32, _: u32) {}
 }
 
+#[cfg(feature = "circuit")]
 impl<U: From<(u32, u32)>> ProverProgress for std::sync::mpsc::Sender<U> {
     fn update(&mut self, cur: u32, end: u32) {
         // If the send fails, we should ignore the error, not crash.
@@ -986,12 +1000,14 @@ impl<U: From<(u32, u32)>> ProverProgress for std::sync::mpsc::Sender<U> {
     }
 }
 
+#[cfg(feature = "circuit")]
 impl<U: ProverProgress> ProverProgress for &mut U {
     fn update(&mut self, cur: u32, end: u32) {
         (*self).update(cur, end);
     }
 }
 
+#[cfg(feature = "circuit")]
 struct CreateProofs<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress> {
     spend_prover: &'a SP,
     output_prover: &'a OP,
@@ -1001,6 +1017,7 @@ struct CreateProofs<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: Prover
     progress: u32,
 }
 
+#[cfg(feature = "circuit")]
 impl<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress>
     CreateProofs<'a, SP, OP, R, U>
 {
@@ -1041,6 +1058,7 @@ impl<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress>
         OP::encode_proof(proof)
     }
 
+    #[cfg(feature = "circuit")]
     fn map_authorization<S: InProgressSignatures>(
         &mut self,
         a: InProgress<Unproven, S>,
@@ -1052,6 +1070,7 @@ impl<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress>
     }
 }
 
+#[cfg(feature = "circuit")]
 impl<S: InProgressSignatures, V> Bundle<InProgress<Unproven, S>, V> {
     /// Creates the proofs for this bundle.
     pub fn create_proofs<SP: SpendProver, OP: OutputProver>(

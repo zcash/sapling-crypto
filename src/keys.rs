@@ -4,8 +4,9 @@
 //!
 //! [section 4.2.2]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
 
-use std::fmt;
-use std::io::{self, Read, Write};
+use alloc::vec::Vec;
+use core::fmt;
+use core2::io::{self, Read, Write};
 
 use super::{
     address::PaymentAddress,
@@ -444,6 +445,7 @@ impl SaplingIvk {
 #[derive(Clone, Debug)]
 pub struct PreparedIncomingViewingKey(PreparedScalar);
 
+#[cfg(feature = "std")]
 impl memuse::DynamicUsage for PreparedIncomingViewingKey {
     fn dynamic_usage(&self) -> usize {
         self.0.dynamic_usage()
@@ -690,6 +692,7 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
     use group::{Group, GroupEncoding};
 
     use super::{FullViewingKey, SpendAuthorizingKey, SpendValidatingKey};

@@ -3,6 +3,7 @@
 use super::ecc::{EdwardsPoint, MontgomeryPoint};
 pub use crate::pedersen_hash::Personalization;
 
+use alloc::vec::Vec;
 use bellman::gadgets::boolean::Boolean;
 use bellman::gadgets::lookup::*;
 use bellman::{ConstraintSystem, SynthesisError};

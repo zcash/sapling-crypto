@@ -1,6 +1,7 @@
 //! Test vectors from https://github.com/zcash-hackworks/zcash-test-vectors/blob/master/sapling_pedersen.py
 
 use super::{test::TestVector, Personalization};
+use alloc::vec::Vec;
 
 pub fn get_vectors<'a>() -> Vec<TestVector<'a>> {
     vec![

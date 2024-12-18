@@ -1,6 +1,7 @@
 //! Gadgets implementing Jubjub elliptic curve operations.
 
-use std::ops::{AddAssign, MulAssign, Neg, SubAssign};
+use alloc::vec::Vec;
+use core::ops::{AddAssign, MulAssign, Neg, SubAssign};
 
 use bellman::{ConstraintSystem, SynthesisError};
 
@@ -620,6 +621,7 @@ impl MontgomeryPoint {
 
 #[cfg(test)]
 mod test {
+    use alloc::vec::Vec;
     use bellman::ConstraintSystem;
     use group::{
         ff::{Field, PrimeField, PrimeFieldBits},

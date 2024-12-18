@@ -4,7 +4,8 @@ use incrementalmerkletree::{Hashable, Level};
 use lazy_static::lazy_static;
 use subtle::CtOption;
 
-use std::fmt;
+use alloc::vec::Vec;
+use core::fmt;
 
 use super::{
     note::ExtractedNoteCommitment,
@@ -20,14 +21,16 @@ pub type MerklePath = incrementalmerkletree::MerklePath<Node, NOTE_COMMITMENT_TR
 
 lazy_static! {
     static ref UNCOMMITTED_SAPLING: bls12_381::Scalar = bls12_381::Scalar::one();
-    static ref EMPTY_ROOTS: Vec<Node> = {
-        let mut v = vec![Node::empty_leaf()];
-        for d in 0..NOTE_COMMITMENT_TREE_DEPTH {
-            let next = Node::combine(d.into(), &v[usize::from(d)], &v[usize::from(d)]);
-            v.push(next);
-        }
-        v
-    };
+    static ref EMPTY_ROOTS: Vec<Node> = empty_roots();
+}
+
+fn empty_roots() -> Vec<Node> {
+    let mut v = vec![Node::empty_leaf()];
+    for d in 0..NOTE_COMMITMENT_TREE_DEPTH {
+        let next = Node::combine(d.into(), &v[usize::from(d)], &v[usize::from(d)]);
+        v.push(next);
+    }
+    v
 }
 
 /// Compute a parent node in the Sapling commitment tree given its two children.
@@ -144,6 +147,7 @@ impl Node {
     }
 
     /// Returns the wrapped value
+    #[cfg(feature = "circuit")]
     pub(crate) fn inner(&self) -> &jubjub::Base {
         &self.0
     }

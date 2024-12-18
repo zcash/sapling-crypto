@@ -140,7 +140,10 @@ impl BatchValidator {
         }
 
         if let Err(e) = self.signatures.verify(&mut rng) {
+            #[cfg(feature = "std")]
             tracing::debug!("Signature batch validation failed: {}", e);
+            #[cfg(not(feature = "std"))]
+            tracing::debug!("Signature batch validation failed: {:?}", e);
             return false;
         }
 
