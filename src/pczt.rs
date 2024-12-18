@@ -306,3 +306,32 @@ pub struct Zip32Derivation {
     /// The sequence of indices corresponding to the shielded HD path.
     derivation_path: Vec<ChildIndex>,
 }
+
+impl Zip32Derivation {
+    /// Extracts the ZIP 32 account index from this derivation path.
+    ///
+    /// Returns `None` if the seed fingerprints don't match, or if this is a non-standard
+    /// derivation path.
+    pub fn extract_account_index(
+        &self,
+        seed_fp: &zip32::fingerprint::SeedFingerprint,
+        expected_coin_type: zip32::ChildIndex,
+    ) -> Option<zip32::AccountId> {
+        if self.seed_fingerprint == seed_fp.to_bytes() {
+            match &self.derivation_path[..] {
+                [purpose, coin_type, account_index]
+                    if purpose == &zip32::ChildIndex::hardened(32)
+                        && coin_type == &expected_coin_type =>
+                {
+                    Some(
+                        zip32::AccountId::try_from(account_index.index() - (1 << 31))
+                            .expect("zip32::ChildIndex only supports hardened"),
+                    )
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+}

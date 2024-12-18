@@ -7,6 +7,9 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `sapling_crypto::pczt::Zip32Derivation::extract_account_index`
+
 ## [0.4.0] - 2024-12-16
 
 ### Added
