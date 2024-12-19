@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use core::fmt::Debug;
 
 use memuse::DynamicUsage;
@@ -9,7 +10,7 @@ use zcash_note_encryption::{
 };
 
 use crate::{
-    circuit::GROTH_PROOF_SIZE,
+    constants::GROTH_PROOF_SIZE,
     note::ExtractedNoteCommitment,
     note_encryption::{CompactOutputDescription, SaplingDomain},
     value::ValueCommitment,
@@ -220,8 +221,8 @@ pub struct SpendDescription<A: Authorization> {
     spend_auth_sig: A::AuthSig,
 }
 
-impl<A: Authorization> std::fmt::Debug for SpendDescription<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl<A: Authorization> core::fmt::Debug for SpendDescription<A> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         write!(
             f,
             "SpendDescription(cv = {:?}, anchor = {:?}, nullifier = {:?}, rk = {:?}, spend_auth_sig = {:?})",
@@ -431,8 +432,8 @@ impl<A> ShieldedOutput<SaplingDomain, ENC_CIPHERTEXT_SIZE> for OutputDescription
     }
 }
 
-impl<A> std::fmt::Debug for OutputDescription<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl<A> core::fmt::Debug for OutputDescription<A> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         write!(
             f,
             "OutputDescription(cv = {:?}, cmu = {:?}, ephemeral_key = {:?})",
@@ -498,7 +499,7 @@ impl<A> From<OutputDescription<A>> for CompactOutputDescription {
 #[cfg(any(test, feature = "test-dependencies"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
 pub mod testing {
-    use std::fmt;
+    use core::fmt;
 
     use ff::Field;
     use group::{Group, GroupEncoding};
@@ -507,7 +508,7 @@ pub mod testing {
     use rand::{rngs::StdRng, SeedableRng};
 
     use crate::{
-        circuit::GROTH_PROOF_SIZE,
+        constants::GROTH_PROOF_SIZE,
         note::testing::arb_cmu,
         value::{
             testing::{arb_note_value_bounded, arb_trapdoor},

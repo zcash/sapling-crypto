@@ -2,6 +2,7 @@
 
 use crate::constants::{PEDERSEN_HASH_CHUNKS_PER_GENERATOR, PEDERSEN_HASH_GENERATORS};
 
+use alloc::vec::Vec;
 use bls12_381::Scalar;
 use group::{ff::Field, Curve, Group};
 use jubjub::ExtendedPoint;

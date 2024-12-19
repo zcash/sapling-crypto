@@ -1,6 +1,13 @@
 # sapling-crypto
 
-This repository contains a (work-in-progress) implementation of Zcash's "Sapling" cryptography.
+This repository contains an implementation of Zcash's "Sapling" cryptography.
+
+## `no_std` compatibility
+
+Downstream users of this crate must enable the `spin_no_std` feature of the
+`lazy_static` crate in order to take advantage of `no_std` builds; this is due
+to the fact that `--no-default-features` builds of `lazy_static` still rely on
+`std`.
 
 ## License
 

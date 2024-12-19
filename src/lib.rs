@@ -7,18 +7,27 @@
 //! shielded payment address; we implicitly mean it is an Sapling payment address (as
 //! opposed to e.g. an Orchard payment address, which is also shielded).
 //!
-//! ## Feature flags
-#![doc = document_features::document_features!()]
+#![cfg_attr(feature = "std", doc = "## Feature flags")]
+#![cfg_attr(feature = "std", doc = document_features::document_features!())]
 //!
 
+#![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 // Catch documentation errors caused by code changes.
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(unsafe_code)]
 
+#[macro_use]
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
 mod address;
 pub mod builder;
 pub mod bundle;
+
+#[cfg(feature = "circuit")]
 pub mod circuit;
 pub mod constants;
 pub mod group_hash;
@@ -27,11 +36,13 @@ pub mod note;
 pub mod note_encryption;
 pub mod pczt;
 pub mod pedersen_hash;
+#[cfg(feature = "circuit")]
 pub mod prover;
 mod spec;
 mod tree;
 pub mod util;
 pub mod value;
+#[cfg(feature = "circuit")]
 mod verifier;
 pub mod zip32;
 
@@ -43,6 +54,8 @@ pub use tree::{
     merkle_hash, Anchor, CommitmentTree, IncrementalWitness, MerklePath, Node,
     NOTE_COMMITMENT_TREE_DEPTH,
 };
+
+#[cfg(feature = "circuit")]
 pub use verifier::{BatchValidator, SaplingVerificationContext};
 
 #[cfg(any(test, feature = "test-dependencies"))]

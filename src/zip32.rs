@@ -6,14 +6,13 @@
 
 use aes::Aes256;
 use blake2b_simd::Params as Blake2bParams;
-use byteorder::{ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 use fpe::ff1::{BinaryNumeralString, FF1};
 use subtle::CtOption;
 use zcash_spec::PrfExpand;
 use zip32::{ChainCode, ChildIndex, DiversifierIndex, Scope};
 
-use std::io::{self, Read, Write};
-use std::ops::AddAssign;
+use core::ops::AddAssign;
+use core2::io::{self, Read, Write};
 
 use super::{Diversifier, NullifierDerivingKey, PaymentAddress, ViewingKey};
 use crate::note_encryption::PreparedIncomingViewingKey;
@@ -269,7 +268,7 @@ pub struct ExtendedSpendingKey {
     dk: DiversifierKey,
 }
 
-impl std::cmp::PartialEq for ExtendedSpendingKey {
+impl core::cmp::PartialEq for ExtendedSpendingKey {
     fn eq(&self, rhs: &ExtendedSpendingKey) -> bool {
         self.depth == rhs.depth
             && self.parent_fvk_tag == rhs.parent_fvk_tag
@@ -282,8 +281,8 @@ impl std::cmp::PartialEq for ExtendedSpendingKey {
     }
 }
 
-impl std::fmt::Debug for ExtendedSpendingKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl core::fmt::Debug for ExtendedSpendingKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         write!(
             f,
             "ExtendedSpendingKey(d = {}, tag_p = {:?}, i = {:?})",
@@ -354,17 +353,20 @@ impl ExtendedSpendingKey {
     /// Reads and decodes the encoded form of the extended spending key as defined in
     /// [ZIP 32](https://zips.z.cash/zip-0032) from the provided reader.
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
-        let depth = reader.read_u8()?;
+        let mut depth = [0; 1];
+        reader.read_exact(&mut depth)?;
+        let depth = depth[0];
         let mut tag = [0; 4];
         reader.read_exact(&mut tag)?;
-        let child_index = reader.read_u32::<LittleEndian>().and_then(|i| {
-            KeyIndex::new(depth, i).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Unsupported,
+        let mut child_index_bytes = [0; 4];
+        reader.read_exact(&mut child_index_bytes)?;
+        let child_index =
+            KeyIndex::new(depth, u32::from_le_bytes(child_index_bytes)).ok_or_else(|| {
+                core2::io::Error::new(
+                    core2::io::ErrorKind::InvalidData,
                     "Unsupported child index in encoding",
                 )
-            })
-        })?;
+            })?;
         let mut c = [0; 32];
         reader.read_exact(&mut c)?;
         let expsk = ExpandedSpendingKey::read(&mut reader)?;
@@ -419,8 +421,7 @@ impl ExtendedSpendingKey {
     pub fn derive_child(&self, i: ChildIndex) -> Self {
         let fvk = FullViewingKey::from_expanded_spending_key(&self.expsk);
         let tmp = {
-            let mut le_i = [0; 4];
-            LittleEndian::write_u32(&mut le_i, i.index());
+            let le_i = i.index().to_le_bytes();
             PrfExpand::SAPLING_ZIP32_CHILD_HARDENED.with(
                 self.chain_code.as_bytes(),
                 &self.expsk.to_bytes(),
@@ -529,7 +530,7 @@ pub struct ExtendedFullViewingKey {
     pub(crate) dk: DiversifierKey,
 }
 
-impl std::cmp::PartialEq for ExtendedFullViewingKey {
+impl core::cmp::PartialEq for ExtendedFullViewingKey {
     fn eq(&self, rhs: &ExtendedFullViewingKey) -> bool {
         self.depth == rhs.depth
             && self.parent_fvk_tag == rhs.parent_fvk_tag
@@ -542,8 +543,8 @@ impl std::cmp::PartialEq for ExtendedFullViewingKey {
     }
 }
 
-impl std::fmt::Debug for ExtendedFullViewingKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl core::fmt::Debug for ExtendedFullViewingKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         write!(
             f,
             "ExtendedFullViewingKey(d = {}, tag_p = {:?}, i = {:?})",
@@ -554,17 +555,20 @@ impl std::fmt::Debug for ExtendedFullViewingKey {
 
 impl ExtendedFullViewingKey {
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
-        let depth = reader.read_u8()?;
+        let mut depth = [0; 1];
+        reader.read_exact(&mut depth)?;
+        let depth = depth[0];
         let mut tag = [0; 4];
         reader.read_exact(&mut tag)?;
-        let child_index = reader.read_u32::<LittleEndian>().and_then(|i| {
-            KeyIndex::new(depth, i).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Unsupported,
+        let mut child_index_bytes = [0; 4];
+        reader.read_exact(&mut child_index_bytes)?;
+        let child_index =
+            KeyIndex::new(depth, u32::from_le_bytes(child_index_bytes)).ok_or_else(|| {
+                core2::io::Error::new(
+                    core2::io::ErrorKind::InvalidData,
                     "Unsupported child index in encoding",
                 )
-            })
-        })?;
+            })?;
         let mut c = [0; 32];
         reader.read_exact(&mut c)?;
         let fvk = FullViewingKey::read(&mut reader)?;
@@ -582,9 +586,9 @@ impl ExtendedFullViewingKey {
     }
 
     pub fn write<W: Write>(&self, mut writer: W) -> io::Result<()> {
-        writer.write_u8(self.depth)?;
+        writer.write_all(&[self.depth])?;
         writer.write_all(&self.parent_fvk_tag.0)?;
-        writer.write_u32::<LittleEndian>(self.child_index.index())?;
+        writer.write_all(&self.child_index.index().to_le_bytes())?;
         writer.write_all(self.chain_code.as_bytes())?;
         writer.write_all(&self.fvk.to_bytes())?;
         writer.write_all(&self.dk.0)?;

@@ -1,14 +1,13 @@
 //! The Sapling circuits.
 
+use alloc::vec::Vec;
 use core::fmt;
-use std::io;
+use core2::io;
 
 use group::{ff::PrimeField, Curve};
 
 use bellman::{groth16, Circuit, ConstraintSystem, SynthesisError};
 use bls12_381::Bls12;
-
-use super::{value::NoteValue, PaymentAddress, ProofGenerationKey};
 
 use bellman::gadgets::blake2s;
 use bellman::gadgets::boolean;
@@ -21,6 +20,7 @@ use self::constants::{
     PROOF_GENERATION_KEY_GENERATOR, SPENDING_KEY_GENERATOR, VALUE_COMMITMENT_RANDOMNESS_GENERATOR,
     VALUE_COMMITMENT_VALUE_GENERATOR,
 };
+use crate::{value::NoteValue, PaymentAddress, ProofGenerationKey};
 
 #[cfg(test)]
 use group::ff::PrimeFieldBits;
@@ -28,9 +28,6 @@ use group::ff::PrimeFieldBits;
 mod constants;
 mod ecc;
 mod pedersen_hash;
-
-// π_A + π_B + π_C
-pub(crate) const GROTH_PROOF_SIZE: usize = 48 + 96 + 48;
 
 /// The opening (value and randomness) of a Sapling value commitment.
 #[derive(Clone)]
@@ -565,7 +562,10 @@ impl SpendParameters {
     /// Only set `verify_point_encodings` to false if you are verifying the parameters in
     /// another way (such as checking the hash of the parameters file on disk).
     pub fn read<R: io::Read>(reader: R, verify_point_encodings: bool) -> io::Result<Self> {
-        groth16::Parameters::<Bls12>::read(reader, verify_point_encodings).map(Self)
+        Ok(Self(groth16::Parameters::<Bls12>::read(
+            reader,
+            verify_point_encodings,
+        )?))
     }
 
     /// Returns the verifying key for the Sapling Spend circuit.
@@ -703,7 +703,7 @@ fn test_input_circuit_with_bls12_381() {
                 let mut rhs = uncle;
 
                 if b {
-                    ::std::mem::swap(&mut lhs, &mut rhs);
+                    ::core::mem::swap(&mut lhs, &mut rhs);
                 }
 
                 let lhs = lhs.to_le_bits();
@@ -886,7 +886,7 @@ fn test_input_circuit_with_bls12_381_external_test_vectors() {
                 let mut rhs = uncle;
 
                 if b {
-                    ::std::mem::swap(&mut lhs, &mut rhs);
+                    ::core::mem::swap(&mut lhs, &mut rhs);
                 }
 
                 let lhs = lhs.to_le_bits();

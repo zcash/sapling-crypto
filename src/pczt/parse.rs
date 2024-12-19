@@ -1,4 +1,6 @@
-use std::collections::BTreeMap;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 
 use ff::PrimeField;
 use zcash_note_encryption::{EphemeralKeyBytes, OutgoingCipherKey};

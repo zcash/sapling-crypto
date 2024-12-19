@@ -7,7 +7,7 @@ authors = [
     "Kris Nuttycombe <kris@electriccoin.co>",
 ]
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.66"
 description = "Cryptographic library for Zcash Sapling"
 homepage = "https://github.com/zcash/sapling-crypto"
 repository = "https://github.com/zcash/sapling-crypto"
@@ -18,48 +18,50 @@ features = ["test-dependencies"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-ff = "0.13"
-group = { version = "0.13", features = ["wnaf-memuse"] }
+ff = { version = "0.13", default-features = false }
+group = "0.13"
 
-bls12_381 = "0.8"
-jubjub = "0.10"
-redjubjub = "0.7"
+bls12_381 = { version = "0.8", default-features = false, features = ["alloc"] }
+jubjub = { version = "0.10", default-features = false, features = ["alloc"] }
+redjubjub = { version = "0.7", default-features = false }
 zcash_spec = "0.1"
 
 # Boilerplate
 getset = "0.1"
 
+# No-std support
+core2 = { version = "0.3", default-features = false, features = ["alloc"] }
+
 # Circuits
-bellman = { version = "0.14", default-features = false, features = ["groth16"] }
+bellman = { version = "0.14", default-features = false, features = ["groth16"], optional = true }
 
 # CSPRNG
-rand = "0.8"
-rand_core = "0.6"
+rand = { version = "0.8", default-features = false }
+rand_core = { version = "0.6", default-features = false }
 
 # Digests
-blake2b_simd = "1"
-blake2s_simd = "1"
+blake2b_simd = { version = "1", default-features = false }
+blake2s_simd = { version = "1", default-features = false }
 
 # Documentation
-document-features = "0.2"
+document-features = { version = "0.2", optional = true }
 
 # Encodings
-byteorder = "1"
-hex = "0.4"
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
 
 # Logging and metrics
-memuse = "0.2.1"
-tracing = "0.1"
+memuse = { version = "0.2.2", default-features = false }
+tracing = { version = "0.1", default-features = false }
 
 # Note Commitment Trees
-bitvec = "1"
-incrementalmerkletree = { version = "0.7", features = ["legacy-api"] }
+bitvec = { version = "1", default-features = false }
+incrementalmerkletree = { version = "0.7", default-features = false, features = ["legacy-api"] }
 
 # Note encryption
 zcash_note_encryption = { version = "0.4", features = ["pre-zip-212"] }
 
 # Secret management
-subtle = "2.2.3"
+subtle = { version = "2.2.3", default-features = false }
 
 # Static constants
 lazy_static = "1"
@@ -69,8 +71,9 @@ proptest = { version = "1", optional = true }
 
 # ZIP 32
 aes = "0.8"
-fpe = "0.6"
-zip32 = "0.1"
+fpe = { version = "0.6", default-features = false, features = ["alloc"] }
+zip32 = { version = "0.1.1", default-features = false }
+
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
@@ -83,10 +86,26 @@ rand_xorshift = "0.3"
 pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
 
 [features]
-default = ["multicore"]
+default = ["multicore", "circuit"]
+std = [
+  "core2/std",
+  "dep:document-features",
+  "group/wnaf-memuse",
+  "redjubjub/std",
+]
+
+## Enables creation of Sapling proofs
+circuit = [
+  "dep:bellman",
+  "bls12_381/bits",
+  "bls12_381/groups",
+  "bls12_381/pairings",
+  "jubjub/bits",
+  "std"
+]
 
 ## Enables multithreading support for creating proofs.
-multicore = ["bellman/multicore"]
+multicore = ["bellman?/multicore"]
 
 ### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
 ### should not be relied upon and will be removed in a future release.
@@ -105,3 +124,6 @@ harness = false
 [[bench]]
 name = "pedersen_hash"
 harness = false
+
+[patch.crates-io]
+redjubjub = { git = "https://github.com/nuttycom/redjubjub", rev = "e413019904400f4caa3550df7c4040befadfbb14" }

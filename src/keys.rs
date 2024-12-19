@@ -4,8 +4,9 @@
 //!
 //! [section 4.2.2]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
 
-use std::fmt;
-use std::io::{self, Read, Write};
+use alloc::vec::Vec;
+use core::fmt;
+use core2::io::{self, Read, Write};
 
 use super::{
     address::PaymentAddress,
@@ -26,7 +27,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_spec::PrfExpand;
 
-#[cfg(test)]
+#[cfg(all(feature = "circuit", test))]
 use rand_core::RngCore;
 
 /// Errors that can occur in the decoding of Sapling spending keys.
@@ -153,7 +154,7 @@ impl Eq for SpendValidatingKey {}
 
 impl SpendValidatingKey {
     /// For circuit tests only.
-    #[cfg(test)]
+    #[cfg(all(feature = "circuit", test))]
     pub(crate) fn fake_random<R: RngCore>(mut rng: R) -> Self {
         loop {
             if let Some(k) = Self::from_bytes(&jubjub::SubgroupPoint::random(&mut rng).to_bytes()) {
@@ -444,6 +445,7 @@ impl SaplingIvk {
 #[derive(Clone, Debug)]
 pub struct PreparedIncomingViewingKey(PreparedScalar);
 
+#[cfg(feature = "std")]
 impl memuse::DynamicUsage for PreparedIncomingViewingKey {
     fn dynamic_usage(&self) -> usize {
         self.0.dynamic_usage()
@@ -690,6 +692,7 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
     use group::{Group, GroupEncoding};
 
     use super::{FullViewingKey, SpendAuthorizingKey, SpendValidatingKey};
