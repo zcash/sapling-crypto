@@ -9,6 +9,13 @@ and this library adheres to Rust's notion of
 
 ### Added
 - `sapling_crypto::pczt::Zip32Derivation::extract_account_index`
+- `no_std` compatibility has been introduced by means of a default-enabled
+  `std` feature flag.
+- A default-enabled `circuit` is now provided to enable downstream users to
+  avoid the need to depend upon the `bellman` crate.
+
+### Changed
+- MSRV is now 1.66
 
 ## [0.4.0] - 2024-12-16
 

@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use rand::{CryptoRng, RngCore};
 
 use crate::value::{CommitmentSum, TrapdoorSum};

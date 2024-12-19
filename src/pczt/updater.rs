@@ -1,3 +1,6 @@
+use alloc::string::String;
+use alloc::vec::Vec;
+
 use crate::ProofGenerationKey;
 
 use super::{Bundle, Output, Spend, Zip32Derivation};

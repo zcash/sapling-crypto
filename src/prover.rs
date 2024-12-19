@@ -6,7 +6,8 @@ use rand_core::RngCore;
 
 use crate::{
     bundle::GrothProofBytes,
-    circuit::{self, GROTH_PROOF_SIZE},
+    circuit,
+    constants::GROTH_PROOF_SIZE,
     keys::EphemeralSecretKey,
     value::{NoteValue, ValueCommitTrapdoor},
     MerklePath,
@@ -179,7 +180,8 @@ pub mod mock {
     use super::{OutputProver, SpendProver};
     use crate::{
         bundle::GrothProofBytes,
-        circuit::{self, ValueCommitmentOpening, GROTH_PROOF_SIZE},
+        circuit::{self, ValueCommitmentOpening},
+        constants::GROTH_PROOF_SIZE,
         keys::EphemeralSecretKey,
         value::{NoteValue, ValueCommitTrapdoor},
         Diversifier, MerklePath, PaymentAddress, ProofGenerationKey, Rseed,

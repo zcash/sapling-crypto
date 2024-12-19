@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 pub(crate) struct TestVector {
     pub ovk: [u8; 32],
     pub ivk: [u8; 32],

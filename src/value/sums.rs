@@ -18,6 +18,7 @@ impl fmt::Display for OverflowError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for OverflowError {}
 
 /// A sum of Sapling note values.

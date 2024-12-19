@@ -1,7 +1,9 @@
 //! PCZT support for Sapling.
 
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::vec::Vec;
 use core::fmt;
-use std::collections::BTreeMap;
 
 use getset::Getters;
 use redjubjub::{Binding, SpendAuth};
@@ -30,7 +32,9 @@ pub use io_finalizer::IoFinalizerError;
 mod updater;
 pub use updater::{OutputUpdater, SpendUpdater, Updater, UpdaterError};
 
+#[cfg(feature = "circuit")]
 mod prover;
+#[cfg(feature = "circuit")]
 pub use prover::ProverError;
 
 mod signer;
@@ -277,7 +281,7 @@ pub struct Output {
 }
 
 impl fmt::Debug for Output {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Output")
             .field("cv", &self.cv)
             .field("cmu", &self.cmu)

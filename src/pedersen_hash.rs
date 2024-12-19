@@ -3,14 +3,12 @@
 #[cfg(test)]
 pub(crate) mod test_vectors;
 
-use byteorder::{ByteOrder, LittleEndian};
+use alloc::vec::Vec;
+use core::ops::{AddAssign, Neg};
 use ff::PrimeField;
 use group::Group;
-use std::ops::{AddAssign, Neg};
 
-use super::constants::{
-    PEDERSEN_HASH_CHUNKS_PER_GENERATOR, PEDERSEN_HASH_EXP_TABLE, PEDERSEN_HASH_EXP_WINDOW_SIZE,
-};
+use super::constants::{PEDERSEN_HASH_CHUNKS_PER_GENERATOR, PEDERSEN_HASH_EXP_WINDOW_SIZE};
 
 #[derive(Copy, Clone)]
 pub enum Personalization {
@@ -41,7 +39,7 @@ where
         .chain(bits.into_iter());
 
     let mut result = jubjub::SubgroupPoint::identity();
-    let mut generators = PEDERSEN_HASH_EXP_TABLE.iter();
+    let mut generators = crate::constants::PEDERSEN_HASH_EXP_TABLE.iter();
 
     loop {
         let mut acc = jubjub::Fr::zero();
@@ -94,7 +92,11 @@ where
         let acc = acc.to_repr();
         let num_limbs: usize = acc.as_ref().len() / 8;
         let mut limbs = vec![0u64; num_limbs + 1];
-        LittleEndian::read_u64_into(acc.as_ref(), &mut limbs[..num_limbs]);
+        for (src, dst) in acc.chunks_exact(8).zip(limbs[..num_limbs].iter_mut()) {
+            let mut limb_bytes = [0u8; 8];
+            limb_bytes.copy_from_slice(src);
+            *dst = u64::from_le_bytes(limb_bytes);
+        }
 
         let mut tmp = jubjub::SubgroupPoint::identity();
 
@@ -124,6 +126,7 @@ where
 
 #[cfg(test)]
 pub mod test {
+    use alloc::string::ToString;
     use group::Curve;
 
     use super::*;
