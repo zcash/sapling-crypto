@@ -33,7 +33,7 @@ getset = "0.1"
 core2 = { version = "0.3", default-features = false, features = ["alloc"] }
 
 # Circuits
-bellman = { version = "0.14", features = ["groth16"], optional = true }
+bellman = { version = "0.14", default-features = false, features = ["groth16"], optional = true }
 
 # CSPRNG
 rand = { version = "0.8", default-features = false }
@@ -86,26 +86,26 @@ rand_xorshift = "0.3"
 pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
 
 [features]
-default = ["multicore", "std"]
+default = ["multicore", "circuit"]
 std = [
   "core2/std",
-  "document-features",
+  "dep:document-features",
   "group/wnaf-memuse",
   "redjubjub/std",
-  "circuit",
 ]
 
 ## Enables creation of Sapling proofs
 circuit = [
-  "bellman",
+  "dep:bellman",
   "bls12_381/bits",
   "bls12_381/groups",
   "bls12_381/pairings",
   "jubjub/bits",
+  "std"
 ]
 
 ## Enables multithreading support for creating proofs.
-multicore = ["circuit", "bellman/multicore"]
+multicore = ["bellman?/multicore"]
 
 ### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
 ### should not be relied upon and will be removed in a future release.

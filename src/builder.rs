@@ -992,7 +992,7 @@ impl ProverProgress for () {
     fn update(&mut self, _: u32, _: u32) {}
 }
 
-#[cfg(feature = "circuit")]
+#[cfg(all(feature = "circuit", feature = "std"))]
 impl<U: From<(u32, u32)>> ProverProgress for std::sync::mpsc::Sender<U> {
     fn update(&mut self, cur: u32, end: u32) {
         // If the send fails, we should ignore the error, not crash.
@@ -1058,7 +1058,6 @@ impl<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress>
         OP::encode_proof(proof)
     }
 
-    #[cfg(feature = "circuit")]
     fn map_authorization<S: InProgressSignatures>(
         &mut self,
         a: InProgress<Unproven, S>,
@@ -1301,9 +1300,9 @@ impl<V> Bundle<InProgress<Proven, PartiallyAuthorized>, V> {
     }
 }
 
-#[cfg(any(test, feature = "test-dependencies"))]
+#[cfg(all(feature = "circuit", any(test, feature = "test-dependencies")))]
 pub(crate) mod testing {
-    use std::fmt;
+    use core::fmt;
 
     use proptest::collection::vec;
     use proptest::prelude::*;
@@ -1312,7 +1311,6 @@ pub(crate) mod testing {
     use crate::{
         bundle::{Authorized, Bundle},
         note_encryption::Zip212Enforcement,
-        prover::mock::{MockOutputProver, MockSpendProver},
         testing::{arb_node, arb_note},
         value::testing::arb_positive_note_value,
         zip32::testing::arb_extended_spending_key,
@@ -1324,7 +1322,11 @@ pub(crate) mod testing {
 
     use super::{Builder, BundleType};
 
+    #[cfg(feature = "circuit")]
+    use crate::prover::mock::{MockOutputProver, MockSpendProver};
+
     #[allow(dead_code)]
+    #[cfg(feature = "circuit")]
     fn arb_bundle<V: fmt::Debug + From<i64>>(
         max_money: u64,
         zip212_enforcement: Zip212Enforcement,

@@ -27,7 +27,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_spec::PrfExpand;
 
-#[cfg(test)]
+#[cfg(all(feature = "circuit", test))]
 use rand_core::RngCore;
 
 /// Errors that can occur in the decoding of Sapling spending keys.
@@ -154,7 +154,7 @@ impl Eq for SpendValidatingKey {}
 
 impl SpendValidatingKey {
     /// For circuit tests only.
-    #[cfg(test)]
+    #[cfg(all(feature = "circuit", test))]
     pub(crate) fn fake_random<R: RngCore>(mut rng: R) -> Self {
         loop {
             if let Some(k) = Self::from_bytes(&jubjub::SubgroupPoint::random(&mut rng).to_bytes()) {

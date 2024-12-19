@@ -562,7 +562,10 @@ impl SpendParameters {
     /// Only set `verify_point_encodings` to false if you are verifying the parameters in
     /// another way (such as checking the hash of the parameters file on disk).
     pub fn read<R: io::Read>(reader: R, verify_point_encodings: bool) -> io::Result<Self> {
-        groth16::Parameters::<Bls12>::read(reader, verify_point_encodings).map(Self)
+        Ok(Self(groth16::Parameters::<Bls12>::read(
+            reader,
+            verify_point_encodings,
+        )?))
     }
 
     /// Returns the verifying key for the Sapling Spend circuit.

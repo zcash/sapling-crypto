@@ -421,8 +421,7 @@ impl ExtendedSpendingKey {
     pub fn derive_child(&self, i: ChildIndex) -> Self {
         let fvk = FullViewingKey::from_expanded_spending_key(&self.expsk);
         let tmp = {
-            let mut le_i = [0; 4];
-            le_i.copy_from_slice(&i.index().to_le_bytes());
+            let le_i = i.index().to_le_bytes();
             PrfExpand::SAPLING_ZIP32_CHILD_HARDENED.with(
                 self.chain_code.as_bytes(),
                 &self.expsk.to_bytes(),

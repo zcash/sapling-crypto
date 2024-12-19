@@ -7,7 +7,7 @@
 //! shielded payment address; we implicitly mean it is an Sapling payment address (as
 //! opposed to e.g. an Orchard payment address, which is also shielded).
 //!
-//! ## Feature flags
+#![cfg_attr(feature = "std", doc = "## Feature flags")]
 #![cfg_attr(feature = "std", doc = document_features::document_features!())]
 //!
 
