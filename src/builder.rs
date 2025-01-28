@@ -980,19 +980,17 @@ impl InProgressProofs for Proven {
 }
 
 /// Reports on the progress made towards creating proofs for a bundle.
-#[cfg(feature = "circuit")]
 pub trait ProverProgress {
     /// Updates the progress instance with the number of steps completed and the total
     /// number of steps.
     fn update(&mut self, cur: u32, end: u32);
 }
 
-#[cfg(feature = "circuit")]
 impl ProverProgress for () {
     fn update(&mut self, _: u32, _: u32) {}
 }
 
-#[cfg(all(feature = "circuit", feature = "std"))]
+#[cfg(feature = "std")]
 impl<U: From<(u32, u32)>> ProverProgress for std::sync::mpsc::Sender<U> {
     fn update(&mut self, cur: u32, end: u32) {
         // If the send fails, we should ignore the error, not crash.
@@ -1000,7 +998,6 @@ impl<U: From<(u32, u32)>> ProverProgress for std::sync::mpsc::Sender<U> {
     }
 }
 
-#[cfg(feature = "circuit")]
 impl<U: ProverProgress> ProverProgress for &mut U {
     fn update(&mut self, cur: u32, end: u32) {
         (*self).update(cur, end);
