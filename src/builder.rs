@@ -1337,8 +1337,12 @@ pub(crate) mod testing {
                         n_notes,
                     ),
                     vec(
-                        arb_commitment_tree::<_, _, 32>(n_notes, arb_node())
-                            .prop_map(|t| IncrementalWitness::from_tree(t).path().unwrap()),
+                        arb_commitment_tree::<_, _, 32>(n_notes, arb_node()).prop_map(|t| {
+                            IncrementalWitness::from_tree(t)
+                                .expect("valid encoding of an incremental witness")
+                                .path()
+                                .unwrap()
+                        }),
                         n_notes,
                     ),
                     prop::array::uniform32(any::<u8>()),
