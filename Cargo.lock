@@ -1211,7 +1211,7 @@ dependencies = [
 [[package]]
 name = "redjubjub"
 version = "0.7.0"
-source = "git+https://github.com/nuttycom/redjubjub?rev=e413019904400f4caa3550df7c4040befadfbb14#e413019904400f4caa3550df7c4040befadfbb14"
+source = "git+https://github.com/ZcashFoundation/redjubjub?rev=eae848c5c14d9c795d000dd9f4c4762d1aee7ee1#eae848c5c14d9c795d000dd9f4c4762d1aee7ee1"
 dependencies = [
  "rand_core",
  "reddsa",

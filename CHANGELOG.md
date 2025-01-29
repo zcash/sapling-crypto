@@ -15,7 +15,7 @@ and this library adheres to Rust's notion of
   avoid the need to depend upon the `bellman` crate.
 
 ### Changed
-- MSRV is now 1.66
+- MSRV is now 1.70
 
 ## [0.4.0] - 2024-12-16
 

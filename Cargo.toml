@@ -7,7 +7,7 @@ authors = [
     "Kris Nuttycombe <kris@electriccoin.co>",
 ]
 edition = "2021"
-rust-version = "1.66"
+rust-version = "1.70"
 description = "Cryptographic library for Zcash Sapling"
 homepage = "https://github.com/zcash/sapling-crypto"
 repository = "https://github.com/zcash/sapling-crypto"
@@ -91,7 +91,7 @@ std = [
   "core2/std",
   "dep:document-features",
   "group/wnaf-memuse",
-  "redjubjub/std",
+  "redjubjub/std"
 ]
 
 ## Enables creation of Sapling proofs
@@ -126,4 +126,4 @@ name = "pedersen_hash"
 harness = false
 
 [patch.crates-io]
-redjubjub = { git = "https://github.com/nuttycom/redjubjub", rev = "e413019904400f4caa3550df7c4040befadfbb14" }
+redjubjub = { git = "https://github.com/ZcashFoundation/redjubjub", rev = "eae848c5c14d9c795d000dd9f4c4762d1aee7ee1" }

@@ -697,7 +697,7 @@ impl Builder {
             Zip212Enforcement::Off | Zip212Enforcement::GracePeriod => {
                 Err(Error::PcztRequiresZip212)
             }
-            Zip212Enforcement::On => build_bundle::<_, (), (), _>(
+            Zip212Enforcement::On => build_bundle(
                 rng,
                 self.bundle_type,
                 Zip212Enforcement::On,
@@ -743,7 +743,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     outputs: Vec<OutputInfo>,
     extsks: &[ExtendedSpendingKey],
 ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
-    build_bundle::<_, SP, OP, _>(
+    build_bundle(
         rng,
         bundle_type,
         zip212_enforcement,
@@ -813,7 +813,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     )
 }
 
-fn build_bundle<B, SP, OP, R: RngCore>(
+fn build_bundle<B, R: RngCore>(
     mut rng: R,
     bundle_type: BundleType,
     zip212_enforcement: Zip212Enforcement,
@@ -980,19 +980,17 @@ impl InProgressProofs for Proven {
 }
 
 /// Reports on the progress made towards creating proofs for a bundle.
-#[cfg(feature = "circuit")]
 pub trait ProverProgress {
     /// Updates the progress instance with the number of steps completed and the total
     /// number of steps.
     fn update(&mut self, cur: u32, end: u32);
 }
 
-#[cfg(feature = "circuit")]
 impl ProverProgress for () {
     fn update(&mut self, _: u32, _: u32) {}
 }
 
-#[cfg(all(feature = "circuit", feature = "std"))]
+#[cfg(feature = "std")]
 impl<U: From<(u32, u32)>> ProverProgress for std::sync::mpsc::Sender<U> {
     fn update(&mut self, cur: u32, end: u32) {
         // If the send fails, we should ignore the error, not crash.
@@ -1000,7 +998,6 @@ impl<U: From<(u32, u32)>> ProverProgress for std::sync::mpsc::Sender<U> {
     }
 }
 
-#[cfg(feature = "circuit")]
 impl<U: ProverProgress> ProverProgress for &mut U {
     fn update(&mut self, cur: u32, end: u32) {
         (*self).update(cur, end);
