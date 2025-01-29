@@ -697,7 +697,7 @@ impl Builder {
             Zip212Enforcement::Off | Zip212Enforcement::GracePeriod => {
                 Err(Error::PcztRequiresZip212)
             }
-            Zip212Enforcement::On => build_bundle::<_, (), (), _>(
+            Zip212Enforcement::On => build_bundle(
                 rng,
                 self.bundle_type,
                 Zip212Enforcement::On,
@@ -743,7 +743,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     outputs: Vec<OutputInfo>,
     extsks: &[ExtendedSpendingKey],
 ) -> Result<Option<(UnauthorizedBundle<V>, SaplingMetadata)>, Error> {
-    build_bundle::<_, SP, OP, _>(
+    build_bundle(
         rng,
         bundle_type,
         zip212_enforcement,
@@ -813,7 +813,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     )
 }
 
-fn build_bundle<B, SP, OP, R: RngCore>(
+fn build_bundle<B, R: RngCore>(
     mut rng: R,
     bundle_type: BundleType,
     zip212_enforcement: Zip212Enforcement,
