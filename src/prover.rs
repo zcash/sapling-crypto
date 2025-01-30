@@ -115,7 +115,7 @@ impl SpendProver for SpendParameters {
                 .path_elems()
                 .iter()
                 .enumerate()
-                .map(|(i, node)| Some(((*node).into(), pos >> i & 0x1 == 1)))
+                .map(|(i, node)| Some(((*node).into(), (pos >> i) & 0x1 == 1)))
                 .collect(),
             anchor: Some(anchor),
         })

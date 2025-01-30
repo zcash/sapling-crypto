@@ -294,7 +294,7 @@ impl BatchDomain for SaplingDomain {
         let (shared_secrets, ephemeral_keys): (Vec<_>, Vec<_>) = items.unzip();
 
         SharedSecret::batch_to_affine(shared_secrets)
-            .zip(ephemeral_keys.into_iter())
+            .zip(ephemeral_keys)
             .map(|(secret, ephemeral_key)| {
                 secret.map(|dhsecret| SharedSecret::kdf_sapling_inner(dhsecret, ephemeral_key))
             })
@@ -307,7 +307,7 @@ impl BatchDomain for SaplingDomain {
         let ephemeral_keys: Vec<_> = ephemeral_keys.collect();
         let epks = jubjub::AffinePoint::batch_from_bytes(ephemeral_keys.iter().map(|b| b.0));
         epks.into_iter()
-            .zip(ephemeral_keys.into_iter())
+            .zip(ephemeral_keys)
             .map(|(epk, ephemeral_key)| {
                 (
                     Option::from(epk)

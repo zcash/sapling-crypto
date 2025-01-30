@@ -18,7 +18,7 @@ impl Bundle {
 /// An updater for a Sapling PCZT bundle.
 pub struct Updater<'a>(&'a mut Bundle);
 
-impl<'a> Updater<'a> {
+impl Updater<'_> {
     /// Provides read access to the bundle being updated.
     pub fn bundle(&self) -> &Bundle {
         self.0
@@ -56,7 +56,7 @@ impl<'a> Updater<'a> {
 /// An updater for a Sapling PCZT spend.
 pub struct SpendUpdater<'a>(&'a mut Spend);
 
-impl<'a> SpendUpdater<'a> {
+impl SpendUpdater<'_> {
     /// Sets the proof generation key for this spend.
     ///
     /// Returns an error if the proof generation key does not match the spend.
@@ -83,7 +83,7 @@ impl<'a> SpendUpdater<'a> {
 /// An updater for a Sapling PCZT output.
 pub struct OutputUpdater<'a>(&'a mut Output);
 
-impl<'a> OutputUpdater<'a> {
+impl OutputUpdater<'_> {
     /// Sets the ZIP 32 derivation path for the new note's signing key.
     pub fn set_zip32_derivation(&mut self, derivation: Zip32Derivation) {
         self.0.zip32_derivation = Some(derivation);

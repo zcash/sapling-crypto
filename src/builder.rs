@@ -263,11 +263,9 @@ impl PreparedSpendInfo {
         // This is the result of the re-randomization, we compute it for the caller
         let rk = ak.randomize(&alpha);
 
-        let nullifier = self.note.nf(
-            &self.fvk.vk.nk,
-            u64::try_from(self.merkle_path.position())
-                .expect("Sapling note commitment tree position must fit into a u64"),
-        );
+        let nullifier = self
+            .note
+            .nf(&self.fvk.vk.nk, u64::from(self.merkle_path.position()));
 
         (cv, nullifier, rk, alpha)
     }
@@ -805,7 +803,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
                 V::try_from(value_balance_i64).map_err(|_| Error::InvalidAmount)?,
                 InProgress {
                     sigs: Unsigned { bsk },
-                    _proof_state: PhantomData::default(),
+                    _proof_state: PhantomData,
                 },
             )
             .map(|b| (b, tx_metadata)))
@@ -1061,7 +1059,7 @@ impl<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress>
     ) -> InProgress<Proven, S> {
         InProgress {
             sigs: a.sigs,
-            _proof_state: PhantomData::default(),
+            _proof_state: PhantomData,
         }
     }
 }
@@ -1189,7 +1187,7 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, Unsigned>, V> {
                     binding_signature: auth.sigs.bsk.sign(rng, &sighash),
                     sighash,
                 },
-                _proof_state: PhantomData::default(),
+                _proof_state: PhantomData,
             },
         )
     }
@@ -1337,8 +1335,12 @@ pub(crate) mod testing {
                         n_notes,
                     ),
                     vec(
-                        arb_commitment_tree::<_, _, 32>(n_notes, arb_node())
-                            .prop_map(|t| IncrementalWitness::from_tree(t).path().unwrap()),
+                        arb_commitment_tree::<_, _, 32>(n_notes, arb_node()).prop_map(|t| {
+                            IncrementalWitness::from_tree(t)
+                                .expect("valid encoding of an incremental witness")
+                                .path()
+                                .unwrap()
+                        }),
                         n_notes,
                     ),
                     prop::array::uniform32(any::<u8>()),
