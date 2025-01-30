@@ -10,7 +10,7 @@ use super::{
 ///
 /// - `diversifier` is guaranteed to be valid for Sapling (only 50% of diversifiers are).
 /// - `pk_d` is guaranteed to be prime-order (i.e. in the prime-order subgroup of Jubjub,
-///  and not the identity).
+///   and not the identity).
 #[derive(Clone, Copy, Debug)]
 pub struct PaymentAddress {
     pk_d: DiversifiedTransmissionKey,

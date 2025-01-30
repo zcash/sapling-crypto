@@ -74,14 +74,16 @@ impl Sub<NoteValue> for ValueSum {
 }
 
 impl<'a> Sum<&'a NoteValue> for Result<ValueSum, OverflowError> {
-    fn sum<I: Iterator<Item = &'a NoteValue>>(iter: I) -> Self {
-        iter.fold(Ok(ValueSum(0)), |acc, v| (acc? + *v).ok_or(OverflowError))
+    fn sum<I: Iterator<Item = &'a NoteValue>>(mut iter: I) -> Self {
+        iter.try_fold(ValueSum(0), |acc, v| acc + *v)
+            .ok_or(OverflowError)
     }
 }
 
 impl Sum<NoteValue> for Result<ValueSum, OverflowError> {
-    fn sum<I: Iterator<Item = NoteValue>>(iter: I) -> Self {
-        iter.fold(Ok(ValueSum(0)), |acc, v| (acc? + v).ok_or(OverflowError))
+    fn sum<I: Iterator<Item = NoteValue>>(mut iter: I) -> Self {
+        iter.try_fold(ValueSum(0), |acc, v| acc + v)
+            .ok_or(OverflowError)
     }
 }
 
