@@ -16,7 +16,7 @@ and this library adheres to Rust's notion of
 
 ### Changed
 - MSRV is now 1.70
-- Updated to `incrementalmerkletree 0.8.1`
+- Updated to `incrementalmerkletree 0.8.1, redjubjub 0.8`
 
 ## [0.4.0] - 2024-12-16
 

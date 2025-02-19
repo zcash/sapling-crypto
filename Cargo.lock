@@ -1210,8 +1210,9 @@ dependencies = [
 
 [[package]]
 name = "redjubjub"
-version = "0.7.0"
-source = "git+https://github.com/ZcashFoundation/redjubjub?rev=eae848c5c14d9c795d000dd9f4c4762d1aee7ee1#eae848c5c14d9c795d000dd9f4c4762d1aee7ee1"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89b0ac1bc6bb3696d2c6f52cff8fba57238b81da8c0214ee6cd146eb8fde364e"
 dependencies = [
  "rand_core",
  "reddsa",
