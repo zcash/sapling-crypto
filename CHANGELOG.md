@@ -7,18 +7,20 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-02-20
+
 ### Added
 - `sapling_crypto::pczt::Zip32Derivation::extract_account_index`
 - `no_std` compatibility has been introduced by means of a default-enabled
   `std` feature flag.
-- A default-enabled `circuit` is now provided to enable downstream users to
-  avoid the need to depend upon the `bellman` crate.
+- A default-enabled `circuit` feature is now provided to enable downstream
+  users to avoid the need to depend upon the `bellman` crate.
 
 ### Changed
 - MSRV is now 1.70
 - Updated to `incrementalmerkletree 0.8.1`, `redjubjub 0.8`, `zcash_spec 0.2`,
   `zip32 0.2`
-- `sapling_crypto::builder::SaplingBuilder::add_output` now takes `[u8; 512]` 
+- `sapling_crypto::builder::SaplingBuilder::add_output` now takes `[u8; 512]`
   for its `memo` argument instead of an optional value.
 
 ## [0.4.0] - 2024-12-16
@@ -178,7 +180,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `Builder::new` now takes a `Zip212Enforcement` argument instead of a
     `P: zcash_primitives::consensus::Parameters` argument and a target height.
     It also now takes as an argument the Sapling anchor to be used for all
-    spends in the bundle. 
+    spends in the bundle.
   - `Builder::add_spend` now takes `extsk` by reference. Also, it no
     longer takes a `diversifier` argument as the diversifier may be obtained
     from the note. All calls to `add_spend` are now required to use an anchor
@@ -201,8 +203,8 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `Bundle` now has a second generic parameter `V`.
   - `Bundle::value_balance` now returns `&V` instead of
     `&zcash_primitives::transaction::components::Amount`.
-  - `Bundle::map_authorization` now takes a context argument and explicit 
-    functions for each mappable field, rather than a `MapAuth` value, in 
+  - `Bundle::map_authorization` now takes a context argument and explicit
+    functions for each mappable field, rather than a `MapAuth` value, in
     order to simplify handling of context values.
   - `Authorized::binding_sig` now has type `redjubjub::Signature<Binding>`.
   - `Authorized::AuthSig` now has type `redjubjub::Signature<SpendAuth>`.
