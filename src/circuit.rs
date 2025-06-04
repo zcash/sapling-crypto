@@ -554,6 +554,7 @@ impl Circuit<bls12_381::Scalar> for Output {
 }
 
 /// The parameters for the Sapling Spend circuit.
+#[derive(Clone)]
 pub struct SpendParameters(pub(crate) groth16::Parameters<Bls12>);
 
 impl SpendParameters {
@@ -578,6 +579,11 @@ impl SpendParameters {
     pub fn prepared_verifying_key(&self) -> PreparedSpendVerifyingKey {
         PreparedSpendVerifyingKey(groth16::prepare_verifying_key(&self.0.vk))
     }
+
+    /// Exposes the inner parameters.
+    pub fn inner(self) -> groth16::Parameters<Bls12> {
+        self.0
+    }
 }
 
 /// The verifying key for the Sapling Spend circuit.
@@ -595,6 +601,7 @@ impl SpendVerifyingKey {
 pub struct PreparedSpendVerifyingKey(pub(crate) groth16::PreparedVerifyingKey<Bls12>);
 
 /// The parameters for the Sapling Output circuit.
+#[derive(Clone)]
 pub struct OutputParameters(pub(crate) groth16::Parameters<Bls12>);
 
 impl OutputParameters {
@@ -615,6 +622,11 @@ impl OutputParameters {
     /// optimized for verifying individual proofs.
     pub fn prepared_verifying_key(&self) -> PreparedOutputVerifyingKey {
         PreparedOutputVerifyingKey(groth16::prepare_verifying_key(&self.0.vk))
+    }
+
+    /// Exposes the inner parameters.
+    pub fn inner(self) -> groth16::Parameters<Bls12> {
+        self.0
     }
 }
 
