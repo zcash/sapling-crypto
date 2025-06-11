@@ -334,8 +334,8 @@ impl ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE> for CompactOutputDescripti
         self.ephemeral_key.clone()
     }
 
-    fn cmstar_bytes(&self) -> [u8; 32] {
-        self.cmu.to_bytes()
+    fn cmstar(&self) -> &<SaplingDomain as zcash_note_encryption::Domain>::ExtractedCommitment {
+        &self.cmu
     }
 
     fn enc_ciphertext(&self) -> &[u8; COMPACT_NOTE_SIZE] {

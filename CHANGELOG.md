@@ -7,6 +7,9 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Changed
+- Migrated to `zcash_note_encryption 0.5`
+
 ## [0.5.0] - 2025-02-20
 
 ### Added

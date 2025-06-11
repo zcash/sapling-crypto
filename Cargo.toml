@@ -124,3 +124,6 @@ harness = false
 [[bench]]
 name = "pedersen_hash"
 harness = false
+
+[patch.crates-io]
+zcash_note_encryption = { git = "https://git@github.com/zcash/zcash_note_encryption", rev = "f32f8952808a9fd9b947a1bcf104d3f5d6f9c15c" }
