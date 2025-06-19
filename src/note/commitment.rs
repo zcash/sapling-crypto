@@ -78,7 +78,8 @@ impl ExtractedNoteCommitment {
         self.0.to_repr()
     }
 
-    pub(crate) fn inner(&self) -> jubjub::Base {
+    /// Returns the inner [`jubjub::Base`] value
+    pub fn inner(&self) -> jubjub::Base {
         self.0
     }
 }
