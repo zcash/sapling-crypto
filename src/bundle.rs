@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use core::fmt::Debug;
 
 use memuse::DynamicUsage;
@@ -9,7 +10,7 @@ use zcash_note_encryption::{
 };
 
 use crate::{
-    circuit::GROTH_PROOF_SIZE,
+    constants::GROTH_PROOF_SIZE,
     note::ExtractedNoteCommitment,
     note_encryption::{
         CompactOutputDescription, SaplingDomain, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE,
@@ -25,6 +26,16 @@ pub trait Authorization: Debug {
     type SpendProof: Clone + Debug;
     type OutputProof: Clone + Debug;
     type AuthSig: Clone + Debug;
+}
+
+/// Marker type for a bundle that contains no authorizing data.
+#[derive(Debug)]
+pub struct EffectsOnly;
+
+impl Authorization for EffectsOnly {
+    type SpendProof = ();
+    type OutputProof = ();
+    type AuthSig = ();
 }
 
 /// Authorizing data for a bundle of Sapling spends and outputs, ready to be committed to
@@ -212,8 +223,8 @@ pub struct SpendDescription<A: Authorization> {
     spend_auth_sig: A::AuthSig,
 }
 
-impl<A: Authorization> std::fmt::Debug for SpendDescription<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl<A: Authorization> core::fmt::Debug for SpendDescription<A> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         write!(
             f,
             "SpendDescription(cv = {:?}, anchor = {:?}, nullifier = {:?}, rk = {:?}, spend_auth_sig = {:?})",
@@ -300,12 +311,15 @@ impl SpendDescriptionV5 {
         Self { cv, nullifier, rk }
     }
 
-    pub fn into_spend_description(
+    pub fn into_spend_description<A>(
         self,
         anchor: bls12_381::Scalar,
         zkproof: GrothProofBytes,
         spend_auth_sig: redjubjub::Signature<SpendAuth>,
-    ) -> SpendDescription<Authorized> {
+    ) -> SpendDescription<A>
+    where
+        A: Authorization<SpendProof = GrothProofBytes, AuthSig = redjubjub::Signature<SpendAuth>>,
+    {
         SpendDescription {
             cv: self.cv,
             anchor,
@@ -424,8 +438,8 @@ impl<A> ShieldedOutput<SaplingDomain> for OutputDescription<A> {
     }
 }
 
-impl<A> std::fmt::Debug for OutputDescription<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl<A> core::fmt::Debug for OutputDescription<A> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
         write!(
             f,
             "OutputDescription(cv = {:?}, cmu = {:?}, ephemeral_key = {:?})",
@@ -493,7 +507,7 @@ impl<A> From<OutputDescription<A>> for CompactOutputDescription {
 #[cfg(any(test, feature = "test-dependencies"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
 pub mod testing {
-    use std::fmt;
+    use core::fmt;
 
     use ff::Field;
     use group::{Group, GroupEncoding};
@@ -502,7 +516,7 @@ pub mod testing {
     use rand::{rngs::StdRng, SeedableRng};
 
     use crate::{
-        circuit::GROTH_PROOF_SIZE,
+        constants::GROTH_PROOF_SIZE,
         note::testing::arb_cmu,
         value::{
             testing::{arb_note_value_bounded, arb_trapdoor},

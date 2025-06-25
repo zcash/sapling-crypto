@@ -1,5 +1,6 @@
 //! Various constants used by the Sapling protocol.
 
+use alloc::vec::Vec;
 use ff::PrimeField;
 use group::Group;
 use jubjub::SubgroupPoint;
@@ -37,6 +38,9 @@ pub const VALUE_COMMITMENT_GENERATOR_PERSONALIZATION: &[u8; 8] = b"Zcash_cv";
 
 /// BLAKE2s Personalization for the nullifier position generator (for computing rho)
 pub const NULLIFIER_POSITION_IN_TREE_GENERATOR_PERSONALIZATION: &[u8; 8] = b"Zcash_J_";
+
+// π_A + π_B + π_C
+pub(crate) const GROTH_PROOF_SIZE: usize = 48 + 96 + 48;
 
 /// The prover will demonstrate knowledge of discrete log with respect to this base when
 /// they are constructing a proof, in order to authorize proof construction.
@@ -287,7 +291,7 @@ mod tests {
             let gh = group_hash(&tag, personalization);
 
             // We don't want to overflow and start reusing generators
-            assert!(tag[i] != u8::max_value());
+            assert!(tag[i] != u8::MAX);
             tag[i] += 1;
 
             if let Some(gh) = gh {

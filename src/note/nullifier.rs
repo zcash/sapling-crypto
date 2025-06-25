@@ -1,5 +1,6 @@
-use std::array::TryFromSliceError;
-use std::fmt;
+use alloc::fmt;
+use alloc::vec::Vec;
+use core::array::TryFromSliceError;
 
 use subtle::{Choice, ConstantTimeEq};
 

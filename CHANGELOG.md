@@ -7,6 +7,65 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-02-20
+
+### Added
+- `sapling_crypto::pczt::Zip32Derivation::extract_account_index`
+- `no_std` compatibility has been introduced by means of a default-enabled
+  `std` feature flag.
+- A default-enabled `circuit` feature is now provided to enable downstream
+  users to avoid the need to depend upon the `bellman` crate.
+
+### Changed
+- MSRV is now 1.70
+- Updated to `incrementalmerkletree 0.8.1`, `redjubjub 0.8`, `zcash_spec 0.2`,
+  `zip32 0.2`
+- `sapling_crypto::builder::SaplingBuilder::add_output` now takes `[u8; 512]`
+  for its `memo` argument instead of an optional value.
+
+## [0.4.0] - 2024-12-16
+
+### Added
+- Support for Partially-Created Zcash Transactions:
+  - `sapling_crypto::builder::Builder::build_for_pczt`
+  - `sapling_crypto::pczt` module.
+- `sapling_crypto::bundle::EffectsOnly`
+- `sapling_crypto::keys`:
+  - `SpendAuthorizingKey::to_bytes`
+  - `SpendValidatingKey::to_bytes`
+- `sapling_crypto::value::ValueSum::to_raw`
+- `sapling_crypto::zip32::DiversifiableFullViewingKey::to_internal_fvk`
+
+### Fixed
+- `sapling_crypto::prover::OutputProver::prepare_circuit` now takes `esk` as an
+  `sapling_crypto::keys::EphemeralSecretKey`, matching the existing public APIs
+  that expose it.
+
+### Changed
+- `sapling_crypto::builder`:
+  - `SpendInfo::new` now takes a `FullViewingKey` instead of a
+    `ProofGenerationKey`.
+  - `Builder::add_spend` now takes a `FullViewingKey` instead of an
+    `&ExtendedSpendingKey`.
+  - `Builder::build` and `bundle` now take an `&[ExtendedSpendingKey]` argument.
+  - `Error` has new variants:
+    - `MissingSpendingKey`
+    - `PcztRequiresZip212`
+    - `WrongSpendingKey`
+- `sapling_crypto::bundle::SpendDescriptionV5::into_spend_description` now
+  supports any `Authorization` for which the `SpendDescription` itself is fully
+  authorized.
+
+## [0.3.0] - 2024-10-02
+
+### Changed
+- Updated to `incrementalmerkletree` version `0.7`.
+
+## [0.2.0] - 2024-08-12
+
+### Changed
+- Updated to `incrementalmerkletree` version `0.6`.
+
 ## [0.1.3] - 2024-03-25
 
 ### Added
@@ -121,7 +180,7 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `Builder::new` now takes a `Zip212Enforcement` argument instead of a
     `P: zcash_primitives::consensus::Parameters` argument and a target height.
     It also now takes as an argument the Sapling anchor to be used for all
-    spends in the bundle. 
+    spends in the bundle.
   - `Builder::add_spend` now takes `extsk` by reference. Also, it no
     longer takes a `diversifier` argument as the diversifier may be obtained
     from the note. All calls to `add_spend` are now required to use an anchor
@@ -144,8 +203,8 @@ The entries below are relative to the `zcash_primitives::sapling` module as of
   - `Bundle` now has a second generic parameter `V`.
   - `Bundle::value_balance` now returns `&V` instead of
     `&zcash_primitives::transaction::components::Amount`.
-  - `Bundle::map_authorization` now takes a context argument and explicit 
-    functions for each mappable field, rather than a `MapAuth` value, in 
+  - `Bundle::map_authorization` now takes a context argument and explicit
+    functions for each mappable field, rather than a `MapAuth` value, in
     order to simplify handling of context values.
   - `Authorized::binding_sig` now has type `redjubjub::Signature<Binding>`.
   - `Authorized::AuthSig` now has type `redjubjub::Signature<SpendAuth>`.

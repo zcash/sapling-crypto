@@ -2,8 +2,8 @@
 //!
 //! NB: the example code is only covering the post-Canopy case.
 
+use alloc::vec::Vec;
 use blake2b_simd::{Hash as Blake2bHash, Params as Blake2bParams};
-use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
 use memuse::DynamicUsage;
 use rand_core::RngCore;
@@ -213,9 +213,7 @@ impl Domain for SaplingDomain {
             Rseed::AfterZip212(_) => 2,
         };
         input[1..12].copy_from_slice(&note.recipient().diversifier().0);
-        (&mut input[12..20])
-            .write_u64::<LittleEndian>(note.value().inner())
-            .unwrap();
+        input[12..20].copy_from_slice(&note.value().inner().to_le_bytes());
 
         match note.rseed() {
             Rseed::BeforeZip212(rcm) => {
@@ -321,7 +319,7 @@ impl BatchDomain for SaplingDomain {
         let (shared_secrets, ephemeral_keys): (Vec<_>, Vec<_>) = items.unzip();
 
         SharedSecret::batch_to_affine(shared_secrets)
-            .zip(ephemeral_keys.into_iter())
+            .zip(ephemeral_keys)
             .map(|(secret, ephemeral_key)| {
                 secret.map(|dhsecret| SharedSecret::kdf_sapling_inner(dhsecret, ephemeral_key))
             })
@@ -334,7 +332,7 @@ impl BatchDomain for SaplingDomain {
         let ephemeral_keys: Vec<_> = ephemeral_keys.collect();
         let epks = jubjub::AffinePoint::batch_from_bytes(ephemeral_keys.iter().map(|b| b.0));
         epks.into_iter()
-            .zip(ephemeral_keys.into_iter())
+            .zip(ephemeral_keys)
             .map(|(epk, ephemeral_key)| {
                 (
                     Option::from(epk)
@@ -489,6 +487,7 @@ pub fn try_sapling_output_recovery(
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec::Vec;
     use chacha20poly1305::{
         aead::{AeadInPlace, KeyInit},
         ChaCha20Poly1305,
@@ -513,7 +512,7 @@ mod tests {
 
     use crate::{
         bundle::{GrothProofBytes, OutputDescription},
-        circuit::GROTH_PROOF_SIZE,
+        constants::GROTH_PROOF_SIZE,
         keys::{DiversifiedTransmissionKey, EphemeralSecretKey, OutgoingViewingKey},
         note::ExtractedNoteCommitment,
         note_encryption::{PreparedIncomingViewingKey, ENC_CIPHERTEXT_SIZE, NOTE_PLAINTEXT_SIZE},

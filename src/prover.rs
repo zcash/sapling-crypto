@@ -6,7 +6,9 @@ use rand_core::RngCore;
 
 use crate::{
     bundle::GrothProofBytes,
-    circuit::{self, GROTH_PROOF_SIZE},
+    circuit,
+    constants::GROTH_PROOF_SIZE,
+    keys::EphemeralSecretKey,
     value::{NoteValue, ValueCommitTrapdoor},
     MerklePath,
 };
@@ -56,7 +58,7 @@ pub trait OutputProver {
     ///
     /// Returns `None` if `diversifier` is not a valid Sapling diversifier.
     fn prepare_circuit(
-        esk: jubjub::Fr,
+        esk: &EphemeralSecretKey,
         payment_address: PaymentAddress,
         rcm: jubjub::Fr,
         value: NoteValue,
@@ -113,7 +115,7 @@ impl SpendProver for SpendParameters {
                 .path_elems()
                 .iter()
                 .enumerate()
-                .map(|(i, node)| Some(((*node).into(), pos >> i & 0x1 == 1)))
+                .map(|(i, node)| Some(((*node).into(), (pos >> i) & 0x1 == 1)))
                 .collect(),
             anchor: Some(anchor),
         })
@@ -136,7 +138,7 @@ impl OutputProver for OutputParameters {
     type Proof = Proof<Bls12>;
 
     fn prepare_circuit(
-        esk: jubjub::Fr,
+        esk: &EphemeralSecretKey,
         payment_address: PaymentAddress,
         rcm: jubjub::Fr,
         value: NoteValue,
@@ -153,7 +155,7 @@ impl OutputProver for OutputParameters {
             value_commitment_opening: Some(value_commitment_opening),
             payment_address: Some(payment_address),
             commitment_randomness: Some(rcm),
-            esk: Some(esk),
+            esk: Some(esk.0),
         }
     }
 
@@ -178,7 +180,9 @@ pub mod mock {
     use super::{OutputProver, SpendProver};
     use crate::{
         bundle::GrothProofBytes,
-        circuit::{self, ValueCommitmentOpening, GROTH_PROOF_SIZE},
+        circuit::{self, ValueCommitmentOpening},
+        constants::GROTH_PROOF_SIZE,
+        keys::EphemeralSecretKey,
         value::{NoteValue, ValueCommitTrapdoor},
         Diversifier, MerklePath, PaymentAddress, ProofGenerationKey, Rseed,
     };
@@ -235,7 +239,7 @@ pub mod mock {
         type Proof = GrothProofBytes;
 
         fn prepare_circuit(
-            esk: jubjub::Fr,
+            esk: &EphemeralSecretKey,
             payment_address: PaymentAddress,
             rcm: jubjub::Fr,
             value: NoteValue,
@@ -248,7 +252,7 @@ pub mod mock {
                 }),
                 payment_address: Some(payment_address),
                 commitment_randomness: Some(rcm),
-                esk: Some(esk),
+                esk: Some(esk.0),
             }
         }
 

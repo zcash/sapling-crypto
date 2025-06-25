@@ -18,6 +18,7 @@ impl fmt::Display for OverflowError {
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for OverflowError {}
 
 /// A sum of Sapling note values.
@@ -37,6 +38,20 @@ impl ValueSum {
     /// Initializes a sum of `NoteValue`s to zero.
     pub fn zero() -> Self {
         ValueSum(0)
+    }
+
+    /// Instantiates a value sum from a raw encoding.
+    ///
+    /// Only intended for use with PCZTs.
+    pub(crate) fn from_raw(value_sum: i128) -> Self {
+        Self(value_sum)
+    }
+
+    /// Extracts the raw encoding of this value sum.
+    ///
+    /// Only intended for use with PCZTs.
+    pub fn to_raw(self) -> i128 {
+        self.0
     }
 }
 
@@ -59,14 +74,16 @@ impl Sub<NoteValue> for ValueSum {
 }
 
 impl<'a> Sum<&'a NoteValue> for Result<ValueSum, OverflowError> {
-    fn sum<I: Iterator<Item = &'a NoteValue>>(iter: I) -> Self {
-        iter.fold(Ok(ValueSum(0)), |acc, v| (acc? + *v).ok_or(OverflowError))
+    fn sum<I: Iterator<Item = &'a NoteValue>>(mut iter: I) -> Self {
+        iter.try_fold(ValueSum(0), |acc, v| acc + *v)
+            .ok_or(OverflowError)
     }
 }
 
 impl Sum<NoteValue> for Result<ValueSum, OverflowError> {
-    fn sum<I: Iterator<Item = NoteValue>>(iter: I) -> Self {
-        iter.fold(Ok(ValueSum(0)), |acc, v| (acc? + v).ok_or(OverflowError))
+    fn sum<I: Iterator<Item = NoteValue>>(mut iter: I) -> Self {
+        iter.try_fold(ValueSum(0), |acc, v| acc + v)
+            .ok_or(OverflowError)
     }
 }
 
