@@ -58,7 +58,7 @@ bitvec = { version = "1", default-features = false }
 incrementalmerkletree = { version = "0.8.1", default-features = false, features = ["legacy-api"] }
 
 # Note encryption
-zcash_note_encryption = { version = "0.4", features = ["pre-zip-212"] }
+zcash_note_encryption = { version = "0.4.1", features = ["pre-zip-212"] }
 
 # Secret management
 subtle = { version = "2.2.3", default-features = false }
@@ -126,4 +126,4 @@ name = "pedersen_hash"
 harness = false
 
 [patch.crates-io]
-zcash_note_encryption = { version = "0.4", git = "https://github.com/QED-it/zcash_note_encryption", branch = "zsa1" }
+zcash_note_encryption = { version = "0.4.1", git = "https://github.com/zcash/zcash_note_encryption", branch = "main" }

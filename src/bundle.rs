@@ -425,6 +425,10 @@ impl<A> ShieldedOutput<SaplingDomain> for OutputDescription<A> {
         self.ephemeral_key.clone()
     }
 
+    fn cmstar(&self) -> &<SaplingDomain as zcash_note_encryption::Domain>::ExtractedCommitment {
+        &self.cmu
+    }
+
     fn cmstar_bytes(&self) -> [u8; 32] {
         self.cmu.to_bytes()
     }
