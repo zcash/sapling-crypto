@@ -402,7 +402,7 @@ impl OutputInfo {
             }
         };
 
-        Self::new(None, dummy_to, NoteValue::ZERO, [0u8; 512])
+        Self::new(None, dummy_to, NoteValue::ZERO, None)
     }
 
     fn prepare<R: RngCore>(
