@@ -7,9 +7,14 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `sapling_crypto::pczt::Spend::apply_signature`
+
 ### Changed
 - The `proptest` dependency (used by the `test-dependencies` feature flag) is
   now bounded to at most `1.6` to fix version resolution problems.
+- `sapling_crypto::pczt::SignerError` has added variants:
+  - `InvalidExternalSignature`
 
 ## [0.5.0] - 2025-02-20
 
