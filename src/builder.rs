@@ -1365,7 +1365,7 @@ pub(crate) mod testing {
 
                     let (bundle, _) = builder
                         .build::<MockSpendProver, MockOutputProver, _, _>(
-                            &[extsk.clone()],
+                            core::slice::from_ref(&extsk),
                             &mut rng,
                         )
                         .unwrap()

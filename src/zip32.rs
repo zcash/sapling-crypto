@@ -1156,7 +1156,7 @@ mod tests {
         }
 
         // From https://github.com/zcash-hackworks/zcash-test-vectors/blob/master/sapling_zip32.py
-        let test_vectors = vec![
+        let test_vectors = [
             TestVector {
                 ask: Some([
                     0xb6, 0xc0, 0x0c, 0x93, 0xd3, 0x60, 0x32, 0xb9, 0xa2, 0x68, 0xe9, 0x9e, 0x86,
