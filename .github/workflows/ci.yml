@@ -34,7 +34,7 @@ jobs:
       - name: Verify working directory is clean (excluding lockfile)
         run: git diff --exit-code ':!Cargo.lock'
 
-  build-nodefault:
+  build-nostd:
     name: Build target ${{ matrix.target }}
     runs-on: ubuntu-latest
     strategy:
@@ -49,7 +49,7 @@ jobs:
       # We use a synthetic crate to ensure no dev-dependencies are enabled, which can
       # be incompatible with some of these targets.
       - name: Create synthetic crate for testing
-        run: cargo init --lib ci-build
+        run: cargo init --edition 2021 --lib ci-build
       - name: Copy Rust version into synthetic crate
         run: cp crate_root/rust-toolchain.toml ci-build/
       - name: Copy patch directives into synthetic crate
@@ -64,11 +64,17 @@ jobs:
         run: cargo add --no-default-features --path ../crate_root
       - name: Add lazy_static with the spin_no_std feature
         working-directory: ./ci-build
-        run: cargo add lazy_static --features "spin_no_std"
+        run: cargo add lazy_static --no-default-features --features "spin_no_std"
+      - name: Add typenum with the no_std feature
+        working-directory: ./ci-build
+        run: cargo add typenum --no-default-features --features "no_std"
+      - name: Show Cargo.toml for the synthetic crate
+        working-directory: ./ci-build
+        run: cat Cargo.toml
       - name: Add target
         working-directory: ./ci-build
         run: rustup target add ${{ matrix.target }}
-      - name: Build for target
+      - name: Build no_std for target
         working-directory: ./ci-build
         run: cargo build --verbose --target ${{ matrix.target }}
 

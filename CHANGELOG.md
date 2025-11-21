@@ -7,6 +7,10 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Changed
+- The `proptest` dependency (used by the `test-dependencies` feature flag) is
+  now bounded to at most `1.6` to fix version resolution problems.
+
 ## [0.5.0] - 2025-02-20
 
 ### Added
