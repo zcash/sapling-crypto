@@ -74,6 +74,8 @@ aes = "0.8"
 fpe = { version = "0.6", default-features = false, features = ["alloc"] }
 zip32 = { version = "0.2", default-features = false }
 
+# ZIP 304
+base64 = "0.22"
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
@@ -81,6 +83,7 @@ criterion = "0.4"
 incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
 proptest = ">=1.0.0, <1.7.0"
 rand_xorshift = "0.3"
+wagyu-zcash-parameters = "0.2"
 
 [target.'cfg(unix)'.dev-dependencies]
 pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56

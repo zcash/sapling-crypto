@@ -44,6 +44,7 @@ pub mod util;
 pub mod value;
 #[cfg(feature = "circuit")]
 mod verifier;
+pub mod zip304;
 pub mod zip32;
 
 pub use address::PaymentAddress;
