@@ -158,6 +158,7 @@ impl super::Output {
 
 /// Errors that can occur while verifying a PCZT bundle.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum VerifyError {
     /// The output note's components do not produce the expected `cmx`.
     InvalidExtractedNoteCommitment,

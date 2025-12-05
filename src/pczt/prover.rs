@@ -86,6 +86,7 @@ impl super::Bundle {
 
 /// Errors that can occur while creating Sapling proofs for a PCZT.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ProverError {
     InvalidDiversifier,
     /// The Prover role requires all `proof_generation_key` fields to be set.

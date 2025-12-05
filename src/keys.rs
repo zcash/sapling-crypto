@@ -31,6 +31,7 @@ use zcash_spec::PrfExpand;
 use rand_core::RngCore;
 
 /// Errors that can occur in the decoding of Sapling spending keys.
+#[non_exhaustive]
 pub enum DecodingError {
     /// The length of the byte slice provided for decoding was incorrect.
     LengthInvalid { expected: usize, actual: usize },

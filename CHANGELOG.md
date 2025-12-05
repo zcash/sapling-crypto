@@ -9,12 +9,28 @@ and this library adheres to Rust's notion of
 
 ### Added
 - `sapling_crypto::pczt::Spend::apply_signature`
+- `sapling_crypto::value::BalanceError`
 
 ### Changed
 - The `proptest` dependency (used by the `test-dependencies` feature flag) is
   now bounded to at most `1.6` to fix version resolution problems.
+- All error enums in this crate are now `#[non_exhaustive]`, to allow future
+  error variants to be added without a SemVer break:
+  - `sapling_crypto::builder::Error`
+  - `sapling_crypto::keys::DecodingError`
+  - `sapling_crypto::pczt`:
+    - `IoFinalizerError`
+    - `ParseError`
+    - `ProverError`
+    - `SignerError`
+    - `TxExtractorError`
+    - `UpdaterError`
+    - `VerifyError`
 - `sapling_crypto::pczt::SignerError` has added variants:
   - `InvalidExternalSignature`
+
+### Removed
+- `sapling_crypto::value::OverflowError` (use `BalanceError` instead).
 
 ## [0.5.0] - 2025-02-20
 

@@ -102,6 +102,7 @@ impl OutputUpdater<'_> {
 
 /// Errors that can occur while updating a Sapling bundle in a PCZT.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum UpdaterError {
     /// An out-of-bounds index was provided when looking up a spend or output.
     InvalidIndex,

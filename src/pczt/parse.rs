@@ -262,6 +262,7 @@ impl Zip32Derivation {
 
 /// Errors that can occur while parsing a PCZT bundle.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ParseError {
     /// An invalid `anchor` was provided.
     InvalidAnchor,

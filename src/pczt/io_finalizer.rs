@@ -79,6 +79,7 @@ impl super::Bundle {
 
 /// Errors that can occur while finalizing the I/O for a PCZT bundle.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum IoFinalizerError {
     /// An error occurred while signing a dummy spend.
     DummySignature(SignerError),
