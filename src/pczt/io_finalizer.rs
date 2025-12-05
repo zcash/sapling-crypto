@@ -1,3 +1,5 @@
+use core::fmt;
+
 use alloc::vec::Vec;
 use rand::{CryptoRng, RngCore};
 
@@ -83,11 +85,35 @@ impl super::Bundle {
 pub enum IoFinalizerError {
     /// An error occurred while signing a dummy spend.
     DummySignature(SignerError),
-    /// The `value_sum` is too large for the `value_balance` field.
+    /// The `value_sum` field is too large for a `valueBalance`.
     InvalidValueSum,
     /// The IO Finalizer role requires all `rcv` fields to be set.
     MissingValueCommitTrapdoor,
-    /// The `cv_net`, `rcv`, and `value_sum` values within the Orchard bundle are
+    /// The `cv`, `rcv`, and `value_sum` values within the Sapling bundle are
     /// inconsistent.
     ValueCommitMismatch,
 }
+
+impl fmt::Display for IoFinalizerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            IoFinalizerError::DummySignature(e) => {
+                write!(f, "an error occurred while signing a dummy spend: {e}")
+            }
+            IoFinalizerError::InvalidValueSum => {
+                write!(f, "the `value_sum` field is too large for a `valueBalance`")
+            }
+            IoFinalizerError::MissingValueCommitTrapdoor => write!(
+                f,
+                "the IO Finalizer role requires all `rcv` fields to be set"
+            ),
+            IoFinalizerError::ValueCommitMismatch => write!(
+                f,
+                "`cv`, `rcv`, and `value_sum` within the Sapling bundle are inconsistent"
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for IoFinalizerError {}

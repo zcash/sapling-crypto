@@ -1,3 +1,5 @@
+use core::fmt;
+
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -297,3 +299,31 @@ pub enum ParseError {
     /// Both `rcm` and `rseed` were provided for a Spend.
     MixedNoteCommitRandomnessAndRseed,
 }
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ParseError::InvalidAnchor => write!(f, "invalid anchor"),
+            ParseError::InvalidBindingSignatureSigningKey => write!(f, "invalid `bsk`"),
+            ParseError::InvalidDummySpendAuthorizingKey => write!(f, "invalid `dummy_ask`"),
+            ParseError::InvalidEncCiphertext => write!(f, "invalid `enc_ciphertext`"),
+            ParseError::InvalidExtractedNoteCommitment => write!(f, "invalid `cmu`"),
+            ParseError::InvalidNoteCommitRandomness => write!(f, "invalid `rcm`"),
+            ParseError::InvalidOutCiphertext => write!(f, "invalid `out_ciphertext`"),
+            ParseError::InvalidProofGenerationKey => write!(f, "invalid `proof_generation_key`"),
+            ParseError::InvalidRandomizedKey => write!(f, "invalid `rk`"),
+            ParseError::InvalidRecipient => write!(f, "invalid `recipient`"),
+            ParseError::InvalidSpendAuthRandomizer => write!(f, "invalid `alpha`"),
+            ParseError::InvalidValueCommitment => write!(f, "invalid `cv`"),
+            ParseError::InvalidValueCommitTrapdoor => write!(f, "invalid `rcv`"),
+            ParseError::InvalidWitness => write!(f, "invalid `witness`"),
+            ParseError::InvalidZip32Derivation => write!(f, "invalid `zip32_derivation`"),
+            ParseError::MixedNoteCommitRandomnessAndRseed => {
+                write!(f, "both `rcm` and `rseed` were provided for a spend")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ParseError {}

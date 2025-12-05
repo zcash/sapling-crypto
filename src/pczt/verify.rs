@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::{keys::FullViewingKey, value::ValueCommitment, Note, ViewingKey};
 
 impl super::Spend {
@@ -160,15 +162,15 @@ impl super::Output {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum VerifyError {
-    /// The output note's components do not produce the expected `cmx`.
+    /// The output note's components do not produce the expected `cmu`.
     InvalidExtractedNoteCommitment,
     /// The spent note's components do not produce the expected `nullifier`.
     InvalidNullifier,
     /// The Spend's FVK and `alpha` do not produce the expected `rk`.
     InvalidRandomizedVerificationKey,
-    /// The action's `cv_net` does not match the provided note values and `rcv`.
+    /// The spend or output's `cv` does not match the note value and `rcv`.
     InvalidValueCommitment,
-    /// The spend or output's `fvk` field does not match the provided FVK.
+    /// The spend's `proof_generation_key` field does not match the provided FVK.
     MismatchedFullViewingKey,
     /// Dummy notes must have their `proof_generation_key` field set in order to be verified.
     MissingProofGenerationKey,
@@ -180,10 +182,56 @@ pub enum VerifyError {
     MissingSpendAuthRandomizer,
     /// Verification requires all `value` fields to be set.
     MissingValue,
-    /// `cv_net` verification requires `rcv` to be set.
+    /// `cv` verification requires `rcv` to be set.
     MissingValueCommitTrapdoor,
     /// `nullifier` verification requires `witness` to be set.
     MissingWitness,
     /// The provided `fvk` does not own the spent note.
     WrongFvkForNote,
 }
+
+impl fmt::Display for VerifyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            VerifyError::InvalidExtractedNoteCommitment => {
+                write!(f, "output note doesn't match `cmu`")
+            }
+            VerifyError::InvalidNullifier => write!(f, "spent note doesn't match `nullifier`"),
+            VerifyError::InvalidRandomizedVerificationKey => {
+                write!(f, "spend's `fvk` and `alpha` do not match `rk`")
+            }
+            VerifyError::InvalidValueCommitment => {
+                write!(f, "`cv` doesn't match the note value and `rcv`")
+            }
+            VerifyError::MismatchedFullViewingKey => {
+                write!(
+                    f,
+                    "Provided full viewing key doesn't match the `proof_generation_key` field"
+                )
+            }
+            VerifyError::MissingProofGenerationKey => {
+                write!(f, "`proof_generation_key` missing for dummy note")
+            }
+            VerifyError::MissingRandomSeed => {
+                write!(f, "`rseed` missing for `nullifier` verification")
+            }
+            VerifyError::MissingRecipient => {
+                write!(f, "`recipient` missing for `nullifier` verification")
+            }
+            VerifyError::MissingSpendAuthRandomizer => {
+                write!(f, "`alpha` missing for `rk` verification")
+            }
+            VerifyError::MissingValue => write!(f, "`value` missing"),
+            VerifyError::MissingValueCommitTrapdoor => {
+                write!(f, "`rcv` missing for `cv` verification")
+            }
+            VerifyError::MissingWitness => {
+                write!(f, "`witness` missing for `nullifier` verification")
+            }
+            VerifyError::WrongFvkForNote => write!(f, "`fvk` does not own the spent note"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for VerifyError {}

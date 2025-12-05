@@ -167,6 +167,9 @@ impl fmt::Display for Error {
     }
 }
 
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
+
 /// A struct containing the information necessary to add a spend to a bundle.
 #[derive(Debug, Clone)]
 pub struct SpendInfo {

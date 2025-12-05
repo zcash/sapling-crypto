@@ -1,3 +1,5 @@
+use core::fmt;
+
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -109,3 +111,17 @@ pub enum UpdaterError {
     /// The provided `proof_generation_key` does not match the spend.
     WrongProofGenerationKey,
 }
+
+impl fmt::Display for UpdaterError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UpdaterError::InvalidIndex => write!(f, "Spend or output index is out-of-bounds"),
+            UpdaterError::WrongProofGenerationKey => {
+                write!(f, "`proof_generation_key` does not own the spent note")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for UpdaterError {}

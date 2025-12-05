@@ -10,6 +10,17 @@ and this library adheres to Rust's notion of
 ### Added
 - `sapling_crypto::pczt::Spend::apply_signature`
 - `sapling_crypto::value::BalanceError`
+- `impl std::error::Error` for the following errors:
+  - `sapling_crypto::builder::Error`
+  - `sapling_crypto::keys::DecodingError`
+  - `sapling_crypto::pczt`:
+    - `IoFinalizerError`
+    - `ParseError`
+    - `ProverError`
+    - `SignerError`
+    - `TxExtractorError`
+    - `UpdaterError`
+    - `VerifyError`
 
 ### Changed
 - The `proptest` dependency (used by the `test-dependencies` feature flag) is
