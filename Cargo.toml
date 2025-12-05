@@ -61,7 +61,7 @@ incrementalmerkletree = { version = "0.8.1", default-features = false, features 
 zcash_note_encryption = { version = "0.4", features = ["pre-zip-212"] }
 
 # Secret management
-subtle = { version = "2.2.3", default-features = false }
+subtle = { version = "2.6", default-features = false }
 
 # Static constants
 lazy_static = "1"
