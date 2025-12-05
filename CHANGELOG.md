@@ -7,6 +7,8 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.6.0] - 2025-12-05
+
 ### Added
 - `sapling_crypto::pczt::Spend::apply_signature`
 - `sapling_crypto::value::BalanceError`
