@@ -1,3 +1,5 @@
+use core::fmt;
+
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -102,9 +104,24 @@ impl OutputUpdater<'_> {
 
 /// Errors that can occur while updating a Sapling bundle in a PCZT.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum UpdaterError {
     /// An out-of-bounds index was provided when looking up a spend or output.
     InvalidIndex,
     /// The provided `proof_generation_key` does not match the spend.
     WrongProofGenerationKey,
 }
+
+impl fmt::Display for UpdaterError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UpdaterError::InvalidIndex => write!(f, "Spend or output index is out-of-bounds"),
+            UpdaterError::WrongProofGenerationKey => {
+                write!(f, "`proof_generation_key` does not own the spent note")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for UpdaterError {}

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use rand::{CryptoRng, RngCore};
 use redjubjub::SpendAuth;
 
@@ -49,11 +51,31 @@ impl super::Spend {
 
 /// Errors that can occur while signing an Orchard action in a PCZT.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum SignerError {
-    /// A provided external signature was not valid for the action's spend.
+    /// A provided external signature was not valid for the spend.
     InvalidExternalSignature,
     /// The Signer role requires `alpha` to be set.
     MissingSpendAuthRandomizer,
-    /// The provided `ask` does not own the action's spent note.
+    /// The provided `ask` does not own the spent note.
     WrongSpendAuthorizingKey,
 }
+
+impl fmt::Display for SignerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SignerError::InvalidExternalSignature => {
+                write!(f, "External signature is invalid for the spend")
+            }
+            SignerError::MissingSpendAuthRandomizer => {
+                write!(f, "`alpha` must be set for the Signer role")
+            }
+            SignerError::WrongSpendAuthorizingKey => {
+                write!(f, "provided `ask` does not own the spent note")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SignerError {}

@@ -46,7 +46,7 @@ use subtle::CtOption;
 use super::constants::{VALUE_COMMITMENT_RANDOMNESS_GENERATOR, VALUE_COMMITMENT_VALUE_GENERATOR};
 
 mod sums;
-pub use sums::{CommitmentSum, OverflowError, TrapdoorSum, ValueSum};
+pub use sums::{BalanceError, CommitmentSum, TrapdoorSum, ValueSum};
 
 /// Maximum note value.
 pub const MAX_NOTE_VALUE: u64 = u64::MAX;
@@ -230,7 +230,7 @@ mod tests {
 
     use super::{
         testing::{arb_note_value_bounded, arb_trapdoor},
-        CommitmentSum, OverflowError, TrapdoorSum, ValueCommitment, ValueSum,
+        BalanceError, CommitmentSum, TrapdoorSum, ValueCommitment, ValueSum,
     };
 
     proptest! {
@@ -244,7 +244,7 @@ mod tests {
             let value_balance: i64 = values
                 .iter()
                 .map(|(value, _)| value)
-                .sum::<Result<ValueSum, OverflowError>>()
+                .sum::<Result<ValueSum, BalanceError>>()
                 .expect("we generate values that won't overflow")
                 .try_into()
                 .unwrap();
