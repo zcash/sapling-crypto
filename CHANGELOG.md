@@ -7,6 +7,10 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Changed
+- `sapling_crypto::pczt::Bundle::extract` now takes its `self` argument by
+  reference instead of by value.
+
 ## [0.6.0] - 2025-12-05
 
 ### Added

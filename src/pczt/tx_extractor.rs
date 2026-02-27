@@ -30,7 +30,7 @@ impl super::Bundle {
     ///
     /// [regular `Bundle`]: crate::Bundle
     pub fn extract<V: TryFrom<i64>>(
-        self,
+        &self,
     ) -> Result<Option<crate::Bundle<Unbound, V>>, TxExtractorError> {
         self.to_tx_data(
             |spend| spend.zkproof.ok_or(TxExtractorError::MissingProof),
