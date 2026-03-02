@@ -71,6 +71,8 @@ jobs:
       - name: Show Cargo.toml for the synthetic crate
         working-directory: ./ci-build
         run: cat Cargo.toml
+      - name: Copy pinned dependencies into synthetic crate
+        run: cp crate_root/Cargo.lock ci-build/
       - name: Add target
         working-directory: ./ci-build
         run: rustup target add ${{ matrix.target }}
