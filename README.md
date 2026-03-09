@@ -4,10 +4,14 @@ This repository contains an implementation of Zcash's "Sapling" cryptography.
 
 ## `no_std` compatibility
 
-Downstream users of this crate must enable the `spin_no_std` feature of the
-`lazy_static` crate in order to take advantage of `no_std` builds; this is due
-to the fact that `--no-default-features` builds of `lazy_static` still rely on
-`std`.
+In order to take advantage of `no_std` builds, downstream users of this crate
+must enable:
+
+* the `spin_no_std` feature of the `lazy_static` crate; and
+* the `no_std` feature of the `typenum` crate.
+
+This is needed because the `--no-default-features` builds of these crates still
+rely on `std`.
 
 ## License
 

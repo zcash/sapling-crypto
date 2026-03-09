@@ -119,6 +119,7 @@ impl BundleType {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error {
     AnchorMismatch,
     BindingSig,
@@ -166,6 +167,9 @@ impl fmt::Display for Error {
         }
     }
 }
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {}
 
 /// A struct containing the information necessary to add a spend to a bundle.
 #[derive(Debug, Clone)]
@@ -1370,7 +1374,7 @@ pub(crate) mod testing {
 
                     let (bundle, _) = builder
                         .build::<MockSpendProver, MockOutputProver, _, _>(
-                            &[extsk.clone()],
+                            core::slice::from_ref(&extsk),
                             &mut rng,
                         )
                         .unwrap()
