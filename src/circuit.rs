@@ -149,6 +149,7 @@ where
     Ok(value_bits)
 }
 
+// Allows use of a value pointed to by `&mut T` as though it was owned, as long as a `T` is made available afterwards.
 fn take<T, F>(mut_ref: &mut T, closure: F)
   where F: FnOnce(T) -> T {
     use std::ptr;
@@ -161,6 +162,7 @@ fn take<T, F>(mut_ref: &mut T, closure: F)
     }
 }
 
+// Convert errors between bellpepper and bellman
 struct SynthesisErrorAdapter(bellman::SynthesisError);
 
 impl From<bellpepper_core::SynthesisError> for SynthesisErrorAdapter {
@@ -192,6 +194,7 @@ impl From<SynthesisErrorAdapter> for bellpepper_core::SynthesisError {
     }
 }
 
+// Convert variables between bellpepper and bellman
 struct VariableAdapter(bellman::Variable);
 
 impl From<bellpepper_core::Variable> for VariableAdapter {
@@ -214,6 +217,7 @@ impl From<VariableAdapter> for bellpepper_core::Variable {
     }
 }
 
+// Convert linear combinations between bellpepper and bellman
 struct LinearCombinationAdapter<Scalar: PrimeField>(bellman::LinearCombination<Scalar>);
 
 impl<Scalar: PrimeField> From<bellpepper_core::LinearCombination<Scalar>> for LinearCombinationAdapter<Scalar> {
@@ -231,6 +235,7 @@ impl<Scalar: PrimeField> From<LinearCombinationAdapter<Scalar>> for bellpepper_c
     }
 }
 
+// Convert allocated numbers between bellpepper and bellman
 struct AllocatedNumAdapter<Scalar: PrimeField>(bellman::gadgets::num::AllocatedNum<Scalar>);
 
 impl<Scalar: PrimeField> From<bellpepper_core::num::AllocatedNum<Scalar>> for AllocatedNumAdapter<Scalar> {
@@ -245,6 +250,7 @@ impl<Scalar: PrimeField> From<AllocatedNumAdapter<Scalar>> for bellpepper_core::
     }
 }
 
+// View a bellman constraint system as a bellpepper constraint system
 struct ConstraintSystemAdapter<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>>(CS, std::marker::PhantomData<Scalar>);
 
 impl<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>> bellpepper_core::ConstraintSystem<Scalar> for ConstraintSystemAdapter<Scalar, CS> {
@@ -271,7 +277,7 @@ impl<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>> bellpepper_core:
        where F: FnOnce() -> Result<Scalar, bellpepper_core::SynthesisError>,
              A: FnOnce() -> AR,
              AR: Into<std::string::String> {
-        self.0.alloc_input(annotation, || { f().map_err(|err| SynthesisErrorAdapter::from(err).0) })
+        self.0.alloc_input(annotation, || f().map_err(|err| SynthesisErrorAdapter::from(err).0))
             .map(|x| VariableAdapter(x).into())
             .map_err(|x| SynthesisErrorAdapter(x).into())
     }
@@ -520,12 +526,16 @@ impl Circuit<bls12_381::Scalar> for Spend {
                 &cur_is_right,
             )?;
 
+            // Personalizae the following hash with the Merkle tree level
+            let personalization = u64::try_from(i).expect("personalization too large");
+            let personalization = num::AllocatedNum::alloc(cs.namespace(|| "personalization"), || Ok(personalization.into()))?;
+            
             // Compute the new subtree value
             cur = AllocatedNumAdapter::from(neptune::circuit::poseidon_hash_circuit(
                 ConstraintSystemAdapter(cs.namespace(|| "computation of poseidon hash"), std::marker::PhantomData),
                 neptune::circuit::CircuitType::OptimalAllocated,
-                vec![AllocatedNumAdapter(ul).into(), AllocatedNumAdapter(ur).into()],
-                &neptune::poseidon::PoseidonConstants::<jubjub::Fq, generic_array::typenum::U2>::new(),
+                vec![AllocatedNumAdapter(personalization).into(), AllocatedNumAdapter(ul).into(), AllocatedNumAdapter(ur).into()],
+                &neptune::poseidon::PoseidonConstants::<jubjub::Fq, generic_array::typenum::U3>::new(),
             ).map_err(|e| SynthesisErrorAdapter::from(e).0)?).0;
         }
 
