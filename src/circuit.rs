@@ -150,15 +150,16 @@ where
 }
 
 // Allows use of a value pointed to by `&mut T` as though it was owned, as long as a `T` is made available afterwards.
-fn take<T, F>(mut_ref: &mut T, closure: F)
-  where F: FnOnce(T) -> T {
+fn take<T, U, F>(mut_ref: &mut T, closure: F) -> U
+  where F: FnOnce(T) -> (T, U) {
     use std::ptr;
 
     unsafe {
         let old_t = ptr::read(mut_ref);
-        let new_t = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| closure(old_t)))
+        let (new_t, u) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| closure(old_t)))
             .unwrap_or_else(|_| ::std::process::abort());
         ptr::write(mut_ref, new_t);
+        u
     }
 }
 
@@ -303,13 +304,11 @@ impl<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>> bellpepper_core:
         self.0.pop_namespace()
     }
     fn get_root<T, F>(&mut self, f: F) -> T where F: FnOnce(&mut Self::Root) -> T {
-        let mut ret = None;
         take(self.0.get_root(), |root| {
             let mut adapter = ConstraintSystemAdapter(root, std::marker::PhantomData);
-            ret = Some(f(&mut adapter));
-            adapter.0
-        });
-        ret.expect("return value from f")
+            let ret = f(&mut adapter);
+            (adapter.0, ret)
+        })
     }
 
     // Provided methods

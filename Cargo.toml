@@ -33,8 +33,8 @@ getset = "0.1"
 core2 = { version = "0.3", default-features = false, features = ["alloc"] }
 
 # Circuits
-bellman = { path = "../bellman", version = "0.14", default-features = false, features = ["groth16"], optional = true }
-bellpepper-core = { path = "../bellpepper/crates/bellpepper-core", default-features = false }
+bellman = { git = "https://github.com/anoma/bellman.git", branch = "murisi/send-0.14.0", default-features = false, features = ["groth16"], optional = true }
+bellpepper-core = { git = "https://github.com/anoma/bellpepper.git", branch = "murisi/callbacks-0.4.0", default-features = false }
 
 # CSPRNG
 rand = { version = "0.8", default-features = false }
@@ -74,7 +74,7 @@ proptest = { version = ">=1.0.0, <1.7.0", optional = true }
 aes = "0.8"
 fpe = { version = "0.6", default-features = false, features = ["alloc"] }
 zip32 = { version = "0.2", default-features = false }
-neptune = { path = "/home/murisi/neptune" }
+neptune = { git = "https://github.com/anoma/neptune.git", branch = "murisi/callbacks-13.0.0" }
 generic-array = "0.14.7"
 
 [dev-dependencies]

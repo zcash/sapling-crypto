@@ -113,6 +113,7 @@ dependencies = [
 [[package]]
 name = "bellman"
 version = "0.14.0"
+source = "git+https://github.com/anoma/bellman.git?branch=murisi/send-0.14.0#e5f2210944b2dd621866e3624ec0ef55f2f3ac69"
 dependencies = [
  "bitvec",
  "blake2s_simd",
@@ -132,6 +133,7 @@ dependencies = [
 [[package]]
 name = "bellpepper"
 version = "0.4.0"
+source = "git+https://github.com/anoma/bellpepper.git?branch=murisi/callbacks-0.4.0#f022270a97d2bc6dbed591a936d6a64c0d1e5ade"
 dependencies = [
  "bellpepper-core",
  "byteorder",
@@ -141,6 +143,7 @@ dependencies = [
 [[package]]
 name = "bellpepper-core"
 version = "0.4.0"
+source = "git+https://github.com/anoma/bellpepper.git?branch=murisi/callbacks-0.4.0#f022270a97d2bc6dbed591a936d6a64c0d1e5ade"
 dependencies = [
  "blake2s_simd",
  "byteorder",
@@ -913,6 +916,7 @@ dependencies = [
 [[package]]
 name = "neptune"
 version = "13.0.0"
+source = "git+https://github.com/anoma/neptune.git?branch=murisi/callbacks-13.0.0#7bde756ffc70ec614dd2fa18311d31b60c7f3ff7"
 dependencies = [
  "bellpepper",
  "bellpepper-core",
