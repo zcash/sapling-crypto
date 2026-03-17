@@ -151,7 +151,9 @@ where
 
 // Allows use of a value pointed to by `&mut T` as though it was owned, as long as a `T` is made available afterwards.
 fn take<T, U, F>(mut_ref: &mut T, closure: F) -> U
-  where F: FnOnce(T) -> (T, U) {
+where
+    F: FnOnce(T) -> (T, U),
+{
     use std::ptr;
 
     unsafe {
@@ -169,14 +171,29 @@ struct SynthesisErrorAdapter(bellman::SynthesisError);
 impl From<bellpepper_core::SynthesisError> for SynthesisErrorAdapter {
     fn from(err: bellpepper_core::SynthesisError) -> Self {
         Self(match err {
-            bellpepper_core::SynthesisError::AssignmentMissing => bellman::SynthesisError::AssignmentMissing,
-            bellpepper_core::SynthesisError::DivisionByZero => bellman::SynthesisError::DivisionByZero,
-            bellpepper_core::SynthesisError::Unsatisfiable => bellman::SynthesisError::Unsatisfiable,
-            bellpepper_core::SynthesisError::PolynomialDegreeTooLarge => bellman::SynthesisError::PolynomialDegreeTooLarge,
-            bellpepper_core::SynthesisError::UnexpectedIdentity => bellman::SynthesisError::UnexpectedIdentity,
+            bellpepper_core::SynthesisError::AssignmentMissing => {
+                bellman::SynthesisError::AssignmentMissing
+            }
+            bellpepper_core::SynthesisError::DivisionByZero => {
+                bellman::SynthesisError::DivisionByZero
+            }
+            bellpepper_core::SynthesisError::Unsatisfiable => {
+                bellman::SynthesisError::Unsatisfiable
+            }
+            bellpepper_core::SynthesisError::PolynomialDegreeTooLarge => {
+                bellman::SynthesisError::PolynomialDegreeTooLarge
+            }
+            bellpepper_core::SynthesisError::UnexpectedIdentity => {
+                bellman::SynthesisError::UnexpectedIdentity
+            }
             bellpepper_core::SynthesisError::IoError(e) => bellman::SynthesisError::IoError(e),
-            bellpepper_core::SynthesisError::UnconstrainedVariable => bellman::SynthesisError::UnconstrainedVariable,
-            err => bellman::SynthesisError::IoError(std::io::Error::new(std::io::ErrorKind::Other, err)),
+            bellpepper_core::SynthesisError::UnconstrainedVariable => {
+                bellman::SynthesisError::UnconstrainedVariable
+            }
+            err => bellman::SynthesisError::IoError(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                err,
+            )),
         })
     }
 }
@@ -184,13 +201,25 @@ impl From<bellpepper_core::SynthesisError> for SynthesisErrorAdapter {
 impl From<SynthesisErrorAdapter> for bellpepper_core::SynthesisError {
     fn from(err: SynthesisErrorAdapter) -> Self {
         match err.0 {
-            bellman::SynthesisError::AssignmentMissing => bellpepper_core::SynthesisError::AssignmentMissing,
-            bellman::SynthesisError::DivisionByZero => bellpepper_core::SynthesisError::DivisionByZero,
-            bellman::SynthesisError::Unsatisfiable => bellpepper_core::SynthesisError::Unsatisfiable,
-            bellman::SynthesisError::PolynomialDegreeTooLarge => bellpepper_core::SynthesisError::PolynomialDegreeTooLarge,
-            bellman::SynthesisError::UnexpectedIdentity => bellpepper_core::SynthesisError::UnexpectedIdentity,
+            bellman::SynthesisError::AssignmentMissing => {
+                bellpepper_core::SynthesisError::AssignmentMissing
+            }
+            bellman::SynthesisError::DivisionByZero => {
+                bellpepper_core::SynthesisError::DivisionByZero
+            }
+            bellman::SynthesisError::Unsatisfiable => {
+                bellpepper_core::SynthesisError::Unsatisfiable
+            }
+            bellman::SynthesisError::PolynomialDegreeTooLarge => {
+                bellpepper_core::SynthesisError::PolynomialDegreeTooLarge
+            }
+            bellman::SynthesisError::UnexpectedIdentity => {
+                bellpepper_core::SynthesisError::UnexpectedIdentity
+            }
             bellman::SynthesisError::IoError(e) => bellpepper_core::SynthesisError::IoError(e),
-            bellman::SynthesisError::UnconstrainedVariable => bellpepper_core::SynthesisError::UnconstrainedVariable,
+            bellman::SynthesisError::UnconstrainedVariable => {
+                bellpepper_core::SynthesisError::UnconstrainedVariable
+            }
         }
     }
 }
@@ -221,40 +250,66 @@ impl From<VariableAdapter> for bellpepper_core::Variable {
 // Convert linear combinations between bellpepper and bellman
 struct LinearCombinationAdapter<Scalar: PrimeField>(bellman::LinearCombination<Scalar>);
 
-impl<Scalar: PrimeField> From<bellpepper_core::LinearCombination<Scalar>> for LinearCombinationAdapter<Scalar> {
+impl<Scalar: PrimeField> From<bellpepper_core::LinearCombination<Scalar>>
+    for LinearCombinationAdapter<Scalar>
+{
     fn from(comb: bellpepper_core::LinearCombination<Scalar>) -> Self {
-        Self(comb.iter().fold(bellman::LinearCombination::zero(), |acc, (v, s)| acc + (*s, VariableAdapter::from(v).0)))
+        Self(
+            comb.iter()
+                .fold(bellman::LinearCombination::zero(), |acc, (v, s)| {
+                    acc + (*s, VariableAdapter::from(v).0)
+                }),
+        )
     }
 }
 
-impl<Scalar: PrimeField> From<LinearCombinationAdapter<Scalar>> for bellpepper_core::LinearCombination<Scalar> {
+impl<Scalar: PrimeField> From<LinearCombinationAdapter<Scalar>>
+    for bellpepper_core::LinearCombination<Scalar>
+{
     fn from(comb: LinearCombinationAdapter<Scalar>) -> Self {
-        comb.0.as_ref().iter().fold(
-            bellpepper_core::LinearCombination::zero(),
-            |acc, (v, s)| acc + (*s, bellpepper_core::Variable::from(VariableAdapter(*v))),
-        )
+        comb.0
+            .as_ref()
+            .iter()
+            .fold(bellpepper_core::LinearCombination::zero(), |acc, (v, s)| {
+                acc + (*s, bellpepper_core::Variable::from(VariableAdapter(*v)))
+            })
     }
 }
 
 // Convert allocated numbers between bellpepper and bellman
 struct AllocatedNumAdapter<Scalar: PrimeField>(bellman::gadgets::num::AllocatedNum<Scalar>);
 
-impl<Scalar: PrimeField> From<bellpepper_core::num::AllocatedNum<Scalar>> for AllocatedNumAdapter<Scalar> {
+impl<Scalar: PrimeField> From<bellpepper_core::num::AllocatedNum<Scalar>>
+    for AllocatedNumAdapter<Scalar>
+{
     fn from(num: bellpepper_core::num::AllocatedNum<Scalar>) -> Self {
-        Self(bellman::gadgets::num::AllocatedNum::new_unchecked(VariableAdapter::from(num.get_variable()).0, num.get_value()))
+        Self(bellman::gadgets::num::AllocatedNum::new_unchecked(
+            VariableAdapter::from(num.get_variable()).0,
+            num.get_value(),
+        ))
     }
 }
 
-impl<Scalar: PrimeField> From<AllocatedNumAdapter<Scalar>> for bellpepper_core::num::AllocatedNum<Scalar> {
+impl<Scalar: PrimeField> From<AllocatedNumAdapter<Scalar>>
+    for bellpepper_core::num::AllocatedNum<Scalar>
+{
     fn from(num: AllocatedNumAdapter<Scalar>) -> Self {
-        bellpepper_core::num::AllocatedNum::new_unchecked(VariableAdapter(num.0.get_variable()).into(), num.0.get_value())
+        bellpepper_core::num::AllocatedNum::new_unchecked(
+            VariableAdapter(num.0.get_variable()).into(),
+            num.0.get_value(),
+        )
     }
 }
 
 // View a bellman constraint system as a bellpepper constraint system
-struct ConstraintSystemAdapter<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>>(CS, std::marker::PhantomData<Scalar>);
+struct ConstraintSystemAdapter<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>>(
+    CS,
+    std::marker::PhantomData<Scalar>,
+);
 
-impl<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>> bellpepper_core::ConstraintSystem<Scalar> for ConstraintSystemAdapter<Scalar, CS> {
+impl<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>>
+    bellpepper_core::ConstraintSystem<Scalar> for ConstraintSystemAdapter<Scalar, CS>
+{
     type Root = ConstraintSystemAdapter<Scalar, CS::Root>;
 
     // Required methods
@@ -263,10 +318,15 @@ impl<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>> bellpepper_core:
         annotation: A,
         f: F,
     ) -> Result<bellpepper_core::Variable, bellpepper_core::SynthesisError>
-    where F: FnOnce() -> Result<Scalar, bellpepper_core::SynthesisError>,
-          A: FnOnce() -> AR,
-          AR: Into<std::string::String> {
-        self.0.alloc(annotation, || { f().map_err(|err| SynthesisErrorAdapter::from(err).0) })
+    where
+        F: FnOnce() -> Result<Scalar, bellpepper_core::SynthesisError>,
+        A: FnOnce() -> AR,
+        AR: Into<std::string::String>,
+    {
+        self.0
+            .alloc(annotation, || {
+                f().map_err(|err| SynthesisErrorAdapter::from(err).0)
+            })
             .map(|x| VariableAdapter(x).into())
             .map_err(|x| SynthesisErrorAdapter(x).into())
     }
@@ -275,19 +335,32 @@ impl<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>> bellpepper_core:
         annotation: A,
         f: F,
     ) -> Result<bellpepper_core::Variable, bellpepper_core::SynthesisError>
-       where F: FnOnce() -> Result<Scalar, bellpepper_core::SynthesisError>,
-             A: FnOnce() -> AR,
-             AR: Into<std::string::String> {
-        self.0.alloc_input(annotation, || f().map_err(|err| SynthesisErrorAdapter::from(err).0))
+    where
+        F: FnOnce() -> Result<Scalar, bellpepper_core::SynthesisError>,
+        A: FnOnce() -> AR,
+        AR: Into<std::string::String>,
+    {
+        self.0
+            .alloc_input(annotation, || {
+                f().map_err(|err| SynthesisErrorAdapter::from(err).0)
+            })
             .map(|x| VariableAdapter(x).into())
             .map_err(|x| SynthesisErrorAdapter(x).into())
     }
     fn enforce<A, AR, LA, LB, LC>(&mut self, annotation: A, a: LA, b: LB, c: LC)
-       where A: FnOnce() -> AR,
-             AR: Into<std::string::String>,
-             LA: FnOnce(bellpepper_core::LinearCombination<Scalar>) -> bellpepper_core::LinearCombination<Scalar>,
-             LB: FnOnce(bellpepper_core::LinearCombination<Scalar>) -> bellpepper_core::LinearCombination<Scalar>,
-             LC: FnOnce(bellpepper_core::LinearCombination<Scalar>) -> bellpepper_core::LinearCombination<Scalar> {
+    where
+        A: FnOnce() -> AR,
+        AR: Into<std::string::String>,
+        LA: FnOnce(
+            bellpepper_core::LinearCombination<Scalar>,
+        ) -> bellpepper_core::LinearCombination<Scalar>,
+        LB: FnOnce(
+            bellpepper_core::LinearCombination<Scalar>,
+        ) -> bellpepper_core::LinearCombination<Scalar>,
+        LC: FnOnce(
+            bellpepper_core::LinearCombination<Scalar>,
+        ) -> bellpepper_core::LinearCombination<Scalar>,
+    {
         self.0.enforce(
             annotation,
             |x| LinearCombinationAdapter::from(a(LinearCombinationAdapter(x).into())).0,
@@ -296,14 +369,19 @@ impl<Scalar: PrimeField, CS: bellman::ConstraintSystem<Scalar>> bellpepper_core:
         )
     }
     fn push_namespace<NR, N>(&mut self, name_fn: N)
-       where NR: Into<std::string::String>,
-             N: FnOnce() -> NR {
+    where
+        NR: Into<std::string::String>,
+        N: FnOnce() -> NR,
+    {
         self.0.push_namespace(name_fn)
     }
     fn pop_namespace(&mut self) {
         self.0.pop_namespace()
     }
-    fn get_root<T, F>(&mut self, f: F) -> T where F: FnOnce(&mut Self::Root) -> T {
+    fn get_root<T, F>(&mut self, f: F) -> T
+    where
+        F: FnOnce(&mut Self::Root) -> T,
+    {
         take(self.0.get_root(), |root| {
             let mut adapter = ConstraintSystemAdapter(root, std::marker::PhantomData);
             let ret = f(&mut adapter);
@@ -527,15 +605,33 @@ impl Circuit<bls12_381::Scalar> for Spend {
 
             // Personalizae the following hash with the Merkle tree level
             let personalization = u64::try_from(i).expect("personalization too large");
-            let personalization = num::AllocatedNum::alloc(cs.namespace(|| "personalization"), || Ok(personalization.into()))?;
-            
+            let personalization =
+                num::AllocatedNum::alloc(cs.namespace(|| "personalization"), || {
+                    Ok(personalization.into())
+                })?;
+
             // Compute the new subtree value
-            cur = AllocatedNumAdapter::from(neptune::circuit::poseidon_hash_circuit(
-                ConstraintSystemAdapter(cs.namespace(|| "computation of poseidon hash"), std::marker::PhantomData),
-                neptune::circuit::CircuitType::OptimalAllocated,
-                vec![AllocatedNumAdapter(personalization).into(), AllocatedNumAdapter(ul).into(), AllocatedNumAdapter(ur).into()],
-                &neptune::poseidon::PoseidonConstants::<jubjub::Fq, generic_array::typenum::U3>::new(),
-            ).map_err(|e| SynthesisErrorAdapter::from(e).0)?).0;
+            cur =
+                AllocatedNumAdapter::from(
+                    neptune::circuit::poseidon_hash_circuit(
+                        ConstraintSystemAdapter(
+                            cs.namespace(|| "computation of poseidon hash"),
+                            std::marker::PhantomData,
+                        ),
+                        neptune::circuit::CircuitType::OptimalAllocated,
+                        vec![
+                            AllocatedNumAdapter(personalization).into(),
+                            AllocatedNumAdapter(ul).into(),
+                            AllocatedNumAdapter(ur).into(),
+                        ],
+                        &neptune::poseidon::PoseidonConstants::<
+                            jubjub::Fq,
+                            generic_array::typenum::U3,
+                        >::new(),
+                    )
+                    .map_err(|e| SynthesisErrorAdapter::from(e).0)?,
+                )
+                .0;
         }
 
         {
