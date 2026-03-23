@@ -1,3 +1,5 @@
+use core::fmt;
+
 use rand::{CryptoRng, RngCore};
 
 use crate::{
@@ -86,7 +88,14 @@ impl super::Bundle {
 
 /// Errors that can occur while creating Sapling proofs for a PCZT.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ProverError {
+    /// The `recipient` field has an invalid diversifier.
+    ///
+    /// This should instead present as a [`ParseError::InvalidRecipient`] earlier on when
+    /// processing a PCZT.
+    ///
+    /// [`ParseError::InvalidRecipient`]: super::ParseError::InvalidRecipient
     InvalidDiversifier,
     /// The Prover role requires all `proof_generation_key` fields to be set.
     MissingProofGenerationKey,
@@ -103,3 +112,35 @@ pub enum ProverError {
     /// The Prover role requires all `witness` fields to be set.
     MissingWitness,
 }
+
+impl fmt::Display for ProverError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ProverError::InvalidDiversifier => {
+                write!(f, "`recipient` has invalid diversifier")
+            }
+            ProverError::MissingProofGenerationKey => {
+                write!(f, "`proof_generation_key` must be set for the Prover role")
+            }
+            ProverError::MissingRandomSeed => {
+                write!(f, "`rseed` fields must be set for the Prover role")
+            }
+            ProverError::MissingRecipient => {
+                write!(f, "`recipient` fields must be set for the Prover role")
+            }
+            ProverError::MissingSpendAuthRandomizer => {
+                write!(f, "`alpha` must be set for the Prover role")
+            }
+            ProverError::MissingValue => {
+                write!(f, "`value` fields must be set for the Prover role")
+            }
+            ProverError::MissingValueCommitTrapdoor => {
+                write!(f, "`rcv` must be set for the Prover role")
+            }
+            ProverError::MissingWitness => write!(f, "`witness` must be set for the Prover role"),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for ProverError {}

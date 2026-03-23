@@ -8,18 +8,26 @@ use redjubjub::Binding;
 use super::{NoteValue, ValueCommitTrapdoor, ValueCommitment};
 use crate::constants::VALUE_COMMITMENT_VALUE_GENERATOR;
 
-/// A value operation overflowed.
+/// A type for balance violations in amount addition and subtraction
+/// (overflow and underflow of allowed ranges).
 #[derive(Debug)]
-pub struct OverflowError;
+#[non_exhaustive]
+pub enum BalanceError {
+    /// Two values were added or subtracted, and the result overflowed the valid range for
+    /// the value.
+    Overflow,
+}
 
-impl fmt::Display for OverflowError {
+impl fmt::Display for BalanceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Sapling value operation overflowed")
+        match self {
+            Self::Overflow => write!(f, "Sapling value operation overflowed"),
+        }
     }
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for OverflowError {}
+impl std::error::Error for BalanceError {}
 
 /// A sum of Sapling note values.
 ///
@@ -73,25 +81,25 @@ impl Sub<NoteValue> for ValueSum {
     }
 }
 
-impl<'a> Sum<&'a NoteValue> for Result<ValueSum, OverflowError> {
+impl<'a> Sum<&'a NoteValue> for Result<ValueSum, BalanceError> {
     fn sum<I: Iterator<Item = &'a NoteValue>>(mut iter: I) -> Self {
         iter.try_fold(ValueSum(0), |acc, v| acc + *v)
-            .ok_or(OverflowError)
+            .ok_or(BalanceError::Overflow)
     }
 }
 
-impl Sum<NoteValue> for Result<ValueSum, OverflowError> {
+impl Sum<NoteValue> for Result<ValueSum, BalanceError> {
     fn sum<I: Iterator<Item = NoteValue>>(mut iter: I) -> Self {
         iter.try_fold(ValueSum(0), |acc, v| acc + v)
-            .ok_or(OverflowError)
+            .ok_or(BalanceError::Overflow)
     }
 }
 
 impl TryFrom<ValueSum> for i64 {
-    type Error = OverflowError;
+    type Error = BalanceError;
 
     fn try_from(v: ValueSum) -> Result<i64, Self::Error> {
-        i64::try_from(v.0).map_err(|_| OverflowError)
+        i64::try_from(v.0).map_err(|_| BalanceError::Overflow)
     }
 }
 

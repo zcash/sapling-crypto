@@ -1,6 +1,6 @@
 [package]
 name = "sapling-crypto"
-version = "0.5.0"
+version = "0.6.0"
 authors = [
     "Sean Bowe <sean@electriccoin.co>",
     "Jack Grigg <jack@electriccoin.co>",
@@ -61,13 +61,13 @@ incrementalmerkletree = { version = "0.8.1", default-features = false, features 
 zcash_note_encryption = { version = "0.4.1", features = ["pre-zip-212"] }
 
 # Secret management
-subtle = { version = "2.2.3", default-features = false }
+subtle = { version = "2.6", default-features = false }
 
 # Static constants
 lazy_static = "1"
 
 # Test dependencies
-proptest = { version = "1", optional = true }
+proptest = { version = ">=1.0.0, <1.7.0", optional = true }
 
 # ZIP 32
 aes = "0.8"
@@ -79,7 +79,7 @@ zip32 = { version = "0.2", default-features = false }
 chacha20poly1305 = "0.10"
 criterion = "0.4"
 incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
-proptest = ">=1,<1.7"
+proptest = ">=1.0.0, <1.7.0"
 rand_xorshift = "0.3"
 
 [target.'cfg(unix)'.dev-dependencies]
