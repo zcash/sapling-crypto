@@ -7,6 +7,11 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `impl {PartiaEq, Eq} for sapling_crypto::keys::ViewingKey`
+- `impl {PartiaEq, Eq} for sapling_crypto::keys::FullViewingKey`
+- `impl {PartiaEq, Eq} for sapling_crypto::zip32::DiversifiableFullViewingKey`
+
 ## [0.6.0] - 2025-12-05
 
 ### Added

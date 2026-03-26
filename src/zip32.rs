@@ -654,7 +654,7 @@ impl ExtendedFullViewingKey {
 /// Sapling item in a [ZIP 316 Unified Full Viewing Key][zip-0316-ufvk].
 ///
 /// [zip-0316-ufvk]: https://zips.z.cash/zip-0316#encoding-of-unified-full-incoming-viewing-keys
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiversifiableFullViewingKey {
     fvk: FullViewingKey,
     dk: DiversifierKey,

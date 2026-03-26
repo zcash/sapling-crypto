@@ -346,7 +346,7 @@ impl ProofGenerationKey {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct NullifierDerivingKey(pub jubjub::SubgroupPoint);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewingKey {
     pub ak: SpendValidatingKey,
     pub nk: NullifierDerivingKey,
@@ -367,7 +367,7 @@ impl ViewingKey {
 }
 
 /// A Sapling key that provides the capability to view incoming and outgoing transactions.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FullViewingKey {
     pub vk: ViewingKey,
     pub ovk: OutgoingViewingKey,
