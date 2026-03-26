@@ -7,6 +7,8 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-26
+
 ### Added
 - `impl {PartiaEq, Eq} for sapling_crypto::keys::ViewingKey`
 - `impl {PartiaEq, Eq} for sapling_crypto::keys::FullViewingKey`
