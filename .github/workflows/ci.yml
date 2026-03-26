@@ -68,6 +68,8 @@ jobs:
       - name: Add typenum with the no_std feature
         working-directory: ./ci-build
         run: cargo add typenum --no-default-features --features "no_std"
+      - name: Copy pinned dependencies into synthetic crate
+        run: cp crate_root/Cargo.lock ci-build/
       - name: Show Cargo.toml for the synthetic crate
         working-directory: ./ci-build
         run: cat Cargo.toml
