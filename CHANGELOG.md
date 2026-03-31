@@ -7,7 +7,7 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
-## [0.6.2] - PENDING
+## [0.6.2] - 2026-03-31
 
 - `impl {PartiaEq, Eq} for sapling_crypto::keys::SaplingIvk`
 - `impl {PartiaEq, Eq} for sapling_crypto::zip32::IncomingViewingKey`

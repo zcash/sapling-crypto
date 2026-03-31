@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "sapling-crypto"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "aes",
  "bellman",
