@@ -11,6 +11,11 @@ and this library adheres to Rust's notion of
 - `sapling_crypto::pczt::Bundle::extract` now takes its `self` argument by
   reference instead of by value.
 
+## [0.6.2] - 2026-03-31
+
+- `impl {PartiaEq, Eq} for sapling_crypto::keys::SaplingIvk`
+- `impl {PartiaEq, Eq} for sapling_crypto::zip32::IncomingViewingKey`
+
 ## [0.6.1] - 2026-03-26
 
 ### Added
