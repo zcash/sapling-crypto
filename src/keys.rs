@@ -447,7 +447,7 @@ impl FullViewingKey {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaplingIvk(pub jubjub::Fr);
 
 impl SaplingIvk {
