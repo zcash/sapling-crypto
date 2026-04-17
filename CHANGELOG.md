@@ -8,6 +8,7 @@ and this library adheres to Rust's notion of
 ## [Unreleased]
 
 ### Changed
+- MSRV is now 1.85.1
 - `sapling_crypto::pczt::Bundle::extract` now takes its `self` argument by
   reference instead of by value.
 

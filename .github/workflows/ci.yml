@@ -40,7 +40,7 @@ jobs:
     strategy:
       matrix:
         target:
-          - wasm32-wasi
+          - wasm32-wasip1
           - thumbv7em-none-eabihf
     steps:
       - uses: actions/checkout@v6

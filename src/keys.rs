@@ -6,7 +6,7 @@
 
 use alloc::vec::Vec;
 use core::fmt;
-use core2::io::{self, Read, Write};
+use corez::io::{self, Read, Write};
 
 use super::{
     address::PaymentAddress,

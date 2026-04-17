@@ -7,7 +7,7 @@ authors = [
     "Kris Nuttycombe <kris@electriccoin.co>",
 ]
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.85.1"
 description = "Cryptographic library for Zcash Sapling"
 homepage = "https://github.com/zcash/sapling-crypto"
 repository = "https://github.com/zcash/sapling-crypto"
@@ -30,7 +30,7 @@ zcash_spec = "0.2"
 getset = "0.1"
 
 # No-std support
-core2 = { version = "0.3", default-features = false, features = ["alloc"] }
+corez = { version = "0.1.1", default-features = false, features = ["alloc"] }
 
 # Circuits
 bellman = { version = "0.14", default-features = false, features = ["groth16"], optional = true }
@@ -88,7 +88,7 @@ pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
 [features]
 default = ["multicore", "circuit"]
 std = [
-  "core2/std",
+  "corez/std",
   "dep:document-features",
   "group/wnaf-memuse",
   "redjubjub/std"
