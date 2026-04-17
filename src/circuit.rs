@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 use core::fmt;
-use core2::io;
+use corez::io;
 
 use group::{ff::PrimeField, Curve};
 
