@@ -77,13 +77,13 @@ zip32 = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
-criterion = "0.4"
+criterion = "0.5"
 incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
 proptest = ">=1.0.0, <1.7.0"
 rand_xorshift = "0.3"
 
 [target.'cfg(unix)'.dev-dependencies]
-pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
+pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
 
 [features]
 default = ["multicore", "circuit"]
