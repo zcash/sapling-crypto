@@ -8,6 +8,7 @@ authors = [
 ]
 edition = "2021"
 rust-version = "1.85.1"
+resolver = "3"
 description = "Cryptographic library for Zcash Sapling"
 homepage = "https://github.com/zcash/sapling-crypto"
 repository = "https://github.com/zcash/sapling-crypto"
