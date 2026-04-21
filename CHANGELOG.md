@@ -7,8 +7,11 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-21
+
 ### Changed
 - MSRV is now 1.85.1
+- Migrated from the yanked `core2` crate to `corez` for no_std IO support.
 - `sapling_crypto::pczt::Bundle::extract` now takes its `self` argument by
   reference instead of by value.
 
