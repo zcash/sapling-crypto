@@ -1,6 +1,10 @@
 
 # cargo-vet imports lock
 
+[[unpublished.sapling-crypto]]
+version = "0.7.0"
+audited_as = "0.6.2"
+
 [[publisher.bumpalo]]
 version = "3.14.0"
 when = "2023-09-14"
