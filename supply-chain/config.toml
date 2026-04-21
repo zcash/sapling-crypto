@@ -417,7 +417,7 @@ version = "0.1.40"
 criteria = "safe-to-deploy"
 
 [[exemptions.typenum]]
-version = "1.17.0"
+version = "1.20.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.uuid]]
