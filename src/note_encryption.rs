@@ -140,6 +140,9 @@ impl SaplingDomain {
     }
 }
 
+pub(crate) type EncCiphertext = NoteBytesData<{ ENC_CIPHERTEXT_SIZE }>;
+pub(crate) type CompactEncCiphertext = NoteBytesData<{ COMPACT_NOTE_SIZE }>;
+
 impl Domain for SaplingDomain {
     type EphemeralSecretKey = EphemeralSecretKey;
     // It is acceptable for this to be a point rather than a byte array, because we
@@ -160,9 +163,9 @@ impl Domain for SaplingDomain {
     type Memo = [u8; MEMO_SIZE];
 
     type NotePlaintextBytes = NoteBytesData<{ NOTE_PLAINTEXT_SIZE }>;
-    type NoteCiphertextBytes = NoteBytesData<{ ENC_CIPHERTEXT_SIZE }>;
+    type NoteCiphertextBytes = EncCiphertext;
     type CompactNotePlaintextBytes = NoteBytesData<{ COMPACT_NOTE_SIZE }>;
-    type CompactNoteCiphertextBytes = NoteBytesData<{ COMPACT_NOTE_SIZE }>;
+    type CompactNoteCiphertextBytes = CompactEncCiphertext;
 
     fn derive_esk(note: &Self::Note) -> Option<Self::EphemeralSecretKey> {
         note.derive_esk()

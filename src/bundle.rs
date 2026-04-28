@@ -13,7 +13,8 @@ use crate::{
     constants::GROTH_PROOF_SIZE,
     note::ExtractedNoteCommitment,
     note_encryption::{
-        CompactOutputDescription, SaplingDomain, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE,
+        CompactEncCiphertext, CompactOutputDescription, EncCiphertext, SaplingDomain,
+        COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE,
     },
     value::ValueCommitment,
     Nullifier,
@@ -433,12 +434,14 @@ impl<A> ShieldedOutput<SaplingDomain> for OutputDescription<A> {
         self.cmu.to_bytes()
     }
 
-    fn enc_ciphertext(&self) -> Option<&NoteBytesData<{ ENC_CIPHERTEXT_SIZE }>> {
+    fn enc_ciphertext(&self) -> Option<&EncCiphertext> {
         Some(&self.enc_ciphertext)
     }
 
-    fn enc_ciphertext_compact(&self) -> NoteBytesData<{ COMPACT_NOTE_SIZE }> {
-        unimplemented!("This function is not required for sapling")
+    fn enc_ciphertext_compact(&self) -> CompactEncCiphertext {
+        let mut data = [0u8; COMPACT_NOTE_SIZE];
+        data.copy_from_slice(&self.enc_ciphertext.as_ref()[..COMPACT_NOTE_SIZE]);
+        NoteBytesData(data)
     }
 }
 
@@ -498,12 +501,12 @@ impl OutputDescriptionV5 {
 
 impl<A> From<OutputDescription<A>> for CompactOutputDescription {
     fn from(out: OutputDescription<A>) -> CompactOutputDescription {
+        let enc_ciphertext = out.enc_ciphertext_compact().0;
+
         CompactOutputDescription {
             ephemeral_key: out.ephemeral_key,
             cmu: out.cmu,
-            enc_ciphertext: out.enc_ciphertext.as_ref()[..COMPACT_NOTE_SIZE]
-                .try_into()
-                .unwrap(),
+            enc_ciphertext,
         }
     }
 }
