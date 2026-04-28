@@ -12,7 +12,7 @@ use zcash_spec::PrfExpand;
 use zip32::{ChainCode, ChildIndex, DiversifierIndex, Scope};
 
 use core::ops::AddAssign;
-use core2::io::{self, Read, Write};
+use corez::io::{self, Read, Write};
 
 use super::{Diversifier, NullifierDerivingKey, PaymentAddress, ViewingKey};
 use crate::note_encryption::PreparedIncomingViewingKey;
@@ -362,8 +362,8 @@ impl ExtendedSpendingKey {
         reader.read_exact(&mut child_index_bytes)?;
         let child_index =
             KeyIndex::new(depth, u32::from_le_bytes(child_index_bytes)).ok_or_else(|| {
-                core2::io::Error::new(
-                    core2::io::ErrorKind::InvalidData,
+                corez::io::Error::new(
+                    corez::io::ErrorKind::InvalidData,
                     "Unsupported child index in encoding",
                 )
             })?;
@@ -564,8 +564,8 @@ impl ExtendedFullViewingKey {
         reader.read_exact(&mut child_index_bytes)?;
         let child_index =
             KeyIndex::new(depth, u32::from_le_bytes(child_index_bytes)).ok_or_else(|| {
-                core2::io::Error::new(
-                    core2::io::ErrorKind::InvalidData,
+                corez::io::Error::new(
+                    corez::io::ErrorKind::InvalidData,
                     "Unsupported child index in encoding",
                 )
             })?;
@@ -654,7 +654,7 @@ impl ExtendedFullViewingKey {
 /// Sapling item in a [ZIP 316 Unified Full Viewing Key][zip-0316-ufvk].
 ///
 /// [zip-0316-ufvk]: https://zips.z.cash/zip-0316#encoding-of-unified-full-incoming-viewing-keys
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiversifiableFullViewingKey {
     fvk: FullViewingKey,
     dk: DiversifierKey,
@@ -841,7 +841,7 @@ impl DiversifiableFullViewingKey {
 /// Sapling item in a [ZIP 316 Unified Incoming Viewing Key][zip-0316-ufvk].
 ///
 /// [zip-0316-ufvk]: https://zips.z.cash/zip-0316#encoding-of-unified-full-incoming-viewing-keys
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IncomingViewingKey {
     dk: DiversifierKey,
     ivk: SaplingIvk,

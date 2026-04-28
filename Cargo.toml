@@ -1,13 +1,14 @@
 [package]
 name = "sapling-crypto"
-version = "0.6.0"
+version = "0.7.0"
 authors = [
     "Sean Bowe <sean@electriccoin.co>",
     "Jack Grigg <jack@electriccoin.co>",
     "Kris Nuttycombe <kris@electriccoin.co>",
 ]
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.85.1"
+resolver = "3"
 description = "Cryptographic library for Zcash Sapling"
 homepage = "https://github.com/zcash/sapling-crypto"
 repository = "https://github.com/zcash/sapling-crypto"
@@ -30,7 +31,7 @@ zcash_spec = "0.2"
 getset = "0.1"
 
 # No-std support
-core2 = { version = "0.3", default-features = false, features = ["alloc"] }
+corez = { version = "0.1.1", default-features = false, features = ["alloc"] }
 
 # Circuits
 bellman = { version = "0.14", default-features = false, features = ["groth16"], optional = true }
@@ -77,18 +78,18 @@ zip32 = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
-criterion = "0.4"
+criterion = "0.5"
 incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
 proptest = ">=1.0.0, <1.7.0"
 rand_xorshift = "0.3"
 
 [target.'cfg(unix)'.dev-dependencies]
-pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
+pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
 
 [features]
 default = ["multicore", "circuit"]
 std = [
-  "core2/std",
+  "corez/std",
   "dep:document-features",
   "group/wnaf-memuse",
   "redjubjub/std"

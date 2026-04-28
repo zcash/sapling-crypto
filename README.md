@@ -8,7 +8,6 @@ In order to take advantage of `no_std` builds, downstream users of this crate
 must enable:
 
 * the `spin_no_std` feature of the `lazy_static` crate; and
-* the `no_std` feature of the `typenum` crate.
 
 This is needed because the `--no-default-features` builds of these crates still
 rely on `std`.
