@@ -7,6 +7,12 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `SpendAuthorizingKey::sign` signs a message with the unrandomized
+  spend-authorizing key, for non-transaction signatures.
+- `SpendValidatingKey::to_verification_key` returns the unrandomized
+  verification key.
+
 ## [0.7.0] - 2026-04-21
 
 ### Changed

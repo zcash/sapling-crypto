@@ -27,8 +27,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_spec::PrfExpand;
 
-#[cfg(all(feature = "circuit", test))]
-use rand_core::RngCore;
+use rand_core::{CryptoRng, RngCore};
 
 /// Errors that can occur in the decoding of Sapling spending keys.
 #[derive(Debug)]
@@ -147,6 +146,20 @@ impl SpendAuthorizingKey {
     pub fn randomize(&self, randomizer: &jubjub::Scalar) -> redjubjub::SigningKey<SpendAuth> {
         self.0.randomize(randomizer)
     }
+
+    /// Signs a message with this spend-authorizing key, without randomization.
+    ///
+    /// This is intended for non-transaction signatures (such as binding a UFVK
+    /// to the account's spending authority) where no per-spend randomizer is
+    /// applied. For spend authorization signatures, use [`Self::randomize`] with
+    /// the spend's randomizer and sign with the resulting key.
+    pub fn sign<R: RngCore + CryptoRng>(
+        &self,
+        rng: R,
+        msg: &[u8],
+    ) -> redjubjub::Signature<SpendAuth> {
+        self.0.sign(rng, msg)
+    }
 }
 
 /// A key used to validate spend authorization signatures.
@@ -222,6 +235,15 @@ impl SpendValidatingKey {
     /// Randomizes this spend validating key with the given `randomizer`.
     pub fn randomize(&self, randomizer: &jubjub::Scalar) -> redjubjub::VerificationKey<SpendAuth> {
         self.0.randomize(randomizer)
+    }
+
+    /// Returns the unrandomized verification key.
+    ///
+    /// This is the base verification key corresponding to this spend validating
+    /// key, without any randomizer applied. Use [`Self::randomize`] to obtain a
+    /// randomized verification key for spend-auth signature verification.
+    pub fn to_verification_key(&self) -> redjubjub::VerificationKey<SpendAuth> {
+        self.0
     }
 }
 
