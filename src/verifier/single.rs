@@ -1,12 +1,13 @@
-use bellman::groth16::{verify_proof, Proof};
-use bls12_381::Bls12;
+use bellman::groth16::verify_proof;
 use redjubjub::{Binding, SpendAuth};
+use zcash_note_encryption::EphemeralKeyBytes;
 
 use super::SaplingVerificationContextInner;
 use crate::{
+    bundle::GrothProofBytes,
     circuit::{PreparedOutputVerifyingKey, PreparedSpendVerifyingKey},
     note::ExtractedNoteCommitment,
-    value::ValueCommitment,
+    value::ValueCommitmentBytes,
 };
 
 /// A context object for verifying the Sapling components of a single Zcash transaction.
@@ -28,23 +29,30 @@ impl SaplingVerificationContext {
     #[allow(clippy::too_many_arguments)]
     pub fn check_spend(
         &mut self,
-        cv: &ValueCommitment,
+        cv: &ValueCommitmentBytes,
         anchor: bls12_381::Scalar,
         nullifier: &[u8; 32],
-        rk: redjubjub::VerificationKey<SpendAuth>,
+        rk: &redjubjub::VerificationKeyBytes<SpendAuth>,
         sighash_value: &[u8; 32],
         spend_auth_sig: redjubjub::Signature<SpendAuth>,
-        zkproof: Proof<Bls12>,
+        zkproof: &GrothProofBytes,
         verifying_key: &PreparedSpendVerifyingKey,
     ) -> bool {
         self.inner.check_spend(
             cv,
             anchor,
             nullifier,
-            &rk,
+            rk,
             zkproof,
             &mut (),
-            |_, rk| rk.verify(sighash_value, &spend_auth_sig).is_ok(),
+            // Infallible: check_spend decompressed these bytes (jubjub affine & extended
+            // from_bytes share one acceptance set)
+            |_, rk| {
+                redjubjub::VerificationKey::try_from(*rk)
+                    .expect("rk was validated by check_spend")
+                    .verify(sighash_value, &spend_auth_sig)
+                    .is_ok()
+            },
             |_, proof, public_inputs| {
                 verify_proof(&verifying_key.0, &proof, &public_inputs[..]).is_ok()
             },
@@ -55,10 +63,10 @@ impl SaplingVerificationContext {
     /// accumulating its value commitment inside the context for later use.
     pub fn check_output(
         &mut self,
-        cv: &ValueCommitment,
+        cv: &ValueCommitmentBytes,
         cmu: ExtractedNoteCommitment,
-        epk: jubjub::ExtendedPoint,
-        zkproof: Proof<Bls12>,
+        epk: &EphemeralKeyBytes,
+        zkproof: &GrothProofBytes,
         verifying_key: &PreparedOutputVerifyingKey,
     ) -> bool {
         self.inner

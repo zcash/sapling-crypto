@@ -13,7 +13,7 @@ use crate::{
     bundle::GrothProofBytes,
     keys::{SpendAuthorizingKey, SpendValidatingKey},
     note::ExtractedNoteCommitment,
-    value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
+    value::{NoteValue, ValueCommitTrapdoor, ValueCommitmentBytes, ValueSum},
     Anchor, MerklePath, Node, Nullifier, PaymentAddress, ProofGenerationKey, Rseed,
 };
 
@@ -68,9 +68,9 @@ impl Spend {
         dummy_ask: Option<[u8; 32]>,
         proprietary: BTreeMap<String, Vec<u8>>,
     ) -> Result<Self, ParseError> {
-        let cv = ValueCommitment::from_bytes_not_small_order(&cv)
-            .into_option()
-            .ok_or(ParseError::InvalidValueCommitment)?;
+        let (cv, _) = ValueCommitmentBytes::from(cv)
+            .decompress()
+            .map_err(|_| ParseError::InvalidValueCommitment)?;
 
         let nullifier = Nullifier(nullifier);
 
@@ -187,9 +187,9 @@ impl Output {
         user_address: Option<String>,
         proprietary: BTreeMap<String, Vec<u8>>,
     ) -> Result<Self, ParseError> {
-        let cv = ValueCommitment::from_bytes_not_small_order(&cv)
-            .into_option()
-            .ok_or(ParseError::InvalidValueCommitment)?;
+        let (cv, _) = ValueCommitmentBytes::from(cv)
+            .decompress()
+            .map_err(|_| ParseError::InvalidValueCommitment)?;
 
         let cmu = ExtractedNoteCommitment::from_bytes(&cmu)
             .into_option()

@@ -71,10 +71,10 @@ impl super::Bundle {
             .iter()
             .map(|spend| {
                 Ok(SpendDescription::from_parts(
-                    spend.cv.clone(),
+                    (&spend.cv).into(),
                     self.anchor.inner(),
                     spend.nullifier,
-                    spend.rk,
+                    spend.rk.into(),
                     spend_proof(spend)?,
                     spend_auth(spend)?,
                 ))
@@ -86,7 +86,7 @@ impl super::Bundle {
             .iter()
             .map(|output| {
                 Ok(OutputDescription::from_parts(
-                    output.cv.clone(),
+                    (&output.cv).into(),
                     output.cmu,
                     output.ephemeral_key.clone(),
                     output.enc_ciphertext,
@@ -171,11 +171,13 @@ impl<V> crate::Bundle<Unbound, V> {
         sighash: [u8; 32],
         rng: R,
     ) -> Option<crate::Bundle<Authorized, V>> {
-        if self
-            .shielded_spends()
-            .iter()
-            .all(|spend| spend.rk().verify(&sighash, spend.spend_auth_sig()).is_ok())
-        {
+        // `Unbound` reachable only via the tx extractor, whose `rk` is a validated point
+        // → canonical; the unreachable error branch rejects rather than panics
+        if self.shielded_spends().iter().all(|spend| {
+            redjubjub::VerificationKey::try_from(*spend.rk())
+                .map(|rk| rk.verify(&sighash, spend.spend_auth_sig()).is_ok())
+                .unwrap_or(false)
+        }) {
             Some(self.map_authorization(
                 &mut (),
                 |_, p| p,

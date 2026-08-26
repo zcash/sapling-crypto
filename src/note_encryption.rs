@@ -21,7 +21,7 @@ use crate::{
         DiversifiedTransmissionKey, EphemeralPublicKey, EphemeralSecretKey, OutgoingViewingKey,
         SharedSecret,
     },
-    value::{NoteValue, ValueCommitment},
+    value::{NoteValue, ValueCommitmentBytes},
     Diversifier, Note, PaymentAddress, Rseed,
 };
 
@@ -37,7 +37,7 @@ pub const PRF_OCK_PERSONALIZATION: &[u8; 16] = b"Zcash_Derive_ock";
 /// Implemented per section 5.4.2 of the Zcash Protocol Specification.
 pub fn prf_ock(
     ovk: &OutgoingViewingKey,
-    cv: &ValueCommitment,
+    cv: &ValueCommitmentBytes,
     cmu_bytes: &[u8; 32],
     ephemeral_key: &EphemeralKeyBytes,
 ) -> OutgoingCipherKey {
@@ -139,7 +139,7 @@ impl Domain for SaplingDomain {
     type DiversifiedTransmissionKey = DiversifiedTransmissionKey;
     type IncomingViewingKey = PreparedIncomingViewingKey;
     type OutgoingViewingKey = OutgoingViewingKey;
-    type ValueCommitment = ValueCommitment;
+    type ValueCommitment = ValueCommitmentBytes;
     type ExtractedCommitment = ExtractedNoteCommitment;
     type ExtractedCommitmentBytes = [u8; 32];
     type Memo = [u8; 512];
@@ -359,7 +359,7 @@ impl ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE> for CompactOutputDescripti
 ///     keys::OutgoingViewingKey,
 ///     note_encryption::{sapling_note_encryption, Zip212Enforcement},
 ///     util::generate_random_rseed,
-///     value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
+///     value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueCommitmentBytes},
 ///     Diversifier, PaymentAddress, Rseed, SaplingIvk,
 /// };
 ///
@@ -372,7 +372,7 @@ impl ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE> for CompactOutputDescripti
 ///
 /// let value = NoteValue::from_raw(1000);
 /// let rcv = ValueCommitTrapdoor::random(&mut rng);
-/// let cv = ValueCommitment::derive(value, rcv);
+/// let cv = ValueCommitmentBytes::from(&ValueCommitment::derive(value, rcv));
 /// let rseed = generate_random_rseed(
 ///     Zip212Enforcement::GracePeriod,
 ///     &mut rng,
@@ -490,7 +490,7 @@ mod tests {
         note::ExtractedNoteCommitment,
         note_encryption::PreparedIncomingViewingKey,
         util::generate_random_rseed,
-        value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
+        value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueCommitmentBytes},
         Diversifier, PaymentAddress, Rseed, SaplingIvk,
     };
 
@@ -542,7 +542,7 @@ mod tests {
         // Construct the value commitment for the proof instance
         let value = NoteValue::from_raw(100);
         let rcv = ValueCommitTrapdoor::random(&mut rng);
-        let cv = ValueCommitment::derive(value, rcv);
+        let cv = ValueCommitmentBytes::from(&ValueCommitment::derive(value, rcv));
 
         let rseed = generate_random_rseed(zip212_enforcement, &mut rng);
 
@@ -569,7 +569,7 @@ mod tests {
 
     fn reencrypt_out_ciphertext(
         ovk: &OutgoingViewingKey,
-        cv: &ValueCommitment,
+        cv: &ValueCommitmentBytes,
         cmu: &ExtractedNoteCommitment,
         ephemeral_key: &EphemeralKeyBytes,
         out_ciphertext: &[u8; OUT_CIPHERTEXT_SIZE],
@@ -603,7 +603,7 @@ mod tests {
 
     fn reencrypt_enc_ciphertext(
         ovk: &OutgoingViewingKey,
-        cv: &ValueCommitment,
+        cv: &ValueCommitmentBytes,
         cmu: &ExtractedNoteCommitment,
         ephemeral_key: &EphemeralKeyBytes,
         enc_ciphertext: &[u8; ENC_CIPHERTEXT_SIZE],
@@ -1085,10 +1085,10 @@ mod tests {
 
         for zip212_enforcement in zip212_states {
             let (ovk, _, _, mut output) = random_enc_ciphertext(zip212_enforcement, &mut rng);
-            *output.cv_mut() = ValueCommitment::derive(
+            *output.cv_mut() = ValueCommitmentBytes::from(&ValueCommitment::derive(
                 NoteValue::from_raw(7),
                 ValueCommitTrapdoor::random(&mut rng),
-            );
+            ));
 
             assert_eq!(
                 try_sapling_output_recovery(&ovk, &output, zip212_enforcement,),
@@ -1349,7 +1349,7 @@ mod tests {
 
         macro_rules! read_cv {
             ($field:expr) => {
-                ValueCommitment::from_bytes_not_small_order(&$field).unwrap()
+                ValueCommitmentBytes::from($field)
             };
         }
 
@@ -1387,7 +1387,7 @@ mod tests {
             assert_eq!(note.cmu(), cmu);
 
             let output = OutputDescription::from_parts(
-                cv.clone(),
+                cv,
                 cmu,
                 ephemeral_key,
                 tv.c_enc,

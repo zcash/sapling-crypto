@@ -44,6 +44,7 @@ use rand::RngCore;
 use subtle::CtOption;
 
 use super::constants::{VALUE_COMMITMENT_RANDOMNESS_GENERATOR, VALUE_COMMITMENT_VALUE_GENERATOR};
+use crate::primitives::{decompress_not_small_order, InvalidPoint};
 
 mod sums;
 pub use sums::{BalanceError, CommitmentSum, TrapdoorSum, ValueSum};
@@ -128,8 +129,8 @@ impl ValueCommitTrapdoor {
 ///   [`NoteValue`] and [`ValueCommitTrapdoor`] are zero. However, the only constructor
 ///   available for `ValueCommitTrapdoor` is [`ValueCommitTrapdoor::random`], which will
 ///   produce zero with negligible probability (assuming a non-broken PRNG).
-/// - [`ValueCommitment::from_bytes_not_small_order`] enforces this by definition, and is
-///   the only constructor that can be used with data received over the network.
+/// - [`ValueCommitmentBytes::decompress`] enforces this by definition, and is the only
+///   constructor usable with data received over the network.
 #[derive(Clone, Debug)]
 pub struct ValueCommitment(jubjub::ExtendedPoint);
 
@@ -147,31 +148,105 @@ impl ValueCommitment {
     }
 
     /// Returns the inner Jubjub point representing this value commitment.
-    ///
-    /// This is public for access by `zcash_proofs`.
     pub fn as_inner(&self) -> &jubjub::ExtendedPoint {
         &self.0
-    }
-
-    /// Deserializes a value commitment from its byte representation.
-    ///
-    /// Returns `None` if `bytes` is an invalid representation of a Jubjub point, or the
-    /// resulting point is of small order.
-    ///
-    /// This method can be used to enforce the "not small order" consensus rules defined
-    /// in [Zcash Protocol Spec § 4.4: Spend Descriptions][spenddesc] and
-    /// [§ 4.5: Output Descriptions][outputdesc].
-    ///
-    /// [spenddesc]: https://zips.z.cash/protocol/protocol.pdf#spenddesc
-    /// [outputdesc]: https://zips.z.cash/protocol/protocol.pdf#outputdesc
-    pub fn from_bytes_not_small_order(bytes: &[u8; 32]) -> CtOption<ValueCommitment> {
-        jubjub::ExtendedPoint::from_bytes(bytes)
-            .and_then(|cv| CtOption::new(ValueCommitment(cv), !cv.is_small_order()))
     }
 
     /// Serializes this value commitment to its canonical byte representation.
     pub fn to_bytes(&self) -> [u8; 32] {
         self.0.to_bytes()
+    }
+}
+
+/// `cv` as held in [`SpendDescription`] / [`OutputDescription`].
+///
+/// - Point needed only by verification → [`Self::decompress`], which checks the rules
+/// - Everything else (txid & sighash digests, PRF^ock, re-serialization) takes bytes
+/// - Mirrors [`redjubjub::VerificationKeyBytes`] & [`EphemeralKeyBytes`] for `rk` / `epk`
+///
+/// [`SpendDescription`]: crate::bundle::SpendDescription
+/// [`OutputDescription`]: crate::bundle::OutputDescription
+/// [`EphemeralKeyBytes`]: zcash_note_encryption::EphemeralKeyBytes
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ValueCommitmentBytes([u8; 32]);
+
+impl From<[u8; 32]> for ValueCommitmentBytes {
+    fn from(bytes: [u8; 32]) -> Self {
+        ValueCommitmentBytes(bytes)
+    }
+}
+
+impl From<ValueCommitmentBytes> for [u8; 32] {
+    fn from(cv: ValueCommitmentBytes) -> Self {
+        cv.0
+    }
+}
+
+impl From<ValueCommitment> for ValueCommitmentBytes {
+    fn from(cv: ValueCommitment) -> Self {
+        ValueCommitmentBytes(cv.to_bytes())
+    }
+}
+
+impl From<&ValueCommitment> for ValueCommitmentBytes {
+    fn from(cv: &ValueCommitment) -> Self {
+        ValueCommitmentBytes(cv.to_bytes())
+    }
+}
+
+impl AsRef<[u8; 32]> for ValueCommitmentBytes {
+    fn as_ref(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl ValueCommitmentBytes {
+    /// Returns the byte encoding of this value commitment.
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0
+    }
+
+    /// Recovers the point & its affine coords, enforcing the `cv` rules of
+    /// [§ 4.4][spenddesc] / [§ 4.5][outputdesc].
+    ///
+    /// - Sole constructor of a [`ValueCommitment`] from bytes
+    /// - Coords fall out of the same sqrt → a verifier never pays for them twice
+    ///
+    /// # Errors
+    ///
+    /// [`InvalidPoint`] if non-canonical or of small order.
+    ///
+    /// [spenddesc]: https://zips.z.cash/protocol/protocol.pdf#spenddesc
+    /// [outputdesc]: https://zips.z.cash/protocol/protocol.pdf#outputdesc
+    pub fn decompress(&self) -> Result<(ValueCommitment, ValueCommitmentCoords), InvalidPoint> {
+        let affine = decompress_not_small_order(&self.0)?;
+
+        Ok((
+            ValueCommitment(affine.into()),
+            ValueCommitmentCoords {
+                u: affine.get_u(),
+                v: affine.get_v(),
+            },
+        ))
+    }
+}
+
+/// Affine coordinates of a value commitment, as the Spend and Output circuits take them.
+#[derive(Clone, Copy, Debug)]
+pub struct ValueCommitmentCoords {
+    pub(crate) u: bls12_381::Scalar,
+    pub(crate) v: bls12_381::Scalar,
+}
+
+impl ValueCommitmentCoords {
+    /// The `cv.u` public input.
+    pub fn u(&self) -> bls12_381::Scalar {
+        self.u
+    }
+
+    /// The `cv.v` public input.
+    pub fn v(&self) -> bls12_381::Scalar {
+        self.v
     }
 }
 

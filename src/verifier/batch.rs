@@ -1,6 +1,5 @@
 use bellman::groth16;
 use bls12_381::Bls12;
-use group::GroupEncoding;
 use rand_core::{CryptoRng, RngCore};
 
 use super::SaplingVerificationContextInner;
@@ -55,12 +54,6 @@ impl BatchValidator {
         let mut ctx = SaplingVerificationContextInner::new();
 
         for spend in bundle.shielded_spends() {
-            // Deserialize the proof
-            let zkproof = match groth16::Proof::read(&spend.zkproof()[..]) {
-                Ok(p) => p,
-                Err(_) => return false,
-            };
-
             // Check the Spend consensus rules, and batch its proof and spend
             // authorization signature.
             let consensus_rules_passed = ctx.check_spend(
@@ -68,11 +61,12 @@ impl BatchValidator {
                 *spend.anchor(),
                 &spend.nullifier().0,
                 spend.rk(),
-                zkproof,
+                spend.zkproof(),
                 self,
                 |this, rk| {
+                    // Queued compressed (reddsa recovers the point in Verifier::verify)
                     this.signatures
-                        .queue(((*rk).into(), *spend.spend_auth_sig(), &sighash));
+                        .queue((*rk, *spend.spend_auth_sig(), &sighash));
                     true
                 },
                 |this, proof, public_inputs| {
@@ -86,24 +80,12 @@ impl BatchValidator {
         }
 
         for output in bundle.shielded_outputs() {
-            // Deserialize the ephemeral key
-            let epk = match jubjub::ExtendedPoint::from_bytes(&output.ephemeral_key().0).into() {
-                Some(p) => p,
-                None => return false,
-            };
-
-            // Deserialize the proof
-            let zkproof = match groth16::Proof::read(&output.zkproof()[..]) {
-                Ok(p) => p,
-                Err(_) => return false,
-            };
-
             // Check the Output consensus rules, and batch its proof.
             let consensus_rules_passed = ctx.check_output(
                 output.cv(),
                 *output.cmu(),
-                epk,
-                zkproof,
+                output.ephemeral_key(),
+                output.zkproof(),
                 |proof, public_inputs| {
                     self.output_proofs.queue((proof, public_inputs.to_vec()));
                     true
