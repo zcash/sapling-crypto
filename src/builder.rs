@@ -30,7 +30,7 @@ use crate::{
     bundle::{OutputDescription, SpendDescription},
     circuit,
     prover::{OutputProver, SpendProver},
-    value::{CommitmentSum, TrapdoorSum},
+    value::{CommitmentSum, TrapdoorSum, ValueCommitmentBytes},
     zip32::ExtendedSpendingKey,
     ProofGenerationKey,
 };
@@ -312,10 +312,10 @@ impl PreparedSpendInfo {
         .ok_or(Error::SpendProof)?;
 
         Ok(SpendDescription::from_parts(
-            cv,
+            cv.into(),
             anchor,
             nullifier,
-            rk,
+            rk.into(),
             zkproof,
             SigningMetadata {
                 dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask),
@@ -453,7 +453,9 @@ impl PreparedOutputInfo {
         let cmu = self.note.cmu();
 
         let enc_ciphertext = encryptor.encrypt_note_plaintext();
-        let out_ciphertext = encryptor.encrypt_outgoing_plaintext(&cv, &cmu, rng);
+        // `cv` still needed as a point below
+        let cv_bytes = ValueCommitmentBytes::from(&cv);
+        let out_ciphertext = encryptor.encrypt_outgoing_plaintext(&cv_bytes, &cmu, rng);
 
         let epk = encryptor.epk();
 
@@ -486,7 +488,7 @@ impl PreparedOutputInfo {
         );
 
         OutputDescription::from_parts(
-            cv,
+            cv.into(),
             cmu,
             ephemeral_key,
             enc_ciphertext,
@@ -785,13 +787,18 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
 
             // Verify that bsk and bvk are consistent.
             let bvk = {
+                let decompress = |cv: &ValueCommitmentBytes| -> ValueCommitment {
+                    cv.decompress()
+                        .expect("derived by this builder, so is a valid value commitment")
+                        .0
+                };
                 let spends = shielded_spends
                     .iter()
-                    .map(|spend| spend.cv())
+                    .map(|spend| decompress(spend.cv()))
                     .sum::<CommitmentSum>();
                 let outputs = shielded_outputs
                     .iter()
-                    .map(|output| output.cv())
+                    .map(|output| decompress(output.cv()))
                     .sum::<CommitmentSum>();
                 (spends - outputs).into_bvk(value_balance_i64)
             };

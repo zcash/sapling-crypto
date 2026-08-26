@@ -7,6 +7,34 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `sapling_crypto::primitives`, holding `InvalidPoint`
+- `sapling_crypto::value::{ValueCommitmentBytes, ValueCommitmentCoords}`
+
+### Changed
+- Spend and Output descriptions now store `cv` and `rk` compressed.
+  Deserialization no longer checks their encodings; the checks run where the
+  points are recovered, in `SaplingVerificationContext::{check_spend,
+  check_output}` and `BatchValidator::check_bundle`. A consumer that relied on
+  parsing alone to reject a bad encoding must now verify.
+  - `sapling_crypto::bundle::SpendDescription::{from_parts, cv, rk}`
+  - `sapling_crypto::bundle::SpendDescriptionV5::from_parts`
+  - `sapling_crypto::bundle::OutputDescription::{from_parts, cv}`
+  - `sapling_crypto::bundle::OutputDescriptionV5::from_parts`
+  - `sapling_crypto::note_encryption::prf_ock`'s `cv` -> `&ValueCommitmentBytes`
+  - `sapling_crypto::note_encryption::SaplingDomain::ValueCommitment` ->
+    `ValueCommitmentBytes`
+- `SaplingVerificationContext::{check_spend, check_output}` now take every field
+  in its wire encoding, and enforce every rule themselves:
+  - `cv` -> `&ValueCommitmentBytes`, `rk` -> `&VerificationKeyBytes<SpendAuth>`
+  - `epk` -> `&zcash_note_encryption::EphemeralKeyBytes`, was
+    `jubjub::ExtendedPoint`
+  - `zkproof` -> `&GrothProofBytes`, was `bellman::groth16::Proof<Bls12>`
+
+### Removed
+- `sapling_crypto::value::ValueCommitment::from_bytes_not_small_order`. Use
+  `ValueCommitmentBytes::decompress`.
+
 ## [0.7.0] - 2026-04-21
 
 ### Changed

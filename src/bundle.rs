@@ -13,7 +13,7 @@ use crate::{
     constants::GROTH_PROOF_SIZE,
     note::ExtractedNoteCommitment,
     note_encryption::{CompactOutputDescription, SaplingDomain},
-    value::ValueCommitment,
+    value::ValueCommitmentBytes,
     Nullifier,
 };
 
@@ -213,10 +213,10 @@ impl<V: DynamicUsage> DynamicUsage for Bundle<Authorized, V> {
 
 #[derive(Clone)]
 pub struct SpendDescription<A: Authorization> {
-    cv: ValueCommitment,
+    cv: ValueCommitmentBytes,
     anchor: bls12_381::Scalar,
     nullifier: Nullifier,
-    rk: redjubjub::VerificationKey<SpendAuth>,
+    rk: redjubjub::VerificationKeyBytes<SpendAuth>,
     zkproof: A::SpendProof,
     spend_auth_sig: A::AuthSig,
 }
@@ -234,10 +234,10 @@ impl<A: Authorization> core::fmt::Debug for SpendDescription<A> {
 impl<A: Authorization> SpendDescription<A> {
     /// Constructs a v4 `SpendDescription` from its constituent parts.
     pub fn from_parts(
-        cv: ValueCommitment,
+        cv: ValueCommitmentBytes,
         anchor: bls12_381::Scalar,
         nullifier: Nullifier,
-        rk: redjubjub::VerificationKey<SpendAuth>,
+        rk: redjubjub::VerificationKeyBytes<SpendAuth>,
         zkproof: A::SpendProof,
         spend_auth_sig: A::AuthSig,
     ) -> Self {
@@ -252,7 +252,7 @@ impl<A: Authorization> SpendDescription<A> {
     }
 
     /// Returns the commitment to the value consumed by this spend.
-    pub fn cv(&self) -> &ValueCommitment {
+    pub fn cv(&self) -> &ValueCommitmentBytes {
         &self.cv
     }
 
@@ -267,7 +267,7 @@ impl<A: Authorization> SpendDescription<A> {
     }
 
     /// Returns the randomized verification key for the note being spent.
-    pub fn rk(&self) -> &redjubjub::VerificationKey<SpendAuth> {
+    pub fn rk(&self) -> &redjubjub::VerificationKeyBytes<SpendAuth> {
         &self.rk
     }
 
@@ -294,17 +294,17 @@ impl DynamicUsage for SpendDescription<Authorized> {
 
 #[derive(Clone)]
 pub struct SpendDescriptionV5 {
-    cv: ValueCommitment,
+    cv: ValueCommitmentBytes,
     nullifier: Nullifier,
-    rk: redjubjub::VerificationKey<SpendAuth>,
+    rk: redjubjub::VerificationKeyBytes<SpendAuth>,
 }
 
 impl SpendDescriptionV5 {
     /// Constructs a v5 `SpendDescription` from its constituent parts.
     pub fn from_parts(
-        cv: ValueCommitment,
+        cv: ValueCommitmentBytes,
         nullifier: Nullifier,
-        rk: redjubjub::VerificationKey<SpendAuth>,
+        rk: redjubjub::VerificationKeyBytes<SpendAuth>,
     ) -> Self {
         Self { cv, nullifier, rk }
     }
@@ -331,7 +331,7 @@ impl SpendDescriptionV5 {
 
 #[derive(Clone)]
 pub struct OutputDescription<Proof> {
-    cv: ValueCommitment,
+    cv: ValueCommitmentBytes,
     cmu: ExtractedNoteCommitment,
     ephemeral_key: EphemeralKeyBytes,
     enc_ciphertext: [u8; ENC_CIPHERTEXT_SIZE],
@@ -341,7 +341,7 @@ pub struct OutputDescription<Proof> {
 
 impl<Proof> OutputDescription<Proof> {
     /// Returns the commitment to the value consumed by this output.
-    pub fn cv(&self) -> &ValueCommitment {
+    pub fn cv(&self) -> &ValueCommitmentBytes {
         &self.cv
     }
 
@@ -371,7 +371,7 @@ impl<Proof> OutputDescription<Proof> {
 
     /// Constructs a v4 `OutputDescription` from its constituent parts.
     pub fn from_parts(
-        cv: ValueCommitment,
+        cv: ValueCommitmentBytes,
         cmu: ExtractedNoteCommitment,
         ephemeral_key: EphemeralKeyBytes,
         enc_ciphertext: [u8; ENC_CIPHERTEXT_SIZE],
@@ -391,7 +391,7 @@ impl<Proof> OutputDescription<Proof> {
 
 #[cfg(test)]
 impl<Proof> OutputDescription<Proof> {
-    pub(crate) fn cv_mut(&mut self) -> &mut ValueCommitment {
+    pub(crate) fn cv_mut(&mut self) -> &mut ValueCommitmentBytes {
         &mut self.cv
     }
     pub(crate) fn cmu_mut(&mut self) -> &mut ExtractedNoteCommitment {
@@ -444,7 +444,7 @@ impl<A> core::fmt::Debug for OutputDescription<A> {
 
 #[derive(Clone)]
 pub struct OutputDescriptionV5 {
-    cv: ValueCommitment,
+    cv: ValueCommitmentBytes,
     cmu: ExtractedNoteCommitment,
     ephemeral_key: EphemeralKeyBytes,
     enc_ciphertext: [u8; ENC_CIPHERTEXT_SIZE],
@@ -456,7 +456,7 @@ memuse::impl_no_dynamic_usage!(OutputDescriptionV5);
 impl OutputDescriptionV5 {
     /// Constructs a v5 `OutputDescription` from its constituent parts.
     pub fn from_parts(
-        cv: ValueCommitment,
+        cv: ValueCommitmentBytes,
         cmu: ExtractedNoteCommitment,
         ephemeral_key: EphemeralKeyBytes,
         enc_ciphertext: [u8; ENC_CIPHERTEXT_SIZE],
@@ -512,7 +512,7 @@ pub mod testing {
         note::testing::arb_cmu,
         value::{
             testing::{arb_note_value_bounded, arb_trapdoor},
-            ValueCommitment, MAX_NOTE_VALUE,
+            ValueCommitment, ValueCommitmentBytes, MAX_NOTE_VALUE,
         },
         Nullifier,
     };
@@ -548,8 +548,8 @@ pub mod testing {
         ) -> SpendDescription<Authorized> {
             let mut rng = StdRng::from_seed(rng_seed);
             let sk1 = redjubjub::SigningKey::new(&mut rng);
-            let rk = redjubjub::VerificationKey::from(&sk1);
-            let cv = ValueCommitment::derive(value, rcv);
+            let rk = redjubjub::VerificationKey::from(&sk1).into();
+            let cv = ValueCommitmentBytes::from(&ValueCommitment::derive(value, rcv));
             SpendDescription {
                 cv,
                 anchor,
@@ -576,7 +576,7 @@ pub mod testing {
             zkproof in vec(any::<u8>(), GROTH_PROOF_SIZE)
                 .prop_map(|v| <[u8; GROTH_PROOF_SIZE]>::try_from(v.as_slice()).unwrap()),
         ) -> OutputDescription<GrothProofBytes> {
-            let cv = ValueCommitment::derive(value, rcv);
+            let cv = ValueCommitmentBytes::from(&ValueCommitment::derive(value, rcv));
             OutputDescription {
                 cv,
                 cmu,
