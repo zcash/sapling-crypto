@@ -35,6 +35,10 @@ jobs:
         with:
           toolchain: stable
       - run: rustup override set "${TOOLCHAIN}"
+        # This job's matrix includes windows-latest, where the default shell is
+        # PowerShell and "${TOOLCHAIN}" is not environment-variable syntax, so
+        # it would expand to the empty string and rustup would reject it.
+        shell: bash
         env:
           TOOLCHAIN: ${{steps.toolchain.outputs.name}}
       - name: Remove lockfile to build with latest dependencies
