@@ -46,21 +46,26 @@ impl SaplingVerificationContextInner {
         // This happens when transactions or blocks are received over the network, or when
         // mined blocks are introduced via the `submitblock` RPC method on full nodes.
         let rk_affine = jubjub::AffinePoint::from_bytes((*rk).into()).unwrap();
+        // https://p.z.cash/SCR:rk-not-small-order
         if rk_affine.is_small_order().into() {
             return false;
         }
 
         // Accumulate the value commitment in the context
+        // https://p.z.cash/TCR:bad-txns-sapling-binding-signature-invalid?partial
         self.cv_sum += cv;
 
         // Grab the nullifier as a sequence of bytes
         let nullifier = &nullifier[..];
 
         // Verify the spend_auth_sig
+        // https://p.z.cash/SCR:sapling-spend-auth-signature-invalid?partial
+        // https://p.z.cash/TCR:jubjub-canonical-encoding?partial
         if !spend_auth_sig_verifier(verifier_ctx, rk) {
             return false;
         }
 
+        // https://p.z.cash/SCR:invalid-proof?partial
         // Construct public input for circuit
         let mut public_input = [bls12_381::Scalar::zero(); 7];
         {
@@ -105,13 +110,16 @@ impl SaplingVerificationContextInner {
         // The "cv is not small order" happens when an OutputDescription is deserialized.
         // This happens when transactions or blocks are received over the network, or when
         // mined blocks are introduced via the `submitblock` RPC method on full nodes.
+        // https://p.z.cash/OCR:epk-not-small-order
         if epk.is_small_order().into() {
             return false;
         }
 
         // Accumulate the value commitment in the context
+        // https://p.z.cash/TCR:bad-txns-sapling-binding-signature-invalid?partial
         self.cv_sum -= cv;
 
+        // https://p.z.cash/OCR:invalid-proof?partial
         // Construct public input for circuit
         let mut public_input = [bls12_381::Scalar::zero(); 5];
         {
@@ -144,6 +152,8 @@ impl SaplingVerificationContextInner {
         let bvk = self.cv_sum.into_bvk(value_balance);
 
         // Verify the binding_sig
+        // https://p.z.cash/TCR:bad-txns-sapling-binding-signature-invalid?partial
+        // https://p.z.cash/TCR:jubjub-canonical-encoding?partial
         binding_sig_verifier(bvk)
     }
 }
