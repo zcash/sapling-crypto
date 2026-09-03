@@ -332,7 +332,7 @@ impl Circuit<bls12_381::Scalar> for Spend {
 
         // Ascend the merkle tree authentication path
         for (i, e) in self.auth_path.into_iter().enumerate() {
-            let cs = &mut cs.namespace(|| format!("merkle tree hash {}", i));
+            let cs = &mut cs.namespace(|| format!("merkle tree hash {i}"));
 
             // Determines if the current subtree is the "right" leaf at this
             // depth of the tree.

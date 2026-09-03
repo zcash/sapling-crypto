@@ -45,7 +45,7 @@ where
             let c = bits.next().unwrap_or(&boolean_false);
 
             let tmp = lookup3_xy_with_conditional_negation(
-                cs.namespace(|| format!("segment {}, window {}", segment_i, window_i)),
+                cs.namespace(|| format!("segment {segment_i}, window {window_i}")),
                 &[a.clone(), b.clone(), c.clone()],
                 &segment_windows[0],
             )?;
@@ -59,7 +59,7 @@ where
                 Some(ref mut segment_result) => {
                     *segment_result = tmp.add(
                         cs.namespace(|| {
-                            format!("addition of segment {}, window {}", segment_i, window_i)
+                            format!("addition of segment {segment_i}, window {window_i}")
                         }),
                         segment_result,
                     )?;
@@ -83,13 +83,13 @@ where
 
         // Convert this segment into twisted Edwards form.
         let segment_result = segment_result.into_edwards(
-            cs.namespace(|| format!("conversion of segment {} into edwards", segment_i)),
+            cs.namespace(|| format!("conversion of segment {segment_i} into edwards")),
         )?;
 
         match edwards_result {
             Some(ref mut edwards_result) => {
                 *edwards_result = segment_result.add(
-                    cs.namespace(|| format!("addition of segment {} to accumulator", segment_i)),
+                    cs.namespace(|| format!("addition of segment {segment_i} to accumulator")),
                     edwards_result,
                 )?;
             }
@@ -169,7 +169,7 @@ mod test {
                 .enumerate()
                 .map(|(i, b)| {
                     Boolean::from(
-                        AllocatedBit::alloc(cs.namespace(|| format!("input {}", i)), Some(*b))
+                        AllocatedBit::alloc(cs.namespace(|| format!("input {i}")), Some(*b))
                             .unwrap(),
                     )
                 })
@@ -215,7 +215,7 @@ mod test {
                     .enumerate()
                     .map(|(i, b)| {
                         Boolean::from(
-                            AllocatedBit::alloc(cs.namespace(|| format!("input {}", i)), Some(*b))
+                            AllocatedBit::alloc(cs.namespace(|| format!("input {i}")), Some(*b))
                                 .unwrap(),
                         )
                     })
@@ -277,7 +277,7 @@ mod test {
                 .enumerate()
                 .map(|(i, b)| {
                     Boolean::from(
-                        AllocatedBit::alloc(cs.namespace(|| format!("input {}", i)), Some(*b))
+                        AllocatedBit::alloc(cs.namespace(|| format!("input {i}")), Some(*b))
                             .unwrap(),
                     )
                 })

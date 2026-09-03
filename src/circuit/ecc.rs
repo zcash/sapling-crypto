@@ -52,7 +52,7 @@ where
 
         // TODO: rename to lookup3_uv
         let (u, v) = lookup3_xy(
-            cs.namespace(|| format!("window table lookup {}", i)),
+            cs.namespace(|| format!("window table lookup {i}")),
             &[chunk_a, chunk_b, chunk_c],
             window,
         )?;
@@ -65,7 +65,7 @@ where
             result = Some(
                 result
                     .unwrap()
-                    .add(cs.namespace(|| format!("addition {}", i)), &p)?,
+                    .add(cs.namespace(|| format!("addition {i}")), &p)?,
             );
         }
     }
@@ -222,7 +222,7 @@ impl EdwardsPoint {
                 curbase = Some(
                     curbase
                         .unwrap()
-                        .double(cs.namespace(|| format!("doubling {}", i)))?,
+                        .double(cs.namespace(|| format!("doubling {i}")))?,
                 );
             }
 
@@ -233,7 +233,7 @@ impl EdwardsPoint {
             let thisbase = curbase
                 .as_ref()
                 .unwrap()
-                .conditionally_select(cs.namespace(|| format!("selection {}", i)), bit)?;
+                .conditionally_select(cs.namespace(|| format!("selection {i}")), bit)?;
 
             if result.is_none() {
                 result = Some(thisbase);
@@ -241,7 +241,7 @@ impl EdwardsPoint {
                 result = Some(
                     result
                         .unwrap()
-                        .add(cs.namespace(|| format!("addition {}", i)), &thisbase)?,
+                        .add(cs.namespace(|| format!("addition {i}")), &thisbase)?,
                 );
             }
         }
@@ -747,7 +747,7 @@ mod test {
                 .take(jubjub::Fr::NUM_BITS as usize)
                 .enumerate()
                 .map(|(i, b)| {
-                    AllocatedBit::alloc(cs.namespace(|| format!("scalar bit {}", i)), Some(b))
+                    AllocatedBit::alloc(cs.namespace(|| format!("scalar bit {i}")), Some(b))
                         .unwrap()
                 })
                 .map(Boolean::from)
@@ -798,7 +798,7 @@ mod test {
                 .take(jubjub::Fr::NUM_BITS as usize)
                 .enumerate()
                 .map(|(i, b)| {
-                    AllocatedBit::alloc(cs.namespace(|| format!("scalar bit {}", i)), Some(b))
+                    AllocatedBit::alloc(cs.namespace(|| format!("scalar bit {i}")), Some(b))
                         .unwrap()
                 })
                 .map(Boolean::from)
