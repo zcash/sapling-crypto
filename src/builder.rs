@@ -25,6 +25,7 @@ use crate::{
     NOTE_COMMITMENT_TREE_DEPTH,
 };
 
+use crate::note_encryption::MEMO_SIZE;
 #[cfg(feature = "circuit")]
 use crate::{
     bundle::{OutputDescription, SpendDescription},
@@ -358,7 +359,7 @@ pub struct OutputInfo {
     ovk: Option<OutgoingViewingKey>,
     to: PaymentAddress,
     value: NoteValue,
-    memo: [u8; 512],
+    memo: [u8; MEMO_SIZE],
 }
 
 impl OutputInfo {
@@ -367,7 +368,7 @@ impl OutputInfo {
         ovk: Option<OutgoingViewingKey>,
         to: PaymentAddress,
         value: NoteValue,
-        memo: [u8; 512],
+        memo: [u8; MEMO_SIZE],
     ) -> Self {
         Self {
             ovk,
@@ -426,7 +427,7 @@ struct PreparedOutputInfo {
     /// `None` represents the `ovk = ⊥` case.
     ovk: Option<OutgoingViewingKey>,
     note: Note,
-    memo: [u8; 512],
+    memo: [u8; MEMO_SIZE],
     rcv: ValueCommitTrapdoor,
 }
 
@@ -461,7 +462,7 @@ impl PreparedOutputInfo {
             cv,
             cmu,
             epk.to_bytes(),
-            enc_ciphertext,
+            enc_ciphertext.0,
             out_ciphertext,
             zkproof,
         )
@@ -655,7 +656,7 @@ impl Builder {
         ovk: Option<OutgoingViewingKey>,
         to: PaymentAddress,
         value: NoteValue,
-        memo: [u8; 512],
+        memo: [u8; MEMO_SIZE],
     ) -> Result<(), Error> {
         let output = OutputInfo::new(ovk, to, value, memo);
 
