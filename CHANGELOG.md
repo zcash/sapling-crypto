@@ -7,6 +7,33 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- A parse tier holding a Spend or Output description with `cv` and `rk` left
+  compressed, so reading descriptions from the wire or from disk costs no curve
+  arithmetic:
+  - `bundle::{SpendDescriptionBytes, SpendDescriptionV5Bytes,
+    OutputDescriptionBytes, OutputDescriptionV5Bytes, BundleBytes}`, mirroring
+    their point-tier counterparts, with `to_bytes`/`from_bytes` and the four
+    `*_DESCRIPTION_V{4,5}_SIZE` constants.
+  - `decompress` on each, recovering the point tier, plus
+    `bundle::{DescriptionParseError, DecompressionError, BundleDecompressionError}`.
+  - `compress` on `SpendDescription`, `SpendDescriptionV5`, `OutputDescription`,
+    `OutputDescriptionV5` and `Bundle`, dropping to the encoded tier. Infallible:
+    a point tier value cannot hold a point that fails to encode.
+  - `to_v5` / `into_v4`, moving between the shape a v4 transaction writes and the
+    shape a v5 transaction splits across its arrays.
+  - `value::ValueCommitmentBytes`, whose `decompress` enforces the same rules
+    `ValueCommitment::from_bytes_not_small_order` does, and `value::InvalidPoint`,
+    its leaf error. `decompress` is the only way from a compressed type to its
+    recovered one.
+  - `OutputDescriptionBytes` implements `ShieldedOutput` and converts into
+    `CompactOutputDescription`, so a wallet trial-decrypts without decompressing.
+    Ovk recovery still needs a `ValueCommitment`, so it is unchanged.
+
+`SpendDescription`, `OutputDescription` and `Bundle` are unchanged, and
+`decompress` enforces exactly what constructing the point type from bytes
+enforces today. The rules the verifier owns stay with the verifier.
+
 ### Changed
 - MSRV is now 1.88
 
