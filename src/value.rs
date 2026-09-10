@@ -175,6 +175,51 @@ impl ValueCommitment {
     }
 }
 
+/// Bytes that are not a canonical, non-small-order encoding of a Jubjub point.
+///
+/// Leaf error for [`ValueCommitmentBytes::decompress`], which does not know which field it was
+/// read into; a description names the field in its own error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InvalidPoint;
+
+impl core::fmt::Display for InvalidPoint {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("not a canonical encoding of a non-small-order Jubjub point")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for InvalidPoint {}
+
+/// `cv` as a parse-tier description holds it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ValueCommitmentBytes([u8; 32]);
+
+impl From<[u8; 32]> for ValueCommitmentBytes {
+    fn from(bytes: [u8; 32]) -> Self {
+        ValueCommitmentBytes(bytes)
+    }
+}
+
+impl From<&ValueCommitment> for ValueCommitmentBytes {
+    fn from(cv: &ValueCommitment) -> Self {
+        ValueCommitmentBytes(cv.to_bytes())
+    }
+}
+
+impl ValueCommitmentBytes {
+    /// Returns the byte encoding of this value commitment.
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0
+    }
+
+    /// Recovers the point, enforcing the rules
+    /// [`ValueCommitment::from_bytes_not_small_order`] holds. 1 sqrt.
+    pub fn decompress(&self) -> Result<ValueCommitment, InvalidPoint> {
+        Option::from(ValueCommitment::from_bytes_not_small_order(&self.0)).ok_or(InvalidPoint)
+    }
+}
+
 /// Generators for property testing.
 #[cfg(any(test, feature = "test-dependencies"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
