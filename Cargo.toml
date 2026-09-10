@@ -19,8 +19,8 @@ features = ["test-dependencies"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-ff = { version = "0.13", default-features = false }
-group = "0.13"
+ff = { version = "0.14", default-features = false }
+group = "0.14"
 
 bls12_381 = { version = "0.8", default-features = false, features = ["alloc"] }
 jubjub = { version = "0.10", default-features = false, features = ["alloc"] }
@@ -34,11 +34,12 @@ getset = "0.1"
 corez = { version = "0.1.1", default-features = false, features = ["alloc"] }
 
 # Circuits
-bellman = { version = "0.14", default-features = false, features = ["groth16"], optional = true }
+bellman = { version = "0.14", default-features = false, optional = true }
+groth16 = { git = "https://github.com/dannywillems/bellman.git", rev = "4665bd6b22d4f02c37ff3f5339fcf3c041a692cf", default-features = false, optional = true }
 
 # CSPRNG
-rand = { version = "0.8", default-features = false }
-rand_core = { version = "0.6", default-features = false }
+rand = { version = "0.10", default-features = false }
+rand_core = { version = "0.10", default-features = false }
 
 # Digests
 blake2b_simd = { version = "1", default-features = false }
@@ -78,10 +79,11 @@ zip32 = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
+rand = { version = "0.10", features = ["std_rng", "sys_rng"] }
 criterion = "0.5"
 incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
 proptest = ">=1.0.0, <1.7.0"
-rand_xorshift = "0.3"
+rand_xorshift = "0.5"
 
 [target.'cfg(unix)'.dev-dependencies]
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
@@ -98,6 +100,7 @@ std = [
 ## Enables creation of Sapling proofs
 circuit = [
   "dep:bellman",
+  "dep:groth16",
   "bls12_381/bits",
   "bls12_381/groups",
   "bls12_381/pairings",
@@ -106,7 +109,7 @@ circuit = [
 ]
 
 ## Enables multithreading support for creating proofs.
-multicore = ["bellman?/multicore"]
+multicore = ["bellman?/multicore", "groth16?/multicore"]
 
 ### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
 ### should not be relied upon and will be removed in a future release.
@@ -116,6 +119,7 @@ temporary-zcashd = []
 test-dependencies = [
     "incrementalmerkletree/test-dependencies",
     "dep:proptest",
+    "rand/std_rng",
 ]
 
 [[bench]]
@@ -125,3 +129,13 @@ harness = false
 [[bench]]
 name = "pedersen_hash"
 harness = false
+
+[patch.crates-io]
+jubjub = { git = "https://github.com/dannywillems/jubjub.git", rev = "bbc02c837de0a515e83a61c64eb63ca293767612" }
+bls12_381 = { git = "https://github.com/dannywillems/bls12_381.git", rev = "90261e682a44da54ffbc0089ac5aea105ec74cbf" }
+reddsa = { git = "https://github.com/dannywillems/reddsa.git", rev = "d90e8e9dd5961c0ef563255ec398c24e1faaa66e" }
+pairing = { git = "https://github.com/dannywillems/pairing.git", rev = "e0fb32c2fc29e61cf89bbbfbe2ea604b069500c9" }
+pasta_curves = { git = "https://github.com/zcash/pasta_curves.git", rev = "a51d76f82bb28b01fc76f0f8ed3e5fdb055481dd" }
+redjubjub = { git = "https://github.com/dannywillems/redjubjub.git", rev = "7a9b2ef386ed63dc65c62246324b0af6c277de2d" }
+bellman = { git = "https://github.com/dannywillems/bellman.git", rev = "4665bd6b22d4f02c37ff3f5339fcf3c041a692cf" }
+zcash_note_encryption = { git = "https://github.com/zcash/zcash_note_encryption.git", rev = "a0968095ca6bf94226875ba65c4ee37880ea68f6" }

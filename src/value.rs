@@ -40,7 +40,7 @@
 use bitvec::{array::BitArray, order::Lsb0};
 use ff::{Field, PrimeField};
 use group::GroupEncoding;
-use rand::RngCore;
+use rand::Rng;
 use subtle::CtOption;
 
 use super::constants::{VALUE_COMMITMENT_RANDOMNESS_GENERATOR, VALUE_COMMITMENT_VALUE_GENERATOR};
@@ -89,8 +89,8 @@ impl ValueCommitTrapdoor {
     /// Generates a new value commitment trapdoor.
     ///
     /// This is public for access by `zcash_proofs`.
-    pub fn random(rng: impl RngCore) -> Self {
-        ValueCommitTrapdoor(jubjub::Scalar::random(rng))
+    pub fn random(mut rng: impl Rng) -> Self {
+        ValueCommitTrapdoor(jubjub::Scalar::random(&mut rng))
     }
 
     /// Constructs `ValueCommitTrapdoor` from the byte representation of a scalar.

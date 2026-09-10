@@ -6,7 +6,7 @@ use corez::io;
 
 use group::{ff::PrimeField, Curve};
 
-use bellman::{groth16, Circuit, ConstraintSystem, SynthesisError};
+use bellman::{Circuit, ConstraintSystem, SynthesisError};
 use bls12_381::Bls12;
 
 use bellman::gadgets::blake2s;
@@ -640,7 +640,7 @@ fn test_input_circuit_with_bls12_381() {
 
     use bellman::gadgets::test::*;
     use group::ff::Field;
-    use rand_core::{RngCore, SeedableRng};
+    use rand_core::{Rng, SeedableRng};
     use rand_xorshift::XorShiftRng;
 
     let mut rng = XorShiftRng::from_seed([
@@ -789,7 +789,7 @@ fn test_input_circuit_with_bls12_381_external_test_vectors() {
 
     use bellman::gadgets::test::*;
     use group::ff::Field;
-    use rand_core::{RngCore, SeedableRng};
+    use rand_core::{Rng, SeedableRng};
     use rand_xorshift::XorShiftRng;
 
     let mut rng = XorShiftRng::from_seed([
@@ -970,7 +970,7 @@ fn test_output_circuit_with_bls12_381() {
 
     use bellman::gadgets::test::*;
     use group::ff::Field;
-    use rand_core::{RngCore, SeedableRng};
+    use rand_core::{Rng, SeedableRng};
     use rand_xorshift::XorShiftRng;
 
     let mut rng = XorShiftRng::from_seed([
