@@ -9,6 +9,17 @@ and this library adheres to Rust's notion of
 
 ### Changed
 - MSRV is now 1.88
+- Migrated to `ff` 0.14, `group` 0.14, `rand`/`rand_core` 0.10, `bls12_381`
+  0.9, `jubjub` 0.11, `redjubjub` 0.9, and `zcash_note_encryption` 0.5.
+- `rand_core` 0.10 merges `RngCore` into `Rng`, so every public API that was
+  bounded by `R: RngCore` is now bounded by `R: Rng`.
+- `bellman`'s Groth16 implementation now lives in the standalone `groth16`
+  crate, which the `circuit` feature depends on alongside `bellman`.
+- The `test-dependencies` feature now enables `rand/std_rng`.
+- Migrated to the generalized `zcash_note_encryption::Domain`, which makes the
+  note plaintext size variable. `COMPACT_NOTE_SIZE`, `NOTE_PLAINTEXT_SIZE`, and
+  `ENC_CIPHERTEXT_SIZE` are no longer re-exported from `zcash_note_encryption`
+  and are now defined in `sapling_crypto::note_encryption`.
 - `tracing` is now an optional dependency, enabled by the `circuit` feature. It was
   only ever used by the `circuit`-gated batch validator, and its `tracing-core`
   dependency does not build for targets without atomic compare-and-swap.

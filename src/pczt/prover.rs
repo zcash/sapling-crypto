@@ -1,6 +1,6 @@
 use core::fmt;
 
-use rand::{CryptoRng, RngCore};
+use rand::{CryptoRng, Rng};
 
 use crate::{
     prover::{OutputProver, SpendProver},
@@ -9,7 +9,7 @@ use crate::{
 
 impl super::Bundle {
     /// Adds a proof to this PCZT bundle.
-    pub fn create_proofs<S, O, R: RngCore + CryptoRng>(
+    pub fn create_proofs<S, O, R: Rng + CryptoRng>(
         &mut self,
         spend_prover: &S,
         output_prover: &O,

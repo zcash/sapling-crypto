@@ -6,13 +6,13 @@ use alloc::vec::Vec;
 use blake2b_simd::{Hash as Blake2bHash, Params as Blake2bParams};
 use ff::PrimeField;
 use memuse::DynamicUsage;
-use rand_core::RngCore;
+use rand_core::Rng;
 
 use zcash_note_encryption::{
+    note_bytes::{NoteBytes, NoteBytesData},
     try_compact_note_decryption, try_note_decryption, try_output_recovery_with_ock,
     try_output_recovery_with_ovk, BatchDomain, Domain, EphemeralKeyBytes, NoteEncryption,
-    NotePlaintextBytes, OutPlaintextBytes, OutgoingCipherKey, ShieldedOutput, COMPACT_NOTE_SIZE,
-    ENC_CIPHERTEXT_SIZE, NOTE_PLAINTEXT_SIZE, OUT_PLAINTEXT_SIZE,
+    OutPlaintextBytes, OutgoingCipherKey, ShieldedOutput, AEAD_TAG_SIZE, OUT_PLAINTEXT_SIZE,
 };
 
 use crate::{
@@ -28,6 +28,31 @@ use crate::{
 use super::note::ExtractedNoteCommitment;
 
 pub use crate::keys::{PreparedEphemeralPublicKey, PreparedIncomingViewingKey};
+
+/// The size of a compact note plaintext.
+///
+/// `zcash_note_encryption` generalized the note plaintext to a variable size, so the
+/// Sapling sizes now live here rather than being shared with Orchard.
+pub const COMPACT_NOTE_SIZE: usize = 1 + // version
+    11 + // diversifier
+    8  + // value
+    32; // rseed (or rcm prior to ZIP 212)
+/// The size of a Sapling note plaintext.
+pub const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE + 512;
+/// The size of an encrypted Sapling note plaintext.
+pub const ENC_CIPHERTEXT_SIZE: usize = NOTE_PLAINTEXT_SIZE + AEAD_TAG_SIZE;
+
+/// The byte encoding of a Sapling note plaintext.
+pub type NotePlaintextBytes = NoteBytesData<NOTE_PLAINTEXT_SIZE>;
+/// The byte encoding of an encrypted Sapling note plaintext.
+pub type NoteCiphertextBytes = NoteBytesData<ENC_CIPHERTEXT_SIZE>;
+/// The byte encoding of a compact Sapling note plaintext.
+pub type CompactNotePlaintextBytes = NoteBytesData<COMPACT_NOTE_SIZE>;
+/// The byte encoding of a compact Sapling note ciphertext.
+///
+/// A compact ciphertext carries no AEAD tag, so it is the same size as the compact
+/// plaintext it encrypts.
+pub type CompactNoteCiphertextBytes = NoteBytesData<COMPACT_NOTE_SIZE>;
 
 pub const KDF_SAPLING_PERSONALIZATION: &[u8; 16] = b"Zcash_SaplingKDF";
 pub const PRF_OCK_PERSONALIZATION: &[u8; 16] = b"Zcash_Derive_ock";
@@ -144,6 +169,11 @@ impl Domain for SaplingDomain {
     type ExtractedCommitmentBytes = [u8; 32];
     type Memo = [u8; 512];
 
+    type NotePlaintextBytes = NotePlaintextBytes;
+    type NoteCiphertextBytes = NoteCiphertextBytes;
+    type CompactNotePlaintextBytes = CompactNotePlaintextBytes;
+    type CompactNoteCiphertextBytes = CompactNoteCiphertextBytes;
+
     fn derive_esk(note: &Self::Note) -> Option<Self::EphemeralSecretKey> {
         note.derive_esk()
     }
@@ -184,7 +214,7 @@ impl Domain for SaplingDomain {
         dhsecret.kdf_sapling(epk)
     }
 
-    fn note_plaintext_bytes(note: &Self::Note, memo: &Self::Memo) -> NotePlaintextBytes {
+    fn note_plaintext_bytes(note: &Self::Note, memo: &Self::Memo) -> Self::NotePlaintextBytes {
         // Note plaintext encoding is defined in section 5.5 of the Zcash Protocol
         // Specification.
         let mut input = [0; NOTE_PLAINTEXT_SIZE];
@@ -206,7 +236,7 @@ impl Domain for SaplingDomain {
 
         input[COMPACT_NOTE_SIZE..NOTE_PLAINTEXT_SIZE].copy_from_slice(&memo[..]);
 
-        NotePlaintextBytes(input)
+        NoteBytesData(input)
     }
 
     fn derive_ock(
@@ -243,9 +273,9 @@ impl Domain for SaplingDomain {
     fn parse_note_plaintext_without_memo_ivk(
         &self,
         ivk: &Self::IncomingViewingKey,
-        plaintext: &[u8],
+        plaintext: &Self::CompactNotePlaintextBytes,
     ) -> Option<(Self::Note, Self::Recipient)> {
-        sapling_parse_note_plaintext_without_memo(self, plaintext, |diversifier| {
+        sapling_parse_note_plaintext_without_memo(self, plaintext.as_ref(), |diversifier| {
             DiversifiedTransmissionKey::derive(ivk, diversifier)
         })
     }
@@ -253,9 +283,9 @@ impl Domain for SaplingDomain {
     fn parse_note_plaintext_without_memo_ovk(
         &self,
         pk_d: &Self::DiversifiedTransmissionKey,
-        plaintext: &NotePlaintextBytes,
+        plaintext: &Self::CompactNotePlaintextBytes,
     ) -> Option<(Self::Note, Self::Recipient)> {
-        sapling_parse_note_plaintext_without_memo(self, &plaintext.0, |diversifier| {
+        sapling_parse_note_plaintext_without_memo(self, plaintext.as_ref(), |diversifier| {
             diversifier.g_d().map(|_| *pk_d)
         })
     }
@@ -280,10 +310,15 @@ impl Domain for SaplingDomain {
         .into()
     }
 
-    fn extract_memo(&self, plaintext: &NotePlaintextBytes) -> Self::Memo {
-        plaintext.0[COMPACT_NOTE_SIZE..NOTE_PLAINTEXT_SIZE]
-            .try_into()
-            .expect("correct length")
+    fn split_plaintext_at_memo(
+        &self,
+        plaintext: &Self::NotePlaintextBytes,
+    ) -> Option<(Self::CompactNotePlaintextBytes, Self::Memo)> {
+        let (compact, memo) = plaintext.0.split_at(COMPACT_NOTE_SIZE);
+        Some((
+            Self::CompactNotePlaintextBytes::from_slice(compact)?,
+            memo.try_into().ok()?,
+        ))
     }
 }
 
@@ -329,17 +364,21 @@ pub struct CompactOutputDescription {
 
 memuse::impl_no_dynamic_usage!(CompactOutputDescription);
 
-impl ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE> for CompactOutputDescription {
+impl ShieldedOutput<SaplingDomain> for CompactOutputDescription {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         self.ephemeral_key.clone()
     }
 
-    fn cmstar_bytes(&self) -> [u8; 32] {
-        self.cmu.to_bytes()
+    fn cmstar(&self) -> &ExtractedNoteCommitment {
+        &self.cmu
     }
 
-    fn enc_ciphertext(&self) -> &[u8; COMPACT_NOTE_SIZE] {
-        &self.enc_ciphertext
+    fn enc_ciphertext(&self) -> Option<&NoteCiphertextBytes> {
+        None
+    }
+
+    fn enc_ciphertext_compact(&self) -> CompactNoteCiphertextBytes {
+        NoteBytesData(self.enc_ciphertext)
     }
 }
 
@@ -354,7 +393,8 @@ impl ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE> for CompactOutputDescripti
 ///
 /// ```
 /// use ff::Field;
-/// use rand_core::OsRng;
+/// use rand::rngs::SysRng;
+/// use rand_core::UnwrapErr;
 /// use sapling_crypto::{
 ///     keys::OutgoingViewingKey,
 ///     note_encryption::{sapling_note_encryption, Zip212Enforcement},
@@ -363,7 +403,7 @@ impl ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE> for CompactOutputDescripti
 ///     Diversifier, PaymentAddress, Rseed, SaplingIvk,
 /// };
 ///
-/// let mut rng = OsRng;
+/// let mut rng = UnwrapErr(SysRng);
 ///
 /// let ivk = SaplingIvk(jubjub::Scalar::random(&mut rng));
 /// let diversifier = Diversifier([0; 11]);
@@ -384,7 +424,7 @@ impl ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE> for CompactOutputDescripti
 /// let encCiphertext = enc.encrypt_note_plaintext();
 /// let outCiphertext = enc.encrypt_outgoing_plaintext(&cv, &cmu, &mut rng);
 /// ```
-pub fn sapling_note_encryption<R: RngCore>(
+pub fn sapling_note_encryption<R: Rng>(
     ovk: Option<OutgoingViewingKey>,
     note: Note,
     memo: [u8; 512],
@@ -404,7 +444,7 @@ pub fn plaintext_version_is_valid(zip212_enforcement: Zip212Enforcement, leadbyt
     }
 }
 
-pub fn try_sapling_note_decryption<Output: ShieldedOutput<SaplingDomain, ENC_CIPHERTEXT_SIZE>>(
+pub fn try_sapling_note_decryption<Output: ShieldedOutput<SaplingDomain>>(
     ivk: &PreparedIncomingViewingKey,
     output: &Output,
     zip212_enforcement: Zip212Enforcement,
@@ -413,9 +453,7 @@ pub fn try_sapling_note_decryption<Output: ShieldedOutput<SaplingDomain, ENC_CIP
     try_note_decryption(&domain, ivk, output)
 }
 
-pub fn try_sapling_compact_note_decryption<
-    Output: ShieldedOutput<SaplingDomain, COMPACT_NOTE_SIZE>,
->(
+pub fn try_sapling_compact_note_decryption<Output: ShieldedOutput<SaplingDomain>>(
     ivk: &PreparedIncomingViewingKey,
     output: &Output,
     zip212_enforcement: Zip212Enforcement,
@@ -468,19 +506,20 @@ mod tests {
     use ff::{Field, PrimeField};
     use group::Group;
     use group::GroupEncoding;
-    use rand_core::OsRng;
-    use rand_core::{CryptoRng, RngCore};
+    use rand::rngs::SysRng;
+    use rand_core::UnwrapErr;
+    use rand_core::{CryptoRng, Rng};
 
     use zcash_note_encryption::{
-        batch, EphemeralKeyBytes, NoteEncryption, OutgoingCipherKey, ENC_CIPHERTEXT_SIZE,
-        NOTE_PLAINTEXT_SIZE, OUT_CIPHERTEXT_SIZE, OUT_PLAINTEXT_SIZE,
+        batch, EphemeralKeyBytes, NoteEncryption, OutgoingCipherKey, OUT_CIPHERTEXT_SIZE,
+        OUT_PLAINTEXT_SIZE,
     };
 
     use super::{
         prf_ock, sapling_note_encryption, try_sapling_compact_note_decryption,
         try_sapling_note_decryption, try_sapling_output_recovery,
         try_sapling_output_recovery_with_ock, CompactOutputDescription, SaplingDomain,
-        Zip212Enforcement,
+        Zip212Enforcement, ENC_CIPHERTEXT_SIZE, NOTE_PLAINTEXT_SIZE,
     };
 
     use crate::{
@@ -494,7 +533,7 @@ mod tests {
         Diversifier, PaymentAddress, Rseed, SaplingIvk,
     };
 
-    fn random_enc_ciphertext<R: RngCore + CryptoRng>(
+    fn random_enc_ciphertext<R: Rng + CryptoRng>(
         zip212_enforcement: Zip212Enforcement,
         mut rng: &mut R,
     ) -> (
@@ -527,7 +566,7 @@ mod tests {
         (ovk, ock, prepared_ivk, output)
     }
 
-    fn random_enc_ciphertext_with<R: RngCore + CryptoRng>(
+    fn random_enc_ciphertext_with<R: Rng + CryptoRng>(
         ivk: &SaplingIvk,
         zip212_enforcement: Zip212Enforcement,
         mut rng: &mut R,
@@ -559,7 +598,7 @@ mod tests {
             cv,
             cmu,
             epk.to_bytes(),
-            ne.encrypt_note_plaintext(),
+            ne.encrypt_note_plaintext().0,
             out_ciphertext,
             [0u8; GROTH_PROOF_SIZE],
         );
@@ -691,7 +730,7 @@ mod tests {
 
     #[test]
     fn decryption_with_invalid_ivk() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -714,7 +753,7 @@ mod tests {
 
     #[test]
     fn decryption_with_invalid_epk() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -735,7 +774,7 @@ mod tests {
 
     #[test]
     fn decryption_with_invalid_cmu() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -757,7 +796,7 @@ mod tests {
 
     #[test]
     fn decryption_with_invalid_tag() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -777,7 +816,7 @@ mod tests {
 
     #[test]
     fn decryption_with_invalid_version_byte() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -806,7 +845,7 @@ mod tests {
 
     #[test]
     fn decryption_with_invalid_diversifier() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -834,7 +873,7 @@ mod tests {
 
     #[test]
     fn decryption_with_incorrect_diversifier() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -863,7 +902,7 @@ mod tests {
 
     #[test]
     fn compact_decryption_with_invalid_ivk() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -886,7 +925,7 @@ mod tests {
 
     #[test]
     fn compact_decryption_with_invalid_epk() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -910,7 +949,7 @@ mod tests {
 
     #[test]
     fn compact_decryption_with_invalid_cmu() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -936,7 +975,7 @@ mod tests {
 
     #[test]
     fn compact_decryption_with_invalid_version_byte() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -969,7 +1008,7 @@ mod tests {
 
     #[test]
     fn compact_decryption_with_invalid_diversifier() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1001,7 +1040,7 @@ mod tests {
 
     #[test]
     fn compact_decryption_with_incorrect_diversifier() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1033,7 +1072,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_ovk() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1053,7 +1092,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_ock() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1076,7 +1115,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_cv() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1099,7 +1138,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_cmu() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1126,7 +1165,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_epk() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1151,7 +1190,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_enc_tag() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1175,7 +1214,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_out_tag() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1199,7 +1238,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_version_byte() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1232,7 +1271,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_diversifier() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1264,7 +1303,7 @@ mod tests {
 
     #[test]
     fn recovery_with_incorrect_diversifier() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1296,7 +1335,7 @@ mod tests {
 
     #[test]
     fn recovery_with_invalid_pk_d() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_states = [
             Zip212Enforcement::Off,
             Zip212Enforcement::GracePeriod,
@@ -1306,13 +1345,18 @@ mod tests {
         for zip212_enforcement in zip212_states {
             let (ovk, ock, _, mut output) = random_enc_ciphertext(zip212_enforcement, &mut rng);
 
+            // A pk_d unrelated to the note, so that recovery must reject the output.
+            // Drawn outside the closure below because that closure is `Fn`, and so
+            // cannot borrow the rng mutably.
+            let invalid_pk_d = jubjub::ExtendedPoint::random(&mut rng).to_bytes();
+
             *output.out_ciphertext_mut() = reencrypt_out_ciphertext(
                 &ovk,
                 output.cv(),
                 output.cmu(),
                 output.ephemeral_key(),
                 output.out_ciphertext(),
-                |pt| pt[0..32].copy_from_slice(&jubjub::ExtendedPoint::random(rng).to_bytes()),
+                |pt| pt[0..32].copy_from_slice(&invalid_pk_d),
             );
             assert_eq!(
                 try_sapling_output_recovery(&ovk, &output, zip212_enforcement),
@@ -1468,7 +1512,7 @@ mod tests {
 
             assert_eq!(ne.encrypt_note_plaintext().as_ref(), &tv.c_enc[..]);
             assert_eq!(
-                &ne.encrypt_outgoing_plaintext(&cv, &cmu, &mut OsRng)[..],
+                &ne.encrypt_outgoing_plaintext(&cv, &cmu, &mut UnwrapErr(SysRng))[..],
                 &tv.c_out[..]
             );
         }
@@ -1476,12 +1520,13 @@ mod tests {
 
     #[test]
     fn batching() {
-        let mut rng = OsRng;
+        let mut rng = UnwrapErr(SysRng);
         let zip212_enforcement = Zip212Enforcement::On;
 
         // Test batch trial-decryption with multiple IVKs and outputs.
-        let invalid_ivk = PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::random(rng)));
-        let valid_ivk = SaplingIvk(jubjub::Fr::random(rng));
+        let invalid_ivk =
+            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::random(&mut rng)));
+        let valid_ivk = SaplingIvk(jubjub::Fr::random(&mut rng));
         let outputs: Vec<_> = (0..10)
             .map(|_| {
                 (

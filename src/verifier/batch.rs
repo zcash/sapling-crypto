@@ -1,7 +1,6 @@
-use bellman::groth16;
 use bls12_381::Bls12;
 use group::GroupEncoding;
-use rand_core::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, Rng};
 
 use super::SaplingVerificationContextInner;
 use crate::{
@@ -128,7 +127,7 @@ impl BatchValidator {
     /// validator is valid, or `false` if one or more are invalid. No attempt is made to
     /// figure out which of the accumulated bundles might be invalid; if that information
     /// is desired, construct separate [`BatchValidator`]s for sub-batches of the bundles.
-    pub fn validate<R: RngCore + CryptoRng>(
+    pub fn validate<R: Rng + CryptoRng>(
         self,
         spend_vk: &SpendVerifyingKey,
         output_vk: &OutputVerifyingKey,

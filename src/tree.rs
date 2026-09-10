@@ -181,7 +181,10 @@ impl From<Node> for bls12_381::Scalar {
 pub(super) mod testing {
     use ff::Field;
     use proptest::prelude::*;
-    use rand::distributions::{Distribution, Standard};
+    use rand::{
+        distr::{Distribution, StandardUniform},
+        Rng,
+    };
 
     use super::Node;
     use crate::note::testing::arb_cmu;
@@ -194,12 +197,12 @@ pub(super) mod testing {
 
     impl Node {
         /// Return a random fake `MerkleHashOrchard`.
-        pub fn random(rng: &mut impl RngCore) -> Self {
-            Standard.sample(rng)
+        pub fn random(rng: &mut impl Rng) -> Self {
+            StandardUniform.sample(rng)
         }
     }
 
-    impl Distribution<Node> for Standard {
+    impl Distribution<Node> for StandardUniform {
         fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Node {
             Node::from_scalar(bls12_381::Scalar::random(rng))
         }

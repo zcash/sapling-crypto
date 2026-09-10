@@ -627,7 +627,7 @@ mod test {
         ff::{Field, PrimeField, PrimeFieldBits},
         Curve, Group,
     };
-    use rand_core::{RngCore, SeedableRng};
+    use rand_core::{Rng, SeedableRng};
     use rand_xorshift::XorShiftRng;
 
     use bellman::gadgets::test::*;

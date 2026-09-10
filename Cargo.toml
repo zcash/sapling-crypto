@@ -19,12 +19,12 @@ features = ["test-dependencies"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-ff = { version = "0.13", default-features = false }
-group = "0.13"
+ff = { version = "0.14", default-features = false }
+group = "0.14"
 
-bls12_381 = { version = "0.8", default-features = false, features = ["alloc"] }
-jubjub = { version = "0.10", default-features = false, features = ["alloc"] }
-redjubjub = { version = "0.8", default-features = false }
+bls12_381 = { version = "0.9", default-features = false, features = ["alloc"] }
+jubjub = { version = "0.11", default-features = false, features = ["alloc"] }
+redjubjub = { version = "0.9", default-features = false }
 zcash_spec = "0.2"
 
 # Boilerplate
@@ -34,11 +34,12 @@ getset = "0.1"
 corez = { version = "0.1.1", default-features = false, features = ["alloc"] }
 
 # Circuits
-bellman = { version = "0.14", default-features = false, features = ["groth16"], optional = true }
+bellman = { version = "0.14", default-features = false, optional = true }
+groth16 = { git = "https://github.com/dannywillems/bellman.git", rev = "4665bd6b22d4f02c37ff3f5339fcf3c041a692cf", default-features = false, optional = true }
 
 # CSPRNG
-rand = { version = "0.8", default-features = false }
-rand_core = { version = "0.6", default-features = false }
+rand = { version = "0.10", default-features = false }
+rand_core = { version = "0.10", default-features = false }
 
 # Digests
 blake2b_simd = { version = "1", default-features = false }
@@ -59,7 +60,7 @@ bitvec = { version = "1", default-features = false }
 incrementalmerkletree = { version = "0.8.1", default-features = false, features = ["legacy-api"] }
 
 # Note encryption
-zcash_note_encryption = { version = "0.4", features = ["pre-zip-212"] }
+zcash_note_encryption = { version = "0.5", features = ["pre-zip-212"] }
 
 # Secret management
 subtle = { version = "2.6", default-features = false }
@@ -78,10 +79,11 @@ zip32 = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
+rand = { version = "0.10", features = ["std_rng", "sys_rng"] }
 criterion = "0.5"
 incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
 proptest = ">=1.0.0, <1.7.0"
-rand_xorshift = "0.3"
+rand_xorshift = "0.5"
 
 [target.'cfg(unix)'.dev-dependencies]
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
@@ -99,6 +101,7 @@ std = [
 circuit = [
   "dep:bellman",
   "dep:tracing",
+  "dep:groth16",
   "bls12_381/bits",
   "bls12_381/groups",
   "bls12_381/pairings",
@@ -107,7 +110,7 @@ circuit = [
 ]
 
 ## Enables multithreading support for creating proofs.
-multicore = ["bellman?/multicore"]
+multicore = ["bellman?/multicore", "groth16?/multicore"]
 
 ### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
 ### should not be relied upon and will be removed in a future release.
@@ -117,6 +120,7 @@ temporary-zcashd = []
 test-dependencies = [
     "incrementalmerkletree/test-dependencies",
     "dep:proptest",
+    "rand/std_rng",
 ]
 
 [[bench]]
@@ -126,3 +130,6 @@ harness = false
 [[bench]]
 name = "pedersen_hash"
 harness = false
+
+[patch.crates-io]
+bellman = { git = "https://github.com/dannywillems/bellman.git", rev = "4665bd6b22d4f02c37ff3f5339fcf3c041a692cf" }
