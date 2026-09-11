@@ -1,5 +1,5 @@
 use group::{ff::Field, GroupEncoding};
-use rand_core::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, Rng};
 use zcash_spec::PrfExpand;
 
 use crate::{
@@ -127,14 +127,11 @@ impl Note {
 
     /// Derives `esk` from the internal `Rseed` value, or generates a random value if this
     /// note was created with a v1 (i.e. pre-ZIP 212) note plaintext.
-    pub fn generate_or_derive_esk<R: RngCore + CryptoRng>(
-        &self,
-        rng: &mut R,
-    ) -> EphemeralSecretKey {
+    pub fn generate_or_derive_esk<R: Rng + CryptoRng>(&self, rng: &mut R) -> EphemeralSecretKey {
         self.generate_or_derive_esk_internal(rng)
     }
 
-    pub(crate) fn generate_or_derive_esk_internal<R: RngCore>(
+    pub(crate) fn generate_or_derive_esk_internal<R: Rng>(
         &self,
         rng: &mut R,
     ) -> EphemeralSecretKey {
@@ -159,7 +156,7 @@ impl Note {
     /// Defined in [Zcash Protocol Spec § 4.8.2: Dummy Notes (Sapling)][saplingdummynotes].
     ///
     /// [saplingdummynotes]: https://zips.z.cash/protocol/nu5.pdf#saplingdummynotes
-    pub(crate) fn dummy<R: RngCore>(mut rng: R) -> (ExpandedSpendingKey, FullViewingKey, Self) {
+    pub(crate) fn dummy<R: Rng>(mut rng: R) -> (ExpandedSpendingKey, FullViewingKey, Self) {
         let mut sk_bytes = [0; 32];
         rng.fill_bytes(&mut sk_bytes);
 

@@ -7,15 +7,14 @@ use core::fmt;
 
 use getset::Getters;
 use redjubjub::{Binding, SpendAuth};
-use zcash_note_encryption::{
-    EphemeralKeyBytes, OutgoingCipherKey, ENC_CIPHERTEXT_SIZE, OUT_CIPHERTEXT_SIZE,
-};
+use zcash_note_encryption::{EphemeralKeyBytes, OutgoingCipherKey, OUT_CIPHERTEXT_SIZE};
 use zip32::ChildIndex;
 
 use crate::{
     bundle::GrothProofBytes,
     keys::SpendAuthorizingKey,
     note::ExtractedNoteCommitment,
+    note_encryption::ENC_CIPHERTEXT_SIZE,
     value::{NoteValue, ValueCommitTrapdoor, ValueCommitment, ValueSum},
     Anchor, MerklePath, Nullifier, PaymentAddress, ProofGenerationKey, Rseed,
 };
