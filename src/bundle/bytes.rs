@@ -1,6 +1,4 @@
 //! Spend and Output descriptions with `cv` and `rk` left compressed.
-//!
-//! `epk` needs no tier of its own: a description already carries it as `EphemeralKeyBytes`.
 
 use alloc::vec::Vec;
 use core::fmt;
@@ -69,7 +67,9 @@ fn field(bytes: &[u8], range: Range<usize>) -> [u8; 32] {
         .expect("every field range in this module is 32 bytes")
 }
 
-/// A [`SpendDescription`] with `cv` and `rk` left compressed.
+/// A [`SpendDescription`] with `cv` and `rk` left in compressed & potentially non-canonical encodings.
+///
+/// [`SpendDescriptionBytes::decompress`] must be used to decompress & check point rules
 #[derive(Clone)]
 pub struct SpendDescriptionBytes<A: Authorization> {
     cv: ValueCommitmentBytes,
@@ -115,8 +115,10 @@ impl<A: Authorization> SpendDescriptionBytes<A> {
         &self.spend_auth_sig
     }
 
-    /// Drops the fields a v5 transaction writes in its own arrays. Inverse of
-    /// [`SpendDescriptionV5Bytes::into_v4`].
+    /// Drops the `anchor`, `zkproof` and `spend_auth_sig` fields already present
+    /// in a [v5 transaction]
+    ///
+    /// [v5 transaction]: https://zips.z.cash/zip-0225
     pub fn to_v5(&self) -> SpendDescriptionV5Bytes {
         SpendDescriptionV5Bytes {
             cv: self.cv,
@@ -127,8 +129,8 @@ impl<A: Authorization> SpendDescriptionBytes<A> {
 
     /// Recovers the [`SpendDescription`]. 2 sqrt.
     ///
-    /// `rk`'s small-order rule stays with the spend verifier, as it is for a
-    /// [`SpendDescription`] built any other way.
+    /// - Checks `cv` is canonical-encoding & not small-order via [`ValueCommitmentBytes::decompress`]
+    /// - Checks `rk` is canonical-encoding via [`VerificationKey::try_from`]
     pub fn decompress(self) -> Result<SpendDescription<A>, DecompressionError> {
         Ok(SpendDescription::from_parts(
             self.cv
@@ -145,15 +147,16 @@ impl<A: Authorization> SpendDescriptionBytes<A> {
 }
 
 impl<A: Authorization> SpendDescription<A> {
-    /// Drops to the encoded tier.
+    /// Converts to [`SpendDescriptionBytes<A>`], forgetting the invariants
+    /// enforced by [`SpendDescription`].
     ///
-    /// Infallible: a description cannot hold a point that fails to encode.
+    /// Infallible: a [`SpendDescription`] cannot hold a point that fails to encode
     pub fn compress(self) -> SpendDescriptionBytes<A> {
         SpendDescriptionBytes {
             cv: ValueCommitmentBytes::from(&self.cv),
             anchor: self.anchor,
             nullifier: self.nullifier,
-            rk: self.rk.into(),
+            rk: VerificationKeyBytes::from(self.rk),
             zkproof: self.zkproof,
             spend_auth_sig: self.spend_auth_sig,
         }
@@ -175,8 +178,9 @@ impl SpendDescriptionBytes<Authorized> {
         bytes
     }
 
-    /// Decodes a v4 Spend description, checking the `anchor` encoding. The point rules go to
-    /// [`SpendDescriptionBytes::decompress`].
+    /// Decodes a v4 Spend description, checking the `anchor` encoding.
+    /// This parse operation does not check point rules.
+    /// [`SpendDescriptionBytes::decompress`] must be used to check the point rules.
     pub fn from_bytes(
         bytes: &[u8; SPEND_DESCRIPTION_V4_SIZE],
     ) -> Result<Self, DescriptionParseError> {
@@ -223,9 +227,6 @@ impl SpendDescriptionV5Bytes {
         &self.rk
     }
 
-    /// Pairs back on the fields a v5 transaction writes in its own arrays.
-    ///
-    /// Inverse of [`SpendDescriptionBytes::to_v5`].
     pub fn into_v4<A>(
         self,
         anchor: bls12_381::Scalar,
@@ -245,7 +246,7 @@ impl SpendDescriptionV5Bytes {
         }
     }
 
-    /// Recovers the [`SpendDescriptionV5`]. 2 sqrt.
+    /// Recovers the [`SpendDescriptionV5`]. 2 sqrt
     pub fn decompress(self) -> Result<SpendDescriptionV5, DecompressionError> {
         Ok(SpendDescriptionV5::from_parts(
             self.cv
@@ -257,7 +258,6 @@ impl SpendDescriptionV5Bytes {
         ))
     }
 
-    /// Encodes this v5 Spend description.
     pub fn to_bytes(&self) -> [u8; SPEND_DESCRIPTION_V5_SIZE] {
         let mut bytes = [0u8; SPEND_DESCRIPTION_V5_SIZE];
 
@@ -268,8 +268,8 @@ impl SpendDescriptionV5Bytes {
         bytes
     }
 
-    /// Decodes a v5 Spend description. Infallible: every rule these three fields carry needs a
-    /// point.
+    /// Decodes a v5 Spend description. This parse operation does not check point rules.
+    /// [`SpendDescriptionV5Bytes::decompress`] must be used to check the point rules.
     pub fn from_bytes(bytes: &[u8; SPEND_DESCRIPTION_V5_SIZE]) -> Self {
         SpendDescriptionV5Bytes {
             cv: ValueCommitmentBytes::from(field(bytes, SPEND_V5_CV)),
@@ -280,22 +280,22 @@ impl SpendDescriptionV5Bytes {
 }
 
 impl SpendDescriptionV5 {
-    /// Drops to the encoded tier.
+    /// Converts to [`SpendDescriptionV5Bytes<A>`], forgetting the invariants
+    /// enforced by [`SpendDescriptionV5`].
     ///
-    /// Infallible: a description cannot hold a point that fails to encode.
+    /// Infallible: a [`SpendDescriptionV5`] cannot hold a point that fails to encode
     pub fn compress(self) -> SpendDescriptionV5Bytes {
         SpendDescriptionV5Bytes {
             cv: ValueCommitmentBytes::from(&self.cv),
             nullifier: self.nullifier,
-            rk: self.rk.into(),
+            rk: VerificationKeyBytes::from(self.rk),
         }
     }
 }
 
 /// An [`OutputDescription`] with `cv` left compressed.
 ///
-/// `cmu` and `ephemeral_key` are already encodings on an [`OutputDescription`], so `cv` is the
-/// whole of the difference between the two tiers.
+/// `cmu` and `ephemeral_key` are already encoded as bytes on [`OutputDescription`]
 #[derive(Clone)]
 pub struct OutputDescriptionBytes<Proof> {
     cv: ValueCommitmentBytes,
@@ -341,8 +341,9 @@ impl<Proof> OutputDescriptionBytes<Proof> {
         &self.zkproof
     }
 
-    /// Drops the proof, which a v5 transaction writes in its own array. Inverse of
-    /// [`OutputDescriptionV5Bytes::into_v4`].
+    /// Drops the `zkproof` field already present in a [v5 transaction]
+    ///
+    /// [v5 transaction]: https://zips.z.cash/zip-0225
     pub fn to_v5(&self) -> OutputDescriptionV5Bytes {
         OutputDescriptionV5Bytes {
             cv: self.cv,
@@ -355,8 +356,9 @@ impl<Proof> OutputDescriptionBytes<Proof> {
 
     /// Recovers the [`OutputDescription`]. 1 sqrt.
     ///
-    /// `epk`'s rules stay with the output verifier, as they are for an [`OutputDescription`]
-    /// built any other way.
+    /// - Checks `cv` is canonical-encoding & not small-order via [`ValueCommitmentBytes::decompress`]
+    /// - `cmu` checked earlier in [`OutputDescriptionBytes::from_bytes`]
+    /// - `epk` checked at verification via [`crate::SaplingVerificationContext::check_output`] & [`jubjub::ExtendedPoint`]
     pub fn decompress(self) -> Result<OutputDescription<Proof>, DecompressionError> {
         Ok(OutputDescription::from_parts(
             self.cv
@@ -372,9 +374,10 @@ impl<Proof> OutputDescriptionBytes<Proof> {
 }
 
 impl<Proof> OutputDescription<Proof> {
-    /// Drops to the encoded tier.
+    /// Converts to [`OutputDescriptionBytes<Proof>`], forgetting the invariants
+    /// enforced by [`OutputDescription`].
     ///
-    /// Infallible: a description cannot hold a point that fails to encode.
+    /// Infallible: a [`OutputDescription`] cannot hold a point that fails to encode
     pub fn compress(self) -> OutputDescriptionBytes<Proof> {
         OutputDescriptionBytes {
             cv: ValueCommitmentBytes::from(&self.cv),
@@ -388,7 +391,6 @@ impl<Proof> OutputDescription<Proof> {
 }
 
 impl OutputDescriptionBytes<GrothProofBytes> {
-    /// Encodes this v4 Output description.
     pub fn to_bytes(&self) -> [u8; OUTPUT_DESCRIPTION_V4_SIZE] {
         let mut bytes = [0u8; OUTPUT_DESCRIPTION_V4_SIZE];
 
@@ -399,6 +401,10 @@ impl OutputDescriptionBytes<GrothProofBytes> {
     }
 
     /// Decodes a v4 Output description, checking the `cmu` encoding.
+    /// This parse operation does not check point rules.
+    /// [`OutputDescriptionBytes::decompress`] must be used to check the point rules.
+    ///
+    /// - v4 layout = v5 layout ‖ `zkproof` (parsed via [`OutputDescriptionV5Bytes::from_bytes`])
     pub fn from_bytes(
         bytes: &[u8; OUTPUT_DESCRIPTION_V4_SIZE],
     ) -> Result<Self, DescriptionParseError> {
@@ -406,7 +412,9 @@ impl OutputDescriptionBytes<GrothProofBytes> {
             .try_into()
             .expect("the prefix range is OUTPUT_DESCRIPTION_V5_SIZE bytes");
 
-        Ok(OutputDescriptionV5Bytes::from_bytes(prefix)?.into_v4(
+        let v5_output = OutputDescriptionV5Bytes::from_bytes(prefix)?;
+
+        Ok(v5_output.into_v4(
             bytes[OUTPUT_V4_ZKPROOF]
                 .try_into()
                 .expect("the zkproof range is GROTH_PROOF_SIZE bytes"),
@@ -426,8 +434,7 @@ impl<Proof: DynamicUsage> DynamicUsage for OutputDescriptionBytes<Proof> {
     }
 }
 
-/// Trial decryption reads `epk`, `cmu` and `enc_ciphertext`, none of which this tier keeps
-/// compressed.
+/// Trial decryption reads `epk`, `cmu` and `enc_ciphertext` bytes directly from [`OutputDescriptionBytes`]
 impl<A> ShieldedOutput<SaplingDomain, ENC_CIPHERTEXT_SIZE> for OutputDescriptionBytes<A> {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         self.ephemeral_key.clone()
@@ -454,7 +461,7 @@ impl<A> From<OutputDescriptionBytes<A>> for CompactOutputDescription {
     }
 }
 
-/// An [`OutputDescriptionV5`] with `cv` left compressed.
+/// An [`OutputDescriptionV5`] with `cv` compressed & possible non-canonical encoding
 #[derive(Clone)]
 pub struct OutputDescriptionV5Bytes {
     cv: ValueCommitmentBytes,
@@ -464,7 +471,16 @@ pub struct OutputDescriptionV5Bytes {
     out_ciphertext: [u8; OUT_CIPHERTEXT_SIZE],
 }
 
-memuse::impl_no_dynamic_usage!(OutputDescriptionV5Bytes);
+/// [`OutputDescriptionV5Bytes`] drops the `zkproof` field & has no dynamic usage
+impl DynamicUsage for OutputDescriptionV5Bytes {
+    fn dynamic_usage(&self) -> usize {
+        0
+    }
+
+    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {
+        (0, Some(0))
+    }
+}
 
 impl fmt::Debug for OutputDescriptionV5Bytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -489,9 +505,7 @@ impl OutputDescriptionV5Bytes {
         &self.ephemeral_key
     }
 
-    /// Pairs back on the proof a v5 transaction writes in its own array.
-    ///
-    /// Inverse of [`OutputDescriptionBytes::to_v5`].
+    /// Adds on the `zkproof` field that v4 transactions do not include
     pub fn into_v4(self, zkproof: GrothProofBytes) -> OutputDescriptionBytes<GrothProofBytes> {
         OutputDescriptionBytes {
             cv: self.cv,
@@ -504,6 +518,10 @@ impl OutputDescriptionV5Bytes {
     }
 
     /// Recovers the [`OutputDescriptionV5`]. 1 sqrt.
+    ///
+    /// - Checks `cv` is canonical-encoding & not small-order via [`ValueCommitmentBytes::decompress`]
+    /// - `cmu` checked earlier in [`OutputDescriptionV5Bytes::from_bytes`]
+    /// - `epk` checked at verification via [`crate::SaplingVerificationContext::check_output`]
     pub fn decompress(self) -> Result<OutputDescriptionV5, DecompressionError> {
         Ok(OutputDescriptionV5::from_parts(
             self.cv
@@ -530,6 +548,8 @@ impl OutputDescriptionV5Bytes {
     }
 
     /// Decodes a v5 Output description, checking the `cmu` encoding.
+    /// This parse operation does not check point rules.
+    /// [`OutputDescriptionV5Bytes::decompress`] must be used to check the point rules.
     pub fn from_bytes(
         bytes: &[u8; OUTPUT_DESCRIPTION_V5_SIZE],
     ) -> Result<Self, DescriptionParseError> {
@@ -554,9 +574,10 @@ impl OutputDescriptionV5Bytes {
 }
 
 impl OutputDescriptionV5 {
-    /// Drops to the encoded tier.
+    /// Converts to [`OutputDescriptionV5Bytes<Proof>`], forgetting the invariants
+    /// enforced by [`OutputDescriptionV5`].
     ///
-    /// Infallible: a description cannot hold a point that fails to encode.
+    /// Infallible: a [`OutputDescriptionV5`] cannot hold a point that fails to encode
     pub fn compress(self) -> OutputDescriptionV5Bytes {
         OutputDescriptionV5Bytes {
             cv: ValueCommitmentBytes::from(&self.cv),
@@ -568,7 +589,9 @@ impl OutputDescriptionV5 {
     }
 }
 
-/// A [`Bundle`] whose descriptions are still encoded.
+/// A [`Bundle`] where the descriptions are still encoded & possibly non-canonical encodings
+///
+/// To decompress & check the point rules, use [`BundleBytes::decompress`].
 #[derive(Clone, Debug)]
 pub struct BundleBytes<A: Authorization, V> {
     shielded_spends: Vec<SpendDescriptionBytes<A>>,
@@ -578,7 +601,11 @@ pub struct BundleBytes<A: Authorization, V> {
 }
 
 impl<A: Authorization, V> BundleBytes<A, V> {
-    /// `None` if it would hold neither a spend nor an output, as [`Bundle::from_parts`] does.
+    /// Constructs a `BundleBytes` from `SpendDescriptionBytes` and `OutputDescriptionBytes`.
+    /// `SpendDescriptionBytes` and `OutputDescriptionBytes` can represent non-canonical encodings.
+    /// [`BundleBytes::decompress`] must be used to check the point rules.
+    ///
+    /// `None` if spends and outputs are both empty
     pub fn from_parts(
         shielded_spends: Vec<SpendDescriptionBytes<A>>,
         shielded_outputs: Vec<OutputDescriptionBytes<A::OutputProof>>,
@@ -613,7 +640,11 @@ impl<A: Authorization, V> BundleBytes<A, V> {
         &self.authorization
     }
 
-    /// Recovers the [`Bundle`], naming the first description that breaks a point rule.
+    /// Recovers the [`Bundle`], decompressing the spends and outputs & checking the point rules.
+    ///
+    /// Iterates over spends, then outputs.  A [`BundleDecompressionError::Spend`] or
+    /// [`BundleDecompressionError::Output`] error is returned for the first decompression error
+    /// encoundered, and the error includes the index of the spend or output that failed.
     pub fn decompress(self) -> Result<Bundle<A, V>, BundleDecompressionError> {
         let shielded_spends = self
             .shielded_spends
@@ -646,9 +677,9 @@ impl<A: Authorization, V> BundleBytes<A, V> {
 }
 
 impl<A: Authorization, V> Bundle<A, V> {
-    /// Drops to the encoded tier.
+    /// Converts to [`BundleBytes<A, V>`], forgetting the invariants enforced by [`Bundle`].
     ///
-    /// Infallible: a [`Bundle`] cannot hold a point that fails to encode.
+    /// Infallible: a [`Bundle`] cannot hold a point that fails to encode
     pub fn compress(self) -> BundleBytes<A, V> {
         BundleBytes {
             shielded_spends: self
