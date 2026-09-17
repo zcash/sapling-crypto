@@ -318,7 +318,7 @@ impl PreparedSpendInfo {
             rk,
             zkproof,
             SigningMetadata {
-                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask),
+                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask.clone()),
                 parts: SigningParts { ak, alpha },
             },
         ))
@@ -344,7 +344,7 @@ impl PreparedSpendInfo {
             witness: Some(self.merkle_path),
             alpha: Some(alpha),
             zip32_derivation: None,
-            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask),
+            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask.clone()),
             proprietary: BTreeMap::new(),
         }
     }
@@ -1376,7 +1376,7 @@ pub(crate) mod testing {
                         bundle.create_proofs(&MockSpendProver, &MockOutputProver, &mut rng, ());
 
                     bundle
-                        .apply_signatures(&mut rng, fake_sighash_bytes, &[extsk.expsk.ask])
+                        .apply_signatures(&mut rng, fake_sighash_bytes, &[extsk.expsk.ask.clone()])
                         .unwrap()
                 },
             )

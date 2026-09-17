@@ -44,6 +44,7 @@ impl super::Bundle {
                 Ok(Unbound {
                     bsk: bundle
                         .bsk
+                        .clone()
                         .ok_or(TxExtractorError::MissingBindingSignatureSigningKey)?,
                 })
             },

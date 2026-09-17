@@ -7,6 +7,19 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `zeroize` feature flag (enabled by default), which enables the `zeroize`
+  dependency (without its default features, so `no_std` is preserved), turns on
+  `jubjub/zeroize`, `redjubjub/zeroize` and `zip32/zeroize`, and provides:
+  - `impl zeroize::{Zeroize, ZeroizeOnDrop} for sapling_crypto::keys::SpendAuthorizingKey`
+  - `impl zeroize::{Zeroize, ZeroizeOnDrop} for sapling_crypto::keys::ExpandedSpendingKey`
+  - `impl zeroize::{Zeroize, ZeroizeOnDrop} for sapling_crypto::keys::ProofGenerationKey`
+  - `impl zeroize::{Zeroize, ZeroizeOnDrop} for sapling_crypto::zip32::ExtendedSpendingKey`
+  - `impl zeroize::Zeroize for sapling_crypto::keys::OutgoingViewingKey`
+  - `impl zeroize::Zeroize for sapling_crypto::zip32::DiversifierKey`
+  When enabled, the spending-key types are zeroized on drop, and the
+  intermediate values produced while deriving them are zeroized after use.
+
 ### Changed
 - MSRV is now 1.88
 - Migrated to `ff` 0.14, `group` 0.14, and `rand`/`rand_core` 0.10.

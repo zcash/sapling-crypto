@@ -64,6 +64,7 @@ zcash_note_encryption = { version = "0.4", features = ["pre-zip-212"] }
 
 # Secret management
 subtle = { version = "2.6", default-features = false }
+zeroize = { version = "1", optional = true, default-features = false }
 
 # Static constants
 lazy_static = "1"
@@ -89,7 +90,7 @@ rand_xorshift = "0.5"
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
 
 [features]
-default = ["multicore", "circuit"]
+default = ["multicore", "circuit", "zeroize"]
 std = [
   "corez/std",
   "dep:document-features",
@@ -115,6 +116,9 @@ multicore = ["bellman?/multicore", "groth16?/multicore"]
 ### should not be relied upon and will be removed in a future release.
 temporary-zcashd = []
 
+## Zeroizes spending-key material on drop, and exposes `Zeroize` impls.
+zeroize = ["dep:zeroize", "jubjub/zeroize", "redjubjub/zeroize", "zip32/zeroize"]
+
 ## Exposes APIs that are useful for testing, such as `proptest` strategies.
 test-dependencies = [
     "incrementalmerkletree/test-dependencies",
@@ -131,11 +135,12 @@ name = "pedersen_hash"
 harness = false
 
 [patch.crates-io]
-jubjub = { git = "https://github.com/dannywillems/jubjub.git", rev = "bbc02c837de0a515e83a61c64eb63ca293767612" }
+jubjub = { git = "https://github.com/nuttycom/jubjub.git", rev = "b702b55c0f6a23ff5d867e52a8d815904c45a36e" }
 bls12_381 = { git = "https://github.com/dannywillems/bls12_381.git", rev = "90261e682a44da54ffbc0089ac5aea105ec74cbf" }
-reddsa = { git = "https://github.com/dannywillems/reddsa.git", rev = "d90e8e9dd5961c0ef563255ec398c24e1faaa66e" }
+reddsa = { git = "https://github.com/nuttycom/reddsa.git", rev = "d0b05e4f691e9562b1c3997cd0dc115af3e4bc8c" }
 pairing = { git = "https://github.com/dannywillems/pairing.git", rev = "e0fb32c2fc29e61cf89bbbfbe2ea604b069500c9" }
-pasta_curves = { git = "https://github.com/zcash/pasta_curves.git", rev = "a51d76f82bb28b01fc76f0f8ed3e5fdb055481dd" }
-redjubjub = { git = "https://github.com/dannywillems/redjubjub.git", rev = "7a9b2ef386ed63dc65c62246324b0af6c277de2d" }
+pasta_curves = { git = "https://github.com/zcash/pasta_curves.git", rev = "437d3c08eef2cd7a3c137c2d02e4bce246b1e243" }
+redjubjub = { git = "https://github.com/nuttycom/redjubjub.git", rev = "8a0b52a0b14b8c753b3130db1ec6841ab87b3a06" }
 bellman = { git = "https://github.com/dannywillems/bellman.git", rev = "4665bd6b22d4f02c37ff3f5339fcf3c041a692cf" }
 zcash_note_encryption = { git = "https://github.com/zcash/zcash_note_encryption.git", rev = "a0968095ca6bf94226875ba65c4ee37880ea68f6" }
+zip32 = { git = "https://github.com/zcash/zip32.git", rev = "0399cd62dae9b3abe5dc8d5e761b8ef11b57b12a" }
