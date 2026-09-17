@@ -177,8 +177,7 @@ impl ValueCommitment {
 
 /// Bytes that are not a canonical, non-small-order encoding of a Jubjub point.
 ///
-/// Leaf error for [`ValueCommitmentBytes::decompress`], which does not know which field it was
-/// read into; a description names the field in its own error.
+/// Leaf error for [`ValueCommitmentBytes::decompress`]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InvalidPoint;
 
@@ -191,7 +190,7 @@ impl core::fmt::Display for InvalidPoint {
 #[cfg(feature = "std")]
 impl std::error::Error for InvalidPoint {}
 
-/// `cv` as a parse-tier description holds it.
+/// Compressed encoding for `cv` that CAN represent a non-canonical encoding of a Jubjub point.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ValueCommitmentBytes([u8; 32]);
 
@@ -202,13 +201,13 @@ impl From<[u8; 32]> for ValueCommitmentBytes {
 }
 
 impl From<&ValueCommitment> for ValueCommitmentBytes {
+    /// Converts to [`ValueCommitmentBytes`], forgetting the invariants enforced by [`ValueCommitment`].
     fn from(cv: &ValueCommitment) -> Self {
         ValueCommitmentBytes(cv.to_bytes())
     }
 }
 
 impl ValueCommitmentBytes {
-    /// Returns the byte encoding of this value commitment.
     pub fn to_bytes(&self) -> [u8; 32] {
         self.0
     }
