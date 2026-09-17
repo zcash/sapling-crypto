@@ -9,6 +9,9 @@ and this library adheres to Rust's notion of
 
 ### Changed
 - MSRV is now 1.88
+- `tracing` is now an optional dependency, enabled by the `circuit` feature. It was
+  only ever used by the `circuit`-gated batch validator, and its `tracing-core`
+  dependency does not build for targets without atomic compare-and-swap.
 
 ## [0.7.0] - 2026-04-21
 

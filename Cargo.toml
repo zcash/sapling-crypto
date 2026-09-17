@@ -52,7 +52,7 @@ hex = { version = "0.4", default-features = false, features = ["alloc"] }
 
 # Logging and metrics
 memuse = { version = "0.2.2", default-features = false }
-tracing = { version = "0.1", default-features = false }
+tracing = { version = "0.1", optional = true, default-features = false }
 
 # Note Commitment Trees
 bitvec = { version = "1", default-features = false }
@@ -98,6 +98,7 @@ std = [
 ## Enables creation of Sapling proofs
 circuit = [
   "dep:bellman",
+  "dep:tracing",
   "bls12_381/bits",
   "bls12_381/groups",
   "bls12_381/pairings",
