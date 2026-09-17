@@ -69,3 +69,19 @@ pub mod testing {
 
 #[cfg(test)]
 mod test_vectors;
+
+/// Zeroizes a secret intermediate value.
+///
+/// This is a no-op unless the `zeroize` feature is enabled.
+#[cfg(feature = "zeroize")]
+#[inline]
+pub(crate) fn zeroize_secret<Z: zeroize::Zeroize + ?Sized>(secret: &mut Z) {
+    secret.zeroize();
+}
+
+/// Zeroizes a secret intermediate value.
+///
+/// This is a no-op unless the `zeroize` feature is enabled.
+#[cfg(not(feature = "zeroize"))]
+#[inline]
+pub(crate) fn zeroize_secret<Z: ?Sized>(_secret: &mut Z) {}
