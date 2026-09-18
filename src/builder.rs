@@ -6,7 +6,7 @@ use core::{fmt, iter, marker::PhantomData};
 
 use group::ff::Field;
 use incrementalmerkletree::Position;
-use rand::{seq::SliceRandom, RngCore};
+use rand::{seq::SliceRandom, Rng};
 use rand_core::CryptoRng;
 use redjubjub::{Binding, SpendAuth};
 use zcash_note_encryption::EphemeralKeyBytes;
@@ -198,7 +198,7 @@ impl SpendInfo {
     /// Defined in [Zcash Protocol Spec § 4.8.2: Dummy Notes (Sapling)][saplingdummynotes].
     ///
     /// [saplingdummynotes]: https://zips.z.cash/protocol/protocol.pdf#saplingdummynotes
-    fn dummy<R: RngCore>(mut rng: R) -> Self {
+    fn dummy<R: Rng>(mut rng: R) -> Self {
         let (sk, _, note) = Note::dummy(&mut rng);
         let merkle_path = MerklePath::from_parts(
             iter::repeat_with(|| Node::from_scalar(jubjub::Base::random(&mut rng)))
@@ -228,7 +228,7 @@ impl SpendInfo {
         }
     }
 
-    fn prepare<R: RngCore>(self, rng: R) -> PreparedSpendInfo {
+    fn prepare<R: Rng>(self, rng: R) -> PreparedSpendInfo {
         PreparedSpendInfo {
             fvk: self.fvk,
             note: self.note,
@@ -249,7 +249,7 @@ struct PreparedSpendInfo {
 }
 
 impl PreparedSpendInfo {
-    fn build_inner<R: RngCore>(
+    fn build_inner<R: Rng>(
         &self,
         mut rng: R,
     ) -> (
@@ -275,7 +275,7 @@ impl PreparedSpendInfo {
     }
 
     #[cfg(feature = "circuit")]
-    fn build<Pr: SpendProver, R: RngCore>(
+    fn build<Pr: SpendProver, R: Rng>(
         self,
         proof_generation_key: Option<ProofGenerationKey>,
         rng: R,
@@ -318,13 +318,13 @@ impl PreparedSpendInfo {
             rk,
             zkproof,
             SigningMetadata {
-                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask),
+                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask.clone()),
                 parts: SigningParts { ak, alpha },
             },
         ))
     }
 
-    fn into_pczt<R: RngCore>(self, rng: R) -> crate::pczt::Spend {
+    fn into_pczt<R: Rng>(self, rng: R) -> crate::pczt::Spend {
         let (cv, nullifier, rk, alpha) = self.build_inner(rng);
 
         crate::pczt::Spend {
@@ -344,7 +344,7 @@ impl PreparedSpendInfo {
             witness: Some(self.merkle_path),
             alpha: Some(alpha),
             zip32_derivation: None,
-            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask),
+            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask.clone()),
             proprietary: BTreeMap::new(),
         }
     }
@@ -388,7 +388,7 @@ impl OutputInfo {
     }
 
     /// Constructs a new dummy Sapling output.
-    pub fn dummy<R: RngCore>(mut rng: &mut R) -> Self {
+    pub fn dummy<R: Rng>(mut rng: &mut R) -> Self {
         // This is a dummy output
         let dummy_to = {
             let mut diversifier = Diversifier([0; 11]);
@@ -404,7 +404,7 @@ impl OutputInfo {
         Self::new(None, dummy_to, NoteValue::ZERO, [0u8; 512])
     }
 
-    fn prepare<R: RngCore>(
+    fn prepare<R: Rng>(
         self,
         rng: &mut R,
         zip212_enforcement: Zip212Enforcement,
@@ -431,7 +431,7 @@ struct PreparedOutputInfo {
 }
 
 impl PreparedOutputInfo {
-    fn build_inner<P, R: RngCore>(
+    fn build_inner<P, R: Rng>(
         &self,
         zkproof: impl FnOnce(&EphemeralSecretKey) -> P,
         rng: &mut R,
@@ -452,7 +452,7 @@ impl PreparedOutputInfo {
 
         let cmu = self.note.cmu();
 
-        let enc_ciphertext = encryptor.encrypt_note_plaintext();
+        let enc_ciphertext = encryptor.encrypt_note_plaintext().0;
         let out_ciphertext = encryptor.encrypt_outgoing_plaintext(&cv, &cmu, rng);
 
         let epk = encryptor.epk();
@@ -468,10 +468,7 @@ impl PreparedOutputInfo {
     }
 
     #[cfg(feature = "circuit")]
-    fn build<Pr: OutputProver, R: RngCore>(
-        self,
-        rng: &mut R,
-    ) -> OutputDescription<circuit::Output> {
+    fn build<Pr: OutputProver, R: Rng>(self, rng: &mut R) -> OutputDescription<circuit::Output> {
         let (cv, cmu, ephemeral_key, enc_ciphertext, out_ciphertext, zkproof) = self.build_inner(
             |esk| {
                 Pr::prepare_circuit(
@@ -495,7 +492,7 @@ impl PreparedOutputInfo {
         )
     }
 
-    fn into_pczt<R: RngCore>(self, rng: &mut R) -> crate::pczt::Output {
+    fn into_pczt<R: Rng>(self, rng: &mut R) -> crate::pczt::Output {
         let (cv, cmu, ephemeral_key, enc_ciphertext, out_ciphertext, _) =
             self.build_inner(|_| (), rng);
 
@@ -669,7 +666,7 @@ impl Builder {
 
     /// Constructs the Sapling bundle from the builder's accumulated state.
     #[cfg(feature = "circuit")]
-    pub fn build<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
+    pub fn build<SP: SpendProver, OP: OutputProver, R: Rng, V: TryFrom<i64>>(
         self,
         extsks: &[ExtendedSpendingKey],
         rng: R,
@@ -689,7 +686,7 @@ impl Builder {
     /// metadata, for inclusion in a PCZT.
     pub fn build_for_pczt(
         self,
-        rng: impl RngCore,
+        rng: impl Rng,
     ) -> Result<(crate::pczt::Bundle, SaplingMetadata), Error> {
         match self.zip212_enforcement {
             Zip212Enforcement::Off | Zip212Enforcement::GracePeriod => {
@@ -732,7 +729,7 @@ impl Builder {
 /// Constructs a new Sapling transaction bundle of the given type from the specified set of spends
 /// and outputs.
 #[cfg(feature = "circuit")]
-pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
+pub fn bundle<SP: SpendProver, OP: OutputProver, R: Rng, V: TryFrom<i64>>(
     rng: R,
     bundle_type: BundleType,
     zip212_enforcement: Zip212Enforcement,
@@ -811,7 +808,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: RngCore, V: TryFrom<i64>>(
     )
 }
 
-fn build_bundle<B, R: RngCore>(
+fn build_bundle<B, R: Rng>(
     mut rng: R,
     bundle_type: BundleType,
     zip212_enforcement: Zip212Enforcement,
@@ -1003,7 +1000,7 @@ impl<U: ProverProgress> ProverProgress for &mut U {
 }
 
 #[cfg(feature = "circuit")]
-struct CreateProofs<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress> {
+struct CreateProofs<'a, SP: SpendProver, OP: OutputProver, R: Rng, U: ProverProgress> {
     spend_prover: &'a SP,
     output_prover: &'a OP,
     rng: R,
@@ -1013,7 +1010,7 @@ struct CreateProofs<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: Prover
 }
 
 #[cfg(feature = "circuit")]
-impl<'a, SP: SpendProver, OP: OutputProver, R: RngCore, U: ProverProgress>
+impl<'a, SP: SpendProver, OP: OutputProver, R: Rng, U: ProverProgress>
     CreateProofs<'a, SP, OP, R, U>
 {
     fn new(
@@ -1071,7 +1068,7 @@ impl<S: InProgressSignatures, V> Bundle<InProgress<Unproven, S>, V> {
         self,
         spend_prover: &SP,
         output_prover: &OP,
-        rng: impl RngCore,
+        rng: impl Rng,
         progress_notifier: impl ProverProgress,
     ) -> Bundle<InProgress<Proven, S>, V> {
         let total_progress =
@@ -1167,7 +1164,7 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, Unsigned>, V> {
     /// Loads the sighash into this bundle, preparing it for signing.
     ///
     /// This API ensures that all signatures are created over the same sighash.
-    pub fn prepare<R: RngCore + CryptoRng>(
+    pub fn prepare<R: Rng + CryptoRng>(
         self,
         mut rng: R,
         sighash: [u8; 32],
@@ -1198,7 +1195,7 @@ impl<V> Bundle<InProgress<Proven, Unsigned>, V> {
     ///
     /// This is a helper method that wraps [`Bundle::prepare`], [`Bundle::sign`], and
     /// [`Bundle::finalize`].
-    pub fn apply_signatures<R: RngCore + CryptoRng>(
+    pub fn apply_signatures<R: Rng + CryptoRng>(
         self,
         mut rng: R,
         sighash: [u8; 32],
@@ -1217,7 +1214,7 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, PartiallyAuthorized>, V> {
     /// Signs this bundle with the given [`redjubjub::SigningKey`].
     ///
     /// This will apply signatures for all notes controlled by this spending key.
-    pub fn sign<R: RngCore + CryptoRng>(self, mut rng: R, ask: &SpendAuthorizingKey) -> Self {
+    pub fn sign<R: Rng + CryptoRng>(self, mut rng: R, ask: &SpendAuthorizingKey) -> Self {
         let expected_ak = ask.into();
         let sighash = self.authorization().sigs.sighash;
         self.map_authorization(
@@ -1379,7 +1376,7 @@ pub(crate) mod testing {
                         bundle.create_proofs(&MockSpendProver, &MockOutputProver, &mut rng, ());
 
                     bundle
-                        .apply_signatures(&mut rng, fake_sighash_bytes, &[extsk.expsk.ask])
+                        .apply_signatures(&mut rng, fake_sighash_bytes, &[extsk.expsk.ask.clone()])
                         .unwrap()
                 },
             )

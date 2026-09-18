@@ -26,9 +26,13 @@ use redjubjub::SpendAuth;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_spec::PrfExpand;
+#[cfg(feature = "zeroize")]
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::zeroize_secret;
 
 #[cfg(all(feature = "circuit", test))]
-use rand_core::RngCore;
+use rand_core::Rng;
 
 /// Errors that can occur in the decoding of Sapling spending keys.
 #[derive(Debug)]
@@ -68,17 +72,28 @@ impl std::error::Error for DecodingError {}
 ///
 /// $\mathsf{ask}$ as defined in [Zcash Protocol Spec § 4.2.2: Sapling Key Components][saplingkeycomponents].
 ///
+/// If the `zeroize` feature is enabled, the key material is zeroized on drop.
+///
 /// [saplingkeycomponents]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
 #[derive(Clone, Debug)]
 pub struct SpendAuthorizingKey(redjubjub::SigningKey<SpendAuth>);
 
 impl PartialEq for SpendAuthorizingKey {
     fn eq(&self, other: &Self) -> bool {
-        <[u8; 32]>::from(self.0)
-            .ct_eq(&<[u8; 32]>::from(other.0))
-            .into()
+        self.0.to_bytes().ct_eq(&other.0.to_bytes()).into()
     }
 }
+
+#[cfg(feature = "zeroize")]
+impl Zeroize for SpendAuthorizingKey {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+// The inner `redjubjub::SigningKey` zeroizes itself on drop.
+#[cfg(feature = "zeroize")]
+impl ZeroizeOnDrop for SpendAuthorizingKey {}
 
 impl Eq for SpendAuthorizingKey {}
 
@@ -91,15 +106,24 @@ impl From<&SpendValidatingKey> for jubjub::ExtendedPoint {
 impl SpendAuthorizingKey {
     /// Derives ask from sk. Internal use only, does not enforce all constraints.
     fn derive_inner(sk: &[u8]) -> jubjub::Scalar {
-        jubjub::Scalar::from_bytes_wide(&PrfExpand::SAPLING_ASK.with(sk))
+        let mut prf = PrfExpand::SAPLING_ASK.with(sk);
+        let ask = jubjub::Scalar::from_bytes_wide(&prf);
+        zeroize_secret(&mut prf);
+        ask
     }
 
     /// Constructs a `SpendAuthorizingKey` from a raw scalar.
+    ///
+    /// The scalar is copied into the returned key; the caller is responsible for
+    /// zeroizing its own copy once it is no longer needed.
     pub(crate) fn from_scalar(ask: jubjub::Scalar) -> Option<Self> {
         if ask.is_zero().into() {
             None
         } else {
-            Some(SpendAuthorizingKey(ask.to_bytes().try_into().unwrap()))
+            let mut repr = ask.to_bytes();
+            let key = SpendAuthorizingKey(repr.try_into().unwrap());
+            zeroize_secret(&mut repr);
+            Some(key)
         }
     }
 
@@ -130,15 +154,21 @@ impl SpendAuthorizingKey {
     }
 
     /// Converts this spend authorizing key to its serialized form.
+    ///
+    /// The returned array is secret key material; the caller is responsible for
+    /// zeroizing it once it is no longer needed.
     pub fn to_bytes(&self) -> [u8; 32] {
-        <[u8; 32]>::from(self.0)
+        self.0.to_bytes()
     }
 
     /// Converts this spend authorizing key to a raw scalar.
     ///
     /// Only used for ZIP 32 child derivation.
     pub(crate) fn to_scalar(&self) -> jubjub::Scalar {
-        jubjub::Scalar::from_repr(self.0.into()).unwrap()
+        let mut repr = self.0.to_bytes();
+        let ask = jubjub::Scalar::from_repr(repr).unwrap();
+        zeroize_secret(&mut repr);
+        ask
     }
 
     /// Randomizes this spend authorizing key with the given `randomizer`.
@@ -176,7 +206,7 @@ impl Eq for SpendValidatingKey {}
 impl SpendValidatingKey {
     /// For circuit tests only.
     #[cfg(all(feature = "circuit", test))]
-    pub(crate) fn fake_random<R: RngCore>(mut rng: R) -> Self {
+    pub(crate) fn fake_random<R: Rng>(mut rng: R) -> Self {
         loop {
             if let Some(k) = Self::from_bytes(&jubjub::SubgroupPoint::random(&mut rng).to_bytes()) {
                 break k;
@@ -229,12 +259,42 @@ impl SpendValidatingKey {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OutgoingViewingKey(pub [u8; 32]);
 
+/// `OutgoingViewingKey` is `Copy`, so it cannot implement `ZeroizeOnDrop`; types that
+/// own one alongside secret key material are responsible for zeroizing it.
+#[cfg(feature = "zeroize")]
+impl Zeroize for OutgoingViewingKey {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
 /// A Sapling expanded spending key
+///
+/// If the `zeroize` feature is enabled, the key material is zeroized on drop.
 #[derive(Clone)]
 pub struct ExpandedSpendingKey {
     pub ask: SpendAuthorizingKey,
     pub nsk: jubjub::Fr,
     pub ovk: OutgoingViewingKey,
+}
+
+#[cfg(feature = "zeroize")]
+impl Zeroize for ExpandedSpendingKey {
+    fn zeroize(&mut self) {
+        self.ask.zeroize();
+        self.nsk.zeroize();
+        self.ovk.zeroize();
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl ZeroizeOnDrop for ExpandedSpendingKey {}
+
+#[cfg(feature = "zeroize")]
+impl Drop for ExpandedSpendingKey {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
 
 impl fmt::Debug for ExpandedSpendingKey {
@@ -254,10 +314,13 @@ impl ExpandedSpendingKey {
     pub fn from_spending_key(sk: &[u8]) -> Self {
         let ask =
             SpendAuthorizingKey::from_spending_key(sk).expect("negligible chance of ask == 0");
-        let nsk = jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_NSK.with(sk));
+        let mut nsk_prf = PrfExpand::SAPLING_NSK.with(sk);
+        let nsk = jubjub::Fr::from_bytes_wide(&nsk_prf);
+        zeroize_secret(&mut nsk_prf);
+        let mut ovk_prf = PrfExpand::SAPLING_OVK.with(sk);
         let mut ovk = OutgoingViewingKey([0u8; 32]);
-        ovk.0
-            .copy_from_slice(&PrfExpand::SAPLING_OVK.with(sk)[..32]);
+        ovk.0.copy_from_slice(&ovk_prf[..32]);
+        zeroize_secret(&mut ovk_prf);
         ExpandedSpendingKey { ask, nsk, ovk }
     }
 
@@ -290,7 +353,9 @@ impl ExpandedSpendingKey {
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
         let mut repr = [0u8; 96];
         reader.read_exact(repr.as_mut())?;
-        Self::from_bytes(&repr).map_err(|e| match e {
+        let result = Self::from_bytes(&repr);
+        zeroize_secret(&mut repr);
+        result.map_err(|e| match e {
             DecodingError::InvalidAsk => {
                 io::Error::new(io::ErrorKind::InvalidData, "ask not in field")
             }
@@ -310,6 +375,9 @@ impl ExpandedSpendingKey {
     /// Encodes the expanded spending key to its serialized representation
     /// as part of the encoding of the extended spending key as defined in
     /// [ZIP 32](https://zips.z.cash/zip-0032)
+    ///
+    /// The returned array is secret key material; the caller is responsible for
+    /// zeroizing it once it is no longer needed.
     pub fn to_bytes(&self) -> [u8; 96] {
         let mut result = [0u8; 96];
         result[0..32].copy_from_slice(&self.ask.to_bytes());
@@ -319,10 +387,31 @@ impl ExpandedSpendingKey {
     }
 }
 
+/// A Sapling proof generation key.
+///
+/// If the `zeroize` feature is enabled, `nsk` is zeroized on drop.
 #[derive(Clone)]
 pub struct ProofGenerationKey {
     pub ak: SpendValidatingKey,
     pub nsk: jubjub::Fr,
+}
+
+#[cfg(feature = "zeroize")]
+impl Zeroize for ProofGenerationKey {
+    fn zeroize(&mut self) {
+        // `ak` is public and is left intact.
+        self.nsk.zeroize();
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl ZeroizeOnDrop for ProofGenerationKey {}
+
+#[cfg(feature = "zeroize")]
+impl Drop for ProofGenerationKey {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
 
 impl fmt::Debug for ProofGenerationKey {
@@ -753,7 +842,7 @@ mod tests {
 
             let alpha = jubjub::Scalar::from_bytes(&tv.alpha).unwrap();
 
-            assert_eq!(<[u8; 32]>::from(sk.randomize(&alpha)), tv.rsk);
+            assert_eq!(sk.randomize(&alpha).to_bytes(), tv.rsk);
             assert_eq!(vk.randomize(&alpha), rvk);
 
             // assert_eq!(vk.0.verify(&tv.m, &sig), Ok(()));
@@ -767,5 +856,41 @@ mod tests {
                 Err(redjubjub::Error::InvalidSignature),
             );
         }
+    }
+}
+
+#[cfg(all(test, feature = "zeroize"))]
+mod zeroize_tests {
+    use zeroize::Zeroize;
+
+    use super::ExpandedSpendingKey;
+
+    #[test]
+    fn expanded_spending_key_zeroizes() {
+        let mut expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]);
+        assert_ne!(expsk.to_bytes(), [0; 96]);
+
+        expsk.zeroize();
+        assert_eq!(expsk.to_bytes(), [0; 96]);
+    }
+
+    #[test]
+    fn proof_generation_key_zeroizes() {
+        let expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]);
+        let mut pgk = expsk.proof_generation_key();
+        assert_ne!(pgk.nsk, <jubjub::Fr as ff::Field>::ZERO);
+
+        pgk.zeroize();
+        assert_eq!(pgk.nsk, <jubjub::Fr as ff::Field>::ZERO);
+    }
+
+    #[test]
+    fn spend_authorizing_key_zeroizes() {
+        let expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]);
+        let mut ask = expsk.ask.clone();
+        assert_ne!(ask.to_bytes(), [0; 32]);
+
+        ask.zeroize();
+        assert_eq!(ask.to_bytes(), [0; 32]);
     }
 }

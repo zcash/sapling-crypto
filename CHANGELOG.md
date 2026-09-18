@@ -7,8 +7,31 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `zeroize` feature flag (enabled by default), which enables the `zeroize`
+  dependency (without its default features, so `no_std` is preserved), turns on
+  `jubjub/zeroize`, `redjubjub/zeroize` and `zip32/zeroize`, and provides:
+  - `impl zeroize::{Zeroize, ZeroizeOnDrop} for sapling_crypto::keys::SpendAuthorizingKey`
+  - `impl zeroize::{Zeroize, ZeroizeOnDrop} for sapling_crypto::keys::ExpandedSpendingKey`
+  - `impl zeroize::{Zeroize, ZeroizeOnDrop} for sapling_crypto::keys::ProofGenerationKey`
+  - `impl zeroize::{Zeroize, ZeroizeOnDrop} for sapling_crypto::zip32::ExtendedSpendingKey`
+  - `impl zeroize::Zeroize for sapling_crypto::keys::OutgoingViewingKey`
+  - `impl zeroize::Zeroize for sapling_crypto::zip32::DiversifierKey`
+  When enabled, the spending-key types are zeroized on drop, and the
+  intermediate values produced while deriving them are zeroized after use.
+
 ### Changed
 - MSRV is now 1.88
+- Migrated to `ff` 0.14, `group` 0.14, and `rand`/`rand_core` 0.10.
+- `rand_core` 0.10 merges `RngCore` into `Rng`, so every public API that was
+  bounded by `R: RngCore` is now bounded by `R: Rng`.
+- `bellman`'s Groth16 implementation now lives in the standalone `groth16`
+  crate, which the `circuit` feature depends on alongside `bellman`.
+- The `test-dependencies` feature now enables `rand/std_rng`.
+- Migrated to the generalized `zcash_note_encryption::Domain`, which makes the
+  note plaintext size variable. `COMPACT_NOTE_SIZE`, `NOTE_PLAINTEXT_SIZE`, and
+  `ENC_CIPHERTEXT_SIZE` are no longer re-exported from `zcash_note_encryption`
+  and are now defined in `sapling_crypto::note_encryption`.
 
 ## [0.7.0] - 2026-04-21
 

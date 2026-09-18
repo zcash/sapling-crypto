@@ -19,8 +19,8 @@ features = ["test-dependencies"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
-ff = { version = "0.13", default-features = false }
-group = "0.13"
+ff = { version = "0.14", default-features = false }
+group = "0.14"
 
 bls12_381 = { version = "0.8", default-features = false, features = ["alloc"] }
 jubjub = { version = "0.10", default-features = false, features = ["alloc"] }
@@ -34,11 +34,12 @@ getset = "0.1"
 corez = { version = "0.1.1", default-features = false, features = ["alloc"] }
 
 # Circuits
-bellman = { version = "0.14", default-features = false, features = ["groth16"], optional = true }
+bellman = { version = "0.14", default-features = false, optional = true }
+groth16 = { git = "https://github.com/dannywillems/bellman.git", rev = "4665bd6b22d4f02c37ff3f5339fcf3c041a692cf", default-features = false, optional = true }
 
 # CSPRNG
-rand = { version = "0.8", default-features = false }
-rand_core = { version = "0.6", default-features = false }
+rand = { version = "0.10", default-features = false }
+rand_core = { version = "0.10", default-features = false }
 
 # Digests
 blake2b_simd = { version = "1", default-features = false }
@@ -63,6 +64,7 @@ zcash_note_encryption = { version = "0.4", features = ["pre-zip-212"] }
 
 # Secret management
 subtle = { version = "2.6", default-features = false }
+zeroize = { version = "1", optional = true, default-features = false }
 
 # Static constants
 lazy_static = "1"
@@ -78,16 +80,17 @@ zip32 = { version = "0.2", default-features = false }
 
 [dev-dependencies]
 chacha20poly1305 = "0.10"
+rand = { version = "0.10", features = ["std_rng", "sys_rng"] }
 criterion = "0.5"
 incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
 proptest = ">=1.0.0, <1.7.0"
-rand_xorshift = "0.3"
+rand_xorshift = "0.5"
 
 [target.'cfg(unix)'.dev-dependencies]
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
 
 [features]
-default = ["multicore", "circuit"]
+default = ["multicore", "circuit", "zeroize"]
 std = [
   "corez/std",
   "dep:document-features",
@@ -98,6 +101,7 @@ std = [
 ## Enables creation of Sapling proofs
 circuit = [
   "dep:bellman",
+  "dep:groth16",
   "bls12_381/bits",
   "bls12_381/groups",
   "bls12_381/pairings",
@@ -106,16 +110,20 @@ circuit = [
 ]
 
 ## Enables multithreading support for creating proofs.
-multicore = ["bellman?/multicore"]
+multicore = ["bellman?/multicore", "groth16?/multicore"]
 
 ### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
 ### should not be relied upon and will be removed in a future release.
 temporary-zcashd = []
 
+## Zeroizes spending-key material on drop, and exposes `Zeroize` impls.
+zeroize = ["dep:zeroize", "jubjub/zeroize", "redjubjub/zeroize", "zip32/zeroize"]
+
 ## Exposes APIs that are useful for testing, such as `proptest` strategies.
 test-dependencies = [
     "incrementalmerkletree/test-dependencies",
     "dep:proptest",
+    "rand/std_rng",
 ]
 
 [[bench]]
@@ -125,3 +133,14 @@ harness = false
 [[bench]]
 name = "pedersen_hash"
 harness = false
+
+[patch.crates-io]
+jubjub = { git = "https://github.com/nuttycom/jubjub.git", rev = "b702b55c0f6a23ff5d867e52a8d815904c45a36e" }
+bls12_381 = { git = "https://github.com/dannywillems/bls12_381.git", rev = "90261e682a44da54ffbc0089ac5aea105ec74cbf" }
+reddsa = { git = "https://github.com/nuttycom/reddsa.git", rev = "d0b05e4f691e9562b1c3997cd0dc115af3e4bc8c" }
+pairing = { git = "https://github.com/dannywillems/pairing.git", rev = "e0fb32c2fc29e61cf89bbbfbe2ea604b069500c9" }
+pasta_curves = { git = "https://github.com/zcash/pasta_curves.git", rev = "437d3c08eef2cd7a3c137c2d02e4bce246b1e243" }
+redjubjub = { git = "https://github.com/nuttycom/redjubjub.git", rev = "8a0b52a0b14b8c753b3130db1ec6841ab87b3a06" }
+bellman = { git = "https://github.com/dannywillems/bellman.git", rev = "4665bd6b22d4f02c37ff3f5339fcf3c041a692cf" }
+zcash_note_encryption = { git = "https://github.com/zcash/zcash_note_encryption.git", rev = "a0968095ca6bf94226875ba65c4ee37880ea68f6" }
+zip32 = { git = "https://github.com/zcash/zip32.git", rev = "0399cd62dae9b3abe5dc8d5e761b8ef11b57b12a" }
