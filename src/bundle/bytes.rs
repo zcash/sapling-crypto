@@ -80,6 +80,28 @@ pub struct SpendDescriptionBytes<A: Authorization> {
     spend_auth_sig: A::AuthSig,
 }
 
+impl<A: Authorization> PartialEq for SpendDescriptionBytes<A>
+where
+    A::SpendProof: PartialEq,
+    A::AuthSig: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.cv == other.cv
+            && self.anchor == other.anchor
+            && self.nullifier == other.nullifier
+            && self.rk == other.rk
+            && self.zkproof == other.zkproof
+            && self.spend_auth_sig == other.spend_auth_sig
+    }
+}
+
+impl<A: Authorization> Eq for SpendDescriptionBytes<A>
+where
+    A::SpendProof: Eq,
+    A::AuthSig: Eq,
+{
+}
+
 impl<A: Authorization> fmt::Debug for SpendDescriptionBytes<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -305,6 +327,19 @@ pub struct OutputDescriptionBytes<Proof> {
     out_ciphertext: [u8; OUT_CIPHERTEXT_SIZE],
     zkproof: Proof,
 }
+
+impl<Proof: PartialEq> PartialEq for OutputDescriptionBytes<Proof> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cv == other.cv
+            && self.cmu == other.cmu
+            && self.ephemeral_key.0 == other.ephemeral_key.0
+            && self.enc_ciphertext == other.enc_ciphertext
+            && self.out_ciphertext == other.out_ciphertext
+            && self.zkproof == other.zkproof
+    }
+}
+
+impl<Proof: Eq> Eq for OutputDescriptionBytes<Proof> {}
 
 impl<Proof> fmt::Debug for OutputDescriptionBytes<Proof> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -598,6 +633,28 @@ pub struct BundleBytes<A: Authorization, V> {
     shielded_outputs: Vec<OutputDescriptionBytes<A::OutputProof>>,
     value_balance: V,
     authorization: A,
+}
+
+impl<A: Authorization + PartialEq, V: PartialEq> PartialEq for BundleBytes<A, V>
+where
+    A::SpendProof: PartialEq,
+    A::OutputProof: PartialEq,
+    A::AuthSig: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.shielded_spends == other.shielded_spends
+            && self.shielded_outputs == other.shielded_outputs
+            && self.value_balance == other.value_balance
+            && self.authorization == other.authorization
+    }
+}
+
+impl<A: Authorization + Eq, V: Eq> Eq for BundleBytes<A, V>
+where
+    A::SpendProof: Eq,
+    A::OutputProof: Eq,
+    A::AuthSig: Eq,
+{
 }
 
 impl<A: Authorization, V> BundleBytes<A, V> {
@@ -1027,38 +1084,28 @@ mod tests {
         #[test]
         fn bundle_round_trips_and_names_the_offending_spend(bundle in arb_bundle(0i64)) {
             let Some(bundle) = bundle else { return Ok(()) };
-            let (spends, outputs) = descriptions(bundle.clone());
+            let compressed = bundle.compress();
 
-            let recovered = bundle.compress()
+            let recovered = compressed
+                .clone()
                 .decompress()
                 .expect("a built bundle's points are all valid");
-            let (after_spends, after_outputs) = descriptions(recovered);
+            prop_assert_eq!(&recovered.compress(), &compressed);
 
-            prop_assert_eq!(
-                spends.iter().map(|s| s.to_bytes()).collect::<Vec<_>>(),
-                after_spends.iter().map(|s| s.to_bytes()).collect::<Vec<_>>()
-            );
-            prop_assert_eq!(
-                outputs.iter().map(|o| o.to_bytes()).collect::<Vec<_>>(),
-                after_outputs.iter().map(|o| o.to_bytes()).collect::<Vec<_>>()
-            );
-
+            let mut spends = compressed.shielded_spends().to_vec();
             if let Some(last) = spends.len().checked_sub(1) {
-                let mut tampered = spends;
-                tampered[last] = spend_with(small_order_cv(), NON_CANONICAL);
+                spends[last] = spend_with(small_order_cv(), NON_CANONICAL);
+                let tampered = BundleBytes::from_parts(
+                    spends,
+                    compressed.shielded_outputs().to_vec(),
+                    *compressed.value_balance(),
+                    *compressed.authorization(),
+                )
+                .expect("the bundle is non-empty");
+                prop_assert_ne!(&tampered, &compressed);
 
                 prop_assert_eq!(
-                    BundleBytes::<Authorized, i64>::from_parts(
-                        tampered,
-                        outputs,
-                        0,
-                        Authorized {
-                            binding_sig: redjubjub::Signature::from([0u8; 64]),
-                        },
-                    )
-                    .expect("the bundle is non-empty")
-                    .decompress()
-                    .unwrap_err(),
+                    tampered.decompress().unwrap_err(),
                     BundleDecompressionError::Spend {
                         index: last,
                         error: DecompressionError::InvalidValueCommitment,

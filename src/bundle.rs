@@ -48,7 +48,7 @@ impl Authorization for EffectsOnly {
 
 /// Authorizing data for a bundle of Sapling spends and outputs, ready to be committed to
 /// the ledger.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Authorized {
     // TODO: Make this private.
     pub binding_sig: redjubjub::Signature<Binding>,
