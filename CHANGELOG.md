@@ -21,6 +21,11 @@ and this library adheres to Rust's notion of
     `ValueCommitment::from_bytes_not_small_order`, with a `value::InvalidPoint` error
   - `OutputDescriptionBytes` implements `ShieldedOutput` and converts into
     `CompactOutputDescription`, for wallet trial-decryption without decompressing
+  - `impl {PartialEq, Eq}` for `bundle::{Authorized, SpendDescriptionBytes,
+    OutputDescriptionBytes, BundleBytes}`
+- `bundle::{SpendDescriptionEncoding, OutputDescriptionEncoding, BundleEncoding}`,
+  the views of the byte encodings implemented by both tiers, so serialization,
+  the ZIP-244 digests and the v4 sighash are written once rather than once per tier
 
 ### Changed
 - MSRV is now 1.88
