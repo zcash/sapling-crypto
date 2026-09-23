@@ -110,22 +110,17 @@ impl SpendAuthorizingKey {
 
     /// Parses a `SpendAuthorizingKey` from its encoded form.
     pub(crate) fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        <[u8; 32]>::try_from(bytes)
+        let b = <[u8; 32]>::try_from(bytes).ok()?;
+        // RedJubjub.Private permits the full set of Jubjub scalars including
+        // zero. However, a SpendAuthorizingKey is further restricted within the
+        // Sapling key tree to be a non-zero scalar.
+        let s = Option::<jubjub::Scalar>::from(jubjub::Scalar::from_repr(b))?;
+        if bool::from(s.is_zero()) {
+            return None;
+        }
+
+        redjubjub::SigningKey::try_from(b)
             .ok()
-            .and_then(|b| {
-                // RedJubjub.Private permits the full set of Jubjub scalars including
-                // zero. However, a SpendAuthorizingKey is further restricted within the
-                // Sapling key tree to be a non-zero scalar.
-                jubjub::Scalar::from_repr(b)
-                    .and_then(|s| {
-                        CtOption::new(
-                            redjubjub::SigningKey::try_from(b)
-                                .expect("RedJubjub permits the set of valid SpendAuthorizingKeys"),
-                            !s.is_zero(),
-                        )
-                    })
-                    .into()
-            })
             .map(SpendAuthorizingKey)
     }
 
@@ -192,24 +187,19 @@ impl SpendValidatingKey {
 
     /// Parses a `SpendValidatingKey` from its encoded form.
     pub(crate) fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        <[u8; 32]>::try_from(bytes)
+        let b = <[u8; 32]>::try_from(bytes).ok()?;
+        // RedJubjub.Public permits the full set of Jubjub points including the
+        // identity and cofactors; this is the type used for `rk` in Spend
+        // descriptions. However, a SpendValidatingKey is further restricted
+        // within the Sapling key tree to be a non-identity element of the
+        // prime-order subgroup.
+        let p = Option::<jubjub::SubgroupPoint>::from(jubjub::SubgroupPoint::from_bytes(&b))?;
+        if bool::from(p.is_identity()) {
+            return None;
+        }
+
+        redjubjub::VerificationKey::try_from(b)
             .ok()
-            .and_then(|b| {
-                // RedJubjub.Public permits the full set of Jubjub points including the
-                // identity and cofactors; this is the type used for `rk` in Spend
-                // descriptions. However, a SpendValidatingKey is further restricted
-                // within the Sapling key tree to be a non-identity element of the
-                // prime-order subgroup.
-                jubjub::SubgroupPoint::from_bytes(&b)
-                    .and_then(|p| {
-                        CtOption::new(
-                            redjubjub::VerificationKey::try_from(b)
-                                .expect("RedJubjub permits the set of valid SpendValidatingKeys"),
-                            !p.is_identity(),
-                        )
-                    })
-                    .into()
-            })
             .map(SpendValidatingKey)
     }
 
@@ -740,6 +730,44 @@ mod tests {
 
         // nk is allowed to be the identity.
         assert!(FullViewingKey::read(&buf[..]).is_ok());
+    }
+
+    #[test]
+    fn spend_validating_key_rejects_malformed_bytes_without_panicking() {
+        for seed in 0u64..1000 {
+            let mut bytes = [0u8; 32];
+            for (i, byte) in bytes.iter_mut().enumerate() {
+                *byte = ((seed.wrapping_mul(31).wrapping_add(i as u64 * 17)) & 0xff) as u8;
+            }
+
+            assert!(std::panic::catch_unwind(|| SpendValidatingKey::from_bytes(&bytes)).is_ok());
+        }
+
+        let mut malformed = [0u8; 32];
+        malformed[0] = 0x01;
+        malformed[31] = 0x80;
+
+        let result = std::panic::catch_unwind(|| SpendValidatingKey::from_bytes(&malformed));
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn spend_authorizing_key_rejects_malformed_bytes_without_panicking() {
+        for seed in 0u64..1000 {
+            let mut bytes = [0u8; 32];
+            for (i, byte) in bytes.iter_mut().enumerate() {
+                *byte = ((seed.wrapping_mul(37).wrapping_add(i as u64 * 19)) & 0xff) as u8;
+            }
+
+            assert!(std::panic::catch_unwind(|| SpendAuthorizingKey::from_bytes(&bytes)).is_ok());
+        }
+
+        let malformed = [0xff; 32];
+
+        let result = std::panic::catch_unwind(|| SpendAuthorizingKey::from_bytes(&malformed));
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 
     #[test]
