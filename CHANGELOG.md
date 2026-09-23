@@ -7,6 +7,21 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+
+- A bytes tier holding a Spend or Output description with `cv` and `rk` left
+  compressed, so reading from disk/wire costs no curve arithmetic
+  - `bundle::{SpendDescriptionBytes, SpendDescriptionV5Bytes, OutputDescriptionBytes, OutputDescriptionV5Bytes, BundleBytes}`, mirroring their point-tier counterparts,
+    with `to_bytes`/`from_bytes`
+  - `decompress` on each `*DescriptionBytes`, recovering the point tier, plus
+    `bundle::{DescriptionParseError, DecompressionError, BundleDecompressionError}`
+  - `compress` on `SpendDescription`, `SpendDescriptionV5`, `OutputDescription`,
+    `OutputDescriptionV5` and `Bundle` that compresses to bytes representation
+  - `value::ValueCommitmentBytes`, whose `decompress` enforces the rules from
+    `ValueCommitment::from_bytes_not_small_order`, with a `value::InvalidPoint` error
+  - `OutputDescriptionBytes` implements `ShieldedOutput` and converts into
+    `CompactOutputDescription`, for wallet trial-decryption without decompressing
+
 ### Changed
 - MSRV is now 1.88
 - `tracing` is now an optional dependency, enabled by the `circuit` feature. It was

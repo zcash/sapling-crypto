@@ -17,6 +17,14 @@ use crate::{
     Nullifier,
 };
 
+mod bytes;
+pub use bytes::{
+    BundleBytes, BundleDecompressionError, DecompressionError, DescriptionParseError,
+    OutputDescriptionBytes, OutputDescriptionV5Bytes, SpendDescriptionBytes,
+    SpendDescriptionV5Bytes, OUTPUT_DESCRIPTION_V4_SIZE, OUTPUT_DESCRIPTION_V5_SIZE,
+    SPEND_DESCRIPTION_V4_SIZE, SPEND_DESCRIPTION_V5_SIZE,
+};
+
 pub type GrothProofBytes = [u8; GROTH_PROOF_SIZE];
 
 /// Defines the authorization type of a Sapling bundle.
