@@ -17,6 +17,16 @@ use crate::{
     Nullifier,
 };
 
+mod bytes;
+mod encoding;
+pub use bytes::{
+    BundleBytes, BundleDecompressionError, DecompressionError, DescriptionParseError,
+    OutputDescriptionBytes, OutputDescriptionV5Bytes, SpendDescriptionBytes,
+    SpendDescriptionV5Bytes, OUTPUT_DESCRIPTION_V4_SIZE, OUTPUT_DESCRIPTION_V5_SIZE,
+    SPEND_DESCRIPTION_V4_SIZE, SPEND_DESCRIPTION_V5_SIZE,
+};
+pub use encoding::{BundleEncoding, OutputDescriptionEncoding, SpendDescriptionEncoding};
+
 pub type GrothProofBytes = [u8; GROTH_PROOF_SIZE];
 
 /// Defines the authorization type of a Sapling bundle.
@@ -38,7 +48,7 @@ impl Authorization for EffectsOnly {
 
 /// Authorizing data for a bundle of Sapling spends and outputs, ready to be committed to
 /// the ledger.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Authorized {
     // TODO: Make this private.
     pub binding_sig: redjubjub::Signature<Binding>,
