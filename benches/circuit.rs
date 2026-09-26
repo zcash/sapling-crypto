@@ -45,8 +45,12 @@ fn criterion_benchmark(c: &mut Criterion) {
             randomness: jubjub::Fr::random(&mut rng),
         };
 
-        let sk: [u8; 32] = rng.random();
-        let expsk = ExpandedSpendingKey::from_spending_key(&sk);
+        let expsk = loop {
+            let sk: [u8; 32] = rng.random();
+            if let Some(expsk) = ExpandedSpendingKey::from_spending_key(&sk) {
+                break expsk;
+            }
+        };
 
         let proof_generation_key = expsk.proof_generation_key();
 

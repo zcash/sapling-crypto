@@ -107,13 +107,14 @@ impl Spend {
 
         let proof_generation_key = proof_generation_key
             .map(|(ak, nsk)| {
-                Ok(ProofGenerationKey {
-                    ak: SpendValidatingKey::from_bytes(&ak)
+                ProofGenerationKey::from_parts(
+                    SpendValidatingKey::from_bytes(&ak)
                         .ok_or(ParseError::InvalidProofGenerationKey)?,
-                    nsk: jubjub::Scalar::from_repr(nsk)
+                    jubjub::Scalar::from_repr(nsk)
                         .into_option()
                         .ok_or(ParseError::InvalidProofGenerationKey)?,
-                })
+                )
+                .ok_or(ParseError::InvalidProofGenerationKey)
             })
             .transpose()?;
 

@@ -204,7 +204,6 @@ pub mod mock {
         ) -> Option<circuit::Spend> {
             let payment_address = proof_generation_key
                 .to_viewing_key()
-                .ivk()
                 .to_payment_address(diversifier);
             Some(circuit::Spend {
                 value_commitment_opening: Some(ValueCommitmentOpening {
