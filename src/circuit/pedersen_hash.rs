@@ -112,7 +112,7 @@ mod test {
     use bellman::gadgets::boolean::{AllocatedBit, Boolean};
     use bellman::gadgets::test::*;
     use group::{ff::PrimeField, Curve};
-    use rand_core::{RngCore, SeedableRng};
+    use rand_core::{Rng, SeedableRng};
     use rand_xorshift::XorShiftRng;
 
     /// Predict the number of constraints of a Pedersen hash

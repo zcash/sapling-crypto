@@ -1,5 +1,5 @@
-use bellman::groth16::{verify_proof, Proof};
 use bls12_381::Bls12;
+use groth16::{verify_proof, Proof};
 use redjubjub::{Binding, SpendAuth};
 
 use super::SaplingVerificationContextInner;

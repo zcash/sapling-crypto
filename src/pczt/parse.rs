@@ -33,7 +33,7 @@ impl Bundle {
             .ok_or(ParseError::InvalidAnchor)?;
 
         let bsk = bsk
-            .map(redjubjub::SigningKey::try_from)
+            .map(|b| redjubjub::SigningKey::from_bytes(&b))
             .transpose()
             .map_err(|_| ParseError::InvalidBindingSignatureSigningKey)?;
 

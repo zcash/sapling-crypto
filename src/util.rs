@@ -1,6 +1,6 @@
 use blake2b_simd::Params;
 use ff::Field;
-use rand_core::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, Rng};
 
 use super::{note_encryption::Zip212Enforcement, Rseed};
 
@@ -12,14 +12,14 @@ pub fn hash_to_scalar(persona: &[u8], a: &[u8], b: &[u8]) -> jubjub::Fr {
     jubjub::Fr::from_bytes_wide(ret.as_array())
 }
 
-pub fn generate_random_rseed<R: RngCore + CryptoRng>(
+pub fn generate_random_rseed<R: Rng + CryptoRng>(
     zip212_enforcement: Zip212Enforcement,
     rng: &mut R,
 ) -> Rseed {
     generate_random_rseed_internal(zip212_enforcement, rng)
 }
 
-pub(crate) fn generate_random_rseed_internal<R: RngCore>(
+pub(crate) fn generate_random_rseed_internal<R: Rng>(
     zip212_enforcement: Zip212Enforcement,
     rng: &mut R,
 ) -> Rseed {

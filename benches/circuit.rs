@@ -1,11 +1,11 @@
 #[macro_use]
 extern crate criterion;
 
-use bellman::groth16::*;
 use bls12_381::Bls12;
 use criterion::Criterion;
+use groth16::*;
 use group::ff::Field;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use sapling_crypto::{
     circuit::{Spend, ValueCommitmentOpening},
@@ -45,7 +45,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             randomness: jubjub::Fr::random(&mut rng),
         };
 
-        let sk: [u8; 32] = rng.gen();
+        let sk: [u8; 32] = rng.random();
         let expsk = ExpandedSpendingKey::from_spending_key(&sk);
 
         let proof_generation_key = expsk.proof_generation_key();

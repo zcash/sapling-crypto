@@ -117,7 +117,7 @@ impl TrapdoorSum {
     ///
     /// This is public for access by `zcash_proofs`.
     pub fn into_bsk(self) -> redjubjub::SigningKey<Binding> {
-        redjubjub::SigningKey::try_from(self.0.to_bytes())
+        redjubjub::SigningKey::from_bytes(&self.0.to_bytes())
             .expect("valid scalars are valid signing keys")
     }
 }

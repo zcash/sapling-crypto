@@ -28,7 +28,7 @@ use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_spec::PrfExpand;
 
 #[cfg(all(feature = "circuit", test))]
-use rand_core::RngCore;
+use rand_core::Rng;
 
 /// Errors that can occur in the decoding of Sapling spending keys.
 #[derive(Debug)]
@@ -74,9 +74,7 @@ pub struct SpendAuthorizingKey(redjubjub::SigningKey<SpendAuth>);
 
 impl PartialEq for SpendAuthorizingKey {
     fn eq(&self, other: &Self) -> bool {
-        <[u8; 32]>::from(self.0)
-            .ct_eq(&<[u8; 32]>::from(other.0))
-            .into()
+        self.0.to_bytes().ct_eq(&other.0.to_bytes()).into()
     }
 }
 
@@ -99,7 +97,10 @@ impl SpendAuthorizingKey {
         if ask.is_zero().into() {
             None
         } else {
-            Some(SpendAuthorizingKey(ask.to_bytes().try_into().unwrap()))
+            Some(SpendAuthorizingKey(
+                redjubjub::SigningKey::from_bytes(&ask.to_bytes())
+                    .expect("canonical scalar encodings are valid RedJubjub signing keys"),
+            ))
         }
     }
 
@@ -119,7 +120,7 @@ impl SpendAuthorizingKey {
                 jubjub::Scalar::from_repr(b)
                     .and_then(|s| {
                         CtOption::new(
-                            redjubjub::SigningKey::try_from(b)
+                            redjubjub::SigningKey::from_bytes(&b)
                                 .expect("RedJubjub permits the set of valid SpendAuthorizingKeys"),
                             !s.is_zero(),
                         )
@@ -131,14 +132,14 @@ impl SpendAuthorizingKey {
 
     /// Converts this spend authorizing key to its serialized form.
     pub fn to_bytes(&self) -> [u8; 32] {
-        <[u8; 32]>::from(self.0)
+        self.0.to_bytes()
     }
 
     /// Converts this spend authorizing key to a raw scalar.
     ///
     /// Only used for ZIP 32 child derivation.
     pub(crate) fn to_scalar(&self) -> jubjub::Scalar {
-        jubjub::Scalar::from_repr(self.0.into()).unwrap()
+        jubjub::Scalar::from_repr(self.0.to_bytes()).unwrap()
     }
 
     /// Randomizes this spend authorizing key with the given `randomizer`.
@@ -176,7 +177,7 @@ impl Eq for SpendValidatingKey {}
 impl SpendValidatingKey {
     /// For circuit tests only.
     #[cfg(all(feature = "circuit", test))]
-    pub(crate) fn fake_random<R: RngCore>(mut rng: R) -> Self {
+    pub(crate) fn fake_random<R: Rng>(mut rng: R) -> Self {
         loop {
             if let Some(k) = Self::from_bytes(&jubjub::SubgroupPoint::random(&mut rng).to_bytes()) {
                 break k;
@@ -753,7 +754,7 @@ mod tests {
 
             let alpha = jubjub::Scalar::from_bytes(&tv.alpha).unwrap();
 
-            assert_eq!(<[u8; 32]>::from(sk.randomize(&alpha)), tv.rsk);
+            assert_eq!(sk.randomize(&alpha).to_bytes(), tv.rsk);
             assert_eq!(vk.randomize(&alpha), rvk);
 
             // assert_eq!(vk.0.verify(&tv.m, &sig), Ok(()));
