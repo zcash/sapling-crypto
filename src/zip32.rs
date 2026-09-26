@@ -79,11 +79,14 @@ fn derive_child_ovk(parent: &OutgoingViewingKey, i_l: &[u8]) -> OutgoingViewingK
 /// for the provided external FVK = (ak, nk, ovk) and dk encoded
 /// in a [Unified FVK].
 ///
+/// Returns `None` if the incoming viewing key of the internal full viewing key is zero.
+/// ZIP 32 treats the internal key as invalid in that case.
+///
 /// [Unified FVK]: https://zips.z.cash/zip-0316#encoding-of-unified-full-incoming-viewing-keys
 pub fn sapling_derive_internal_fvk(
     fvk: &FullViewingKey,
     dk: &DiversifierKey,
-) -> (FullViewingKey, DiversifierKey) {
+) -> Option<(FullViewingKey, DiversifierKey)> {
     let i = {
         let mut h = Blake2bParams::new()
             .hash_length(32)
@@ -101,14 +104,15 @@ pub fn sapling_derive_internal_fvk(
     let dk_internal = DiversifierKey(r[..32].try_into().unwrap());
     let ovk_internal = OutgoingViewingKey(r[32..].try_into().unwrap());
 
-    (
-        FullViewingKey {
-            vk: ViewingKey::from_parts(fvk.vk.ak().clone(), nk_internal)
-                .expect("negligible chance of ivk == 0"),
-            ovk: ovk_internal,
-        },
-        dk_internal,
-    )
+    ViewingKey::from_parts(fvk.vk.ak().clone(), nk_internal).map(|vk| {
+        (
+            FullViewingKey {
+                vk,
+                ovk: ovk_internal,
+            },
+            dk_internal,
+        )
+    })
 }
 
 /// A Sapling full viewing key fingerprint
@@ -270,19 +274,17 @@ impl KeyIndex {
 
 /// A Sapling extended spending key
 ///
+/// The incoming viewing keys of both the external and the internal full viewing key
+/// derived from an `ExtendedSpendingKey` are never zero.
+///
 /// If the `zeroize` feature is enabled, the key material is zeroized on drop.
-///
-/// # Panics
-///
-/// Methods that derive a viewing key panic if its incoming viewing key is zero. ZIP 32
-/// treats such a key as invalid. This has a negligible probability of occurring.
 #[derive(Clone)]
 pub struct ExtendedSpendingKey {
     depth: u8,
     parent_fvk_tag: FvkTag,
     child_index: KeyIndex,
     chain_code: ChainCode,
-    pub expsk: ExpandedSpendingKey,
+    expsk: ExpandedSpendingKey,
     dk: DiversifierKey,
 }
 
@@ -311,9 +313,9 @@ impl core::cmp::PartialEq for ExtendedSpendingKey {
             && self.parent_fvk_tag == rhs.parent_fvk_tag
             && self.child_index == rhs.child_index
             && self.chain_code == rhs.chain_code
-            && self.expsk.ask == rhs.expsk.ask
-            && self.expsk.nsk == rhs.expsk.nsk
-            && self.expsk.ovk == rhs.expsk.ovk
+            && self.expsk.ask() == rhs.expsk.ask()
+            && self.expsk.nsk() == rhs.expsk.nsk()
+            && self.expsk.ovk() == rhs.expsk.ovk()
             && self.dk == rhs.dk
     }
 }
@@ -329,7 +331,35 @@ impl core::fmt::Debug for ExtendedSpendingKey {
 }
 
 impl ExtendedSpendingKey {
-    pub fn master(seed: &[u8]) -> Self {
+    /// Constructs an extended spending key from its components.
+    ///
+    /// Returns `None` if the incoming viewing key of the internal full viewing key is
+    /// zero.
+    fn from_parts(
+        depth: u8,
+        parent_fvk_tag: FvkTag,
+        child_index: KeyIndex,
+        chain_code: ChainCode,
+        expsk: ExpandedSpendingKey,
+        dk: DiversifierKey,
+    ) -> Option<Self> {
+        let xsk = ExtendedSpendingKey {
+            depth,
+            parent_fvk_tag,
+            child_index,
+            chain_code,
+            expsk,
+            dk,
+        };
+        sapling_derive_internal_fvk(&xsk.fvk(), &xsk.dk).map(|_| xsk)
+    }
+
+    /// Derives the master extended spending key from a seed.
+    ///
+    /// Returns `None` if the master key is invalid: if it has `ask = 0`, or if the
+    /// incoming viewing key of its external or internal full viewing key is zero. This
+    /// has a negligible probability of occurring.
+    pub fn master(seed: &[u8]) -> Option<Self> {
         // The hasher's own output value cannot be zeroized; this copy of it can.
         let mut i: [u8; 64] = *Blake2bParams::new()
             .hash_length(64)
@@ -341,14 +371,16 @@ impl ExtendedSpendingKey {
         let mut c_m = [0u8; 32];
         c_m.copy_from_slice(&i[32..]);
 
-        let xsk = ExtendedSpendingKey {
-            depth: 0,
-            parent_fvk_tag: FvkTag::master(),
-            child_index: KeyIndex::Master,
-            chain_code: ChainCode::new(c_m),
-            expsk: ExpandedSpendingKey::from_spending_key(sk_m),
-            dk: DiversifierKey::master(sk_m),
-        };
+        let xsk = ExpandedSpendingKey::from_spending_key(sk_m).and_then(|expsk| {
+            Self::from_parts(
+                0,
+                FvkTag::master(),
+                KeyIndex::Master,
+                ChainCode::new(c_m),
+                expsk,
+                DiversifierKey::master(sk_m),
+            )
+        });
         zeroize_secret(&mut c_m);
         zeroize_secret(&mut i);
         xsk
@@ -356,6 +388,9 @@ impl ExtendedSpendingKey {
 
     /// Decodes the extended spending key from its serialized representation as defined in
     /// [ZIP 32](https://zips.z.cash/zip-0032)
+    ///
+    /// Returns an error if the incoming viewing key of the external or internal full
+    /// viewing key is zero.
     pub fn from_bytes(b: &[u8]) -> Result<Self, DecodingError> {
         if b.len() != 169 {
             return Err(DecodingError::LengthInvalid {
@@ -382,14 +417,15 @@ impl ExtendedSpendingKey {
         let mut dk = DiversifierKey([0u8; 32]);
         dk.0[..].copy_from_slice(&b[137..169]);
 
-        Ok(ExtendedSpendingKey {
+        Self::from_parts(
             depth,
             parent_fvk_tag,
             child_index,
-            chain_code: ChainCode::new(c),
+            ChainCode::new(c),
             expsk,
             dk,
-        })
+        )
+        .ok_or(DecodingError::InvalidIvk)
     }
 
     /// Reads and decodes the encoded form of the extended spending key as defined in
@@ -415,17 +451,17 @@ impl ExtendedSpendingKey {
         let mut dk = [0; 32];
         reader.read_exact(&mut dk)?;
 
-        let xsk = ExtendedSpendingKey {
+        let xsk = Self::from_parts(
             depth,
-            parent_fvk_tag: FvkTag(tag),
+            FvkTag(tag),
             child_index,
-            chain_code: ChainCode::new(c),
+            ChainCode::new(c),
             expsk,
-            dk: DiversifierKey(dk),
-        };
+            DiversifierKey(dk),
+        );
         zeroize_secret(&mut c);
         zeroize_secret(&mut dk);
-        Ok(xsk)
+        xsk.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "ivk is zero"))
     }
 
     /// Encodes the extended spending key to its serialized representation as defined in
@@ -451,22 +487,21 @@ impl ExtendedSpendingKey {
     }
 
     /// Returns the child key corresponding to the path derived from the master key
-    pub fn from_path(master: &ExtendedSpendingKey, path: &[ChildIndex]) -> Self {
-        let mut xsk = master.clone();
-        for &i in path.iter() {
-            xsk = xsk.derive_child(i);
-        }
-        xsk
+    ///
+    /// Returns `None` if any key along the path is invalid. See [`Self::derive_child`].
+    pub fn from_path(master: &ExtendedSpendingKey, path: &[ChildIndex]) -> Option<Self> {
+        path.iter()
+            .try_fold(master.clone(), |xsk, &i| xsk.derive_child(i))
     }
 
     /// Derives the child key at the given (hardened) index.
     ///
-    /// # Panics
-    ///
-    /// Panics if the child key has `ask = 0`, or if the incoming viewing key of this key
-    /// is zero. Each has a negligible probability of occurring.
+    /// Returns `None` if the child key is invalid: if it has `ask = 0`, or if the
+    /// incoming viewing key of its external or internal full viewing key is zero. This
+    /// has a negligible probability of occurring. ZIP 32 directs the caller to proceed
+    /// with the next index in that case.
     #[must_use]
-    pub fn derive_child(&self, i: ChildIndex) -> Self {
+    pub fn derive_child(&self, i: ChildIndex) -> Option<Self> {
         let fvk = self.fvk();
         let mut tmp = {
             let le_i = i.index().to_le_bytes();
@@ -491,29 +526,28 @@ impl ExtendedSpendingKey {
             let mut nsk_prf = PrfExpand::SAPLING_ZIP32_CHILD_I_NSK.with(i_l);
             let mut nsk = jubjub::Fr::from_bytes_wide(&nsk_prf);
             zeroize_secret(&mut nsk_prf);
-            let mut parent_ask = self.expsk.ask.to_scalar();
+            let mut parent_ask = self.expsk.ask().to_scalar();
             ask.add_assign(&parent_ask);
             zeroize_secret(&mut parent_ask);
-            nsk.add_assign(&self.expsk.nsk);
-            let ovk = derive_child_ovk(&self.expsk.ovk, i_l);
-            let expsk = ExpandedSpendingKey {
-                ask: SpendAuthorizingKey::from_scalar(ask).expect("negligible chance of ask == 0"),
-                nsk,
-                ovk,
-            };
+            nsk.add_assign(self.expsk.nsk());
+            let ovk = derive_child_ovk(self.expsk.ovk(), i_l);
+            let expsk = SpendAuthorizingKey::from_scalar(ask)
+                .and_then(|ask| ExpandedSpendingKey::from_parts(ask, nsk, ovk));
             zeroize_secret(&mut ask);
             zeroize_secret(&mut nsk);
             expsk
         };
 
-        let xsk = ExtendedSpendingKey {
-            depth: self.depth + 1,
-            parent_fvk_tag: FvkFingerprint::from(&fvk).tag(),
-            child_index: KeyIndex::Child(i),
-            chain_code: ChainCode::new(c_i),
-            expsk,
-            dk: self.dk.derive_child(i_l),
-        };
+        let xsk = expsk.and_then(|expsk| {
+            Self::from_parts(
+                self.depth + 1,
+                FvkFingerprint::from(&fvk).tag(),
+                KeyIndex::Child(i),
+                ChainCode::new(c_i),
+                expsk,
+                self.dk.derive_child(i_l),
+            )
+        });
         zeroize_secret(&mut c_i);
         zeroize_secret(&mut tmp);
         xsk
@@ -527,9 +561,14 @@ impl ExtendedSpendingKey {
 
     /// Derives an internal spending key given an external spending key.
     ///
+    /// Returns `None` if the internal spending key does not satisfy the invariant of
+    /// `ExtendedSpendingKey`: that is, if the incoming viewing key of the internal full
+    /// viewing key derived from the internal spending key is zero. This has a negligible
+    /// probability of occurring.
+    ///
     /// Specified in [ZIP 32](https://zips.z.cash/zip-0032#deriving-a-sapling-internal-spending-key).
     #[must_use]
-    pub fn derive_internal(&self) -> Self {
+    pub fn derive_internal(&self) -> Option<Self> {
         let i = {
             let fvk = self.fvk();
             let mut h = Blake2bParams::new()
@@ -544,37 +583,37 @@ impl ExtendedSpendingKey {
         let mut i_nsk = jubjub::Fr::from_bytes_wide(&i_nsk_prf);
         zeroize_secret(&mut i_nsk_prf);
         let mut r = PrfExpand::SAPLING_ZIP32_INTERNAL_DK_OVK.with(i.as_bytes());
-        let mut nsk_internal = i_nsk + self.expsk.nsk;
+        let mut nsk_internal = i_nsk + self.expsk.nsk();
         zeroize_secret(&mut i_nsk);
         let dk_internal = DiversifierKey(r[..32].try_into().unwrap());
         let ovk_internal = OutgoingViewingKey(r[32..].try_into().unwrap());
         zeroize_secret(&mut r);
 
-        let xsk = ExtendedSpendingKey {
-            depth: self.depth,
-            parent_fvk_tag: self.parent_fvk_tag,
-            child_index: self.child_index,
-            chain_code: self.chain_code,
-            expsk: ExpandedSpendingKey {
-                ask: self.expsk.ask.clone(),
-                nsk: nsk_internal,
-                ovk: ovk_internal,
-            },
-            dk: dk_internal,
-        };
+        // The internal full viewing key of this key is the full viewing key of the
+        // internal spending key, and `ExtendedSpendingKey::from_parts` has checked it.
+        let expsk =
+            ExpandedSpendingKey::from_parts(self.expsk.ask().clone(), nsk_internal, ovk_internal)
+                .expect("ExtendedSpendingKey::from_parts rejects a zero internal ivk");
+        let xsk = Self::from_parts(
+            self.depth,
+            self.parent_fvk_tag,
+            self.child_index,
+            self.chain_code,
+            expsk,
+            dk_internal,
+        );
         zeroize_secret(&mut nsk_internal);
         xsk
     }
 
+    /// Returns the expanded spending key component of this extended spending key.
+    pub fn expsk(&self) -> &ExpandedSpendingKey {
+        &self.expsk
+    }
+
     /// Derives the full viewing key corresponding to this spending key.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the derived incoming viewing key is zero. This has a negligible
-    /// probability of occurring.
     fn fvk(&self) -> FullViewingKey {
         FullViewingKey::from_expanded_spending_key(&self.expsk)
-            .expect("negligible chance of ivk == 0")
     }
 
     #[deprecated(note = "Use `to_diversifiable_full_viewing_key` instead.")]
@@ -599,17 +638,15 @@ impl ExtendedSpendingKey {
 
 /// A Sapling extended full viewing key
 ///
-/// # Panics
-///
-/// Methods that derive a viewing key panic if its incoming viewing key is zero. ZIP 32
-/// treats such a key as invalid. This has a negligible probability of occurring.
+/// The incoming viewing keys of both the external and the internal full viewing key of an
+/// `ExtendedFullViewingKey` are never zero.
 #[derive(Clone)]
 pub struct ExtendedFullViewingKey {
     depth: u8,
     parent_fvk_tag: FvkTag,
     child_index: KeyIndex,
     chain_code: ChainCode,
-    pub fvk: FullViewingKey,
+    fvk: FullViewingKey,
     pub(crate) dk: DiversifierKey,
 }
 
@@ -658,14 +695,22 @@ impl ExtendedFullViewingKey {
         let mut dk = [0; 32];
         reader.read_exact(&mut dk)?;
 
-        Ok(ExtendedFullViewingKey {
-            depth,
-            parent_fvk_tag: FvkTag(tag),
-            child_index,
-            chain_code: ChainCode::new(c),
-            fvk,
-            dk: DiversifierKey(dk),
-        })
+        let dk = DiversifierKey(dk);
+        sapling_derive_internal_fvk(&fvk, &dk)
+            .map(|_| ExtendedFullViewingKey {
+                depth,
+                parent_fvk_tag: FvkTag(tag),
+                child_index,
+                chain_code: ChainCode::new(c),
+                fvk,
+                dk,
+            })
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "internal ivk is zero"))
+    }
+
+    /// Returns the full viewing key component of this extended full viewing key.
+    pub fn fvk(&self) -> &FullViewingKey {
+        &self.fvk
     }
 
     pub fn write<W: Write>(&self, mut writer: W) -> io::Result<()> {
@@ -705,19 +750,24 @@ impl ExtendedFullViewingKey {
     /// (the private key corresponding to ak) as the original, but viewing authority
     /// only for internal transfers.
     ///
+    /// Returns `None` if the internal full viewing key does not satisfy the invariant of
+    /// `ExtendedFullViewingKey`: that is, if the incoming viewing key of its own internal
+    /// full viewing key is zero. This has a negligible probability of occurring.
+    ///
     /// Specified in [ZIP 32](https://zips.z.cash/zip-0032#deriving-a-sapling-internal-full-viewing-key).
     #[must_use]
-    pub fn derive_internal(&self) -> Self {
-        let (fvk_internal, dk_internal) = sapling_derive_internal_fvk(&self.fvk, &self.dk);
+    pub fn derive_internal(&self) -> Option<Self> {
+        let (fvk_internal, dk_internal) = sapling_derive_internal_fvk(&self.fvk, &self.dk)
+            .expect("ExtendedFullViewingKey constructors reject a zero internal ivk");
 
-        ExtendedFullViewingKey {
+        sapling_derive_internal_fvk(&fvk_internal, &dk_internal).map(|_| ExtendedFullViewingKey {
             depth: self.depth,
             parent_fvk_tag: self.parent_fvk_tag,
             child_index: self.child_index,
             chain_code: self.chain_code,
             fvk: fvk_internal,
             dk: dk_internal,
-        }
+        })
     }
 
     pub fn to_diversifiable_full_viewing_key(&self) -> DiversifiableFullViewingKey {
@@ -738,10 +788,8 @@ impl ExtendedFullViewingKey {
 ///
 /// [zip-0316-ufvk]: https://zips.z.cash/zip-0316#encoding-of-unified-full-incoming-viewing-keys
 ///
-/// # Panics
-///
-/// Methods that derive a viewing key panic if its incoming viewing key is zero. ZIP 32
-/// treats such a key as invalid. This has a negligible probability of occurring.
+/// The incoming viewing keys of both the external and the internal full viewing key of an
+/// `DiversifiableFullViewingKey` are never zero.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiversifiableFullViewingKey {
     fvk: FullViewingKey,
@@ -767,12 +815,12 @@ impl DiversifiableFullViewingKey {
     /// Parses a `DiversifiableFullViewingKey` from its raw byte encoding.
     ///
     /// Returns `None` if the bytes do not contain a valid encoding of a diversifiable
-    /// Sapling full viewing key.
+    /// Sapling full viewing key, or if the incoming viewing key of its external or
+    /// internal full viewing key is zero.
     pub fn from_bytes(bytes: &[u8; 128]) -> Option<Self> {
-        FullViewingKey::read(&bytes[..96]).ok().map(|fvk| Self {
-            fvk,
-            dk: DiversifierKey::from_bytes(bytes[96..].try_into().unwrap()),
-        })
+        let fvk = FullViewingKey::read(&bytes[..96]).ok()?;
+        let dk = DiversifierKey::from_bytes(bytes[96..].try_into().unwrap());
+        sapling_derive_internal_fvk(&fvk, &dk).map(|_| Self { fvk, dk })
     }
 
     /// Returns the raw encoding of this `DiversifiableFullViewingKey`.
@@ -785,11 +833,11 @@ impl DiversifiableFullViewingKey {
         bytes
     }
 
-    /// Derives the internal `DiversifiableFullViewingKey` corresponding to `self` (which
-    /// is assumed here to be an external DFVK).
-    fn derive_internal(&self) -> Self {
-        let (fvk, dk) = sapling_derive_internal_fvk(&self.fvk, &self.dk);
-        Self { fvk, dk }
+    /// Derives the internal full viewing key and diversifier key corresponding to `self`
+    /// (which is assumed here to be an external DFVK).
+    fn internal_parts(&self) -> (FullViewingKey, DiversifierKey) {
+        sapling_derive_internal_fvk(&self.fvk, &self.dk)
+            .expect("DiversifiableFullViewingKey constructors reject a zero internal ivk")
     }
 
     /// Exposes the external [`FullViewingKey`] component of this diversifiable full viewing key.
@@ -799,7 +847,7 @@ impl DiversifiableFullViewingKey {
 
     /// Returns the internal [`FullViewingKey`] component of this diversifiable full viewing key.
     pub fn to_internal_fvk(&self) -> FullViewingKey {
-        self.derive_internal().fvk
+        self.internal_parts().0
     }
 
     /// Derives a nullifier-deriving key for the provided scope.
@@ -808,7 +856,7 @@ impl DiversifiableFullViewingKey {
     pub fn to_nk(&self, scope: Scope) -> NullifierDerivingKey {
         match scope {
             Scope::External => *self.fvk.vk.nk(),
-            Scope::Internal => *self.derive_internal().fvk.vk.nk(),
+            Scope::Internal => *self.internal_parts().0.vk.nk(),
         }
     }
 
@@ -817,7 +865,7 @@ impl DiversifiableFullViewingKey {
     pub fn to_ivk(&self, scope: Scope) -> SaplingIvk {
         match scope {
             Scope::External => self.fvk.vk.ivk(),
-            Scope::Internal => self.derive_internal().fvk.vk.ivk(),
+            Scope::Internal => self.internal_parts().0.vk.ivk(),
         }
     }
 
@@ -833,7 +881,7 @@ impl DiversifiableFullViewingKey {
     pub fn to_ovk(&self, scope: Scope) -> OutgoingViewingKey {
         match scope {
             Scope::External => self.fvk.ovk,
-            Scope::Internal => self.derive_internal().fvk.ovk,
+            Scope::Internal => self.internal_parts().0.ovk,
         }
     }
 
@@ -877,8 +925,8 @@ impl DiversifiableFullViewingKey {
     /// This address **MUST NOT** be encoded and exposed to end users. User interfaces
     /// should instead mark these notes as "change notes" or "internal wallet operations".
     pub fn change_address(&self) -> (DiversifierIndex, PaymentAddress) {
-        let internal_dfvk = self.derive_internal();
-        sapling_default_address(&internal_dfvk.fvk, &internal_dfvk.dk)
+        let (fvk, dk) = self.internal_parts();
+        sapling_default_address(&fvk, &dk)
     }
 
     /// Returns the change address corresponding to the specified diversifier, if any.
@@ -886,10 +934,7 @@ impl DiversifiableFullViewingKey {
     /// In general, it is preferable to use `change_address` instead, but this method is
     /// useful in some cases for matching keys to existing payment addresses.
     pub fn diversified_change_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
-        self.derive_internal()
-            .fvk
-            .vk
-            .to_payment_address(diversifier)
+        self.internal_parts().0.vk.to_payment_address(diversifier)
     }
 
     /// Attempts to decrypt the given address's diversifier with this full viewing key.
@@ -908,8 +953,8 @@ impl DiversifiableFullViewingKey {
         }
 
         let j_internal = self
-            .derive_internal()
-            .dk
+            .internal_parts()
+            .1
             .diversifier_index(addr.diversifier());
         if self.address(j_internal).as_ref() == Some(addr) {
             return Some((j_internal, Scope::Internal));
@@ -1026,29 +1071,30 @@ mod tests {
     #[allow(deprecated)]
     fn derive_hardened_child() {
         let seed = [0; 32];
-        let xsk_m = ExtendedSpendingKey::master(&seed);
+        let xsk_m = ExtendedSpendingKey::master(&seed).unwrap();
 
         let i_5h = ChildIndex::hardened(5);
-        let _ = xsk_m.derive_child(i_5h);
+        let _ = xsk_m.derive_child(i_5h).unwrap();
     }
 
     #[test]
     fn path() {
         let seed = [0; 32];
-        let xsk_m = ExtendedSpendingKey::master(&seed);
+        let xsk_m = ExtendedSpendingKey::master(&seed).unwrap();
 
-        let xsk_5h = xsk_m.derive_child(ChildIndex::hardened(5));
+        let xsk_5h = xsk_m.derive_child(ChildIndex::hardened(5)).unwrap();
         assert_eq!(
-            ExtendedSpendingKey::from_path(&xsk_m, &[ChildIndex::hardened(5)]),
+            ExtendedSpendingKey::from_path(&xsk_m, &[ChildIndex::hardened(5)]).unwrap(),
             xsk_5h
         );
 
-        let xsk_5h_7 = xsk_5h.derive_child(ChildIndex::hardened(7));
+        let xsk_5h_7 = xsk_5h.derive_child(ChildIndex::hardened(7)).unwrap();
         assert_eq!(
             ExtendedSpendingKey::from_path(
                 &xsk_m,
                 &[ChildIndex::hardened(5), ChildIndex::hardened(7)]
-            ),
+            )
+            .unwrap(),
             xsk_5h_7
         );
     }
@@ -1130,7 +1176,7 @@ mod tests {
     #[test]
     fn dfvk_round_trip() {
         let dfvk = {
-            let extsk = ExtendedSpendingKey::master(&[]);
+            let extsk = ExtendedSpendingKey::master(&[]).unwrap();
             #[allow(deprecated)]
             let extfvk = extsk.to_extended_full_viewing_key();
             DiversifiableFullViewingKey::from(extfvk)
@@ -1151,7 +1197,7 @@ mod tests {
     #[test]
     fn ivk_round_trip() {
         let ivk = {
-            let extsk = ExtendedSpendingKey::master(&[]);
+            let extsk = ExtendedSpendingKey::master(&[]).unwrap();
             #[allow(deprecated)]
             let extfvk = extsk.to_extended_full_viewing_key();
             DiversifiableFullViewingKey::from(extfvk).to_external_ivk()
@@ -1170,7 +1216,7 @@ mod tests {
     #[test]
     fn ivk_must_be_nonzero() {
         let ivk = {
-            let extsk = ExtendedSpendingKey::master(&[]);
+            let extsk = ExtendedSpendingKey::master(&[]).unwrap();
             extsk.to_diversifiable_full_viewing_key().to_external_ivk()
         };
 
@@ -1184,7 +1230,7 @@ mod tests {
     #[test]
     fn address() {
         let seed = [0; 32];
-        let xsk_m = ExtendedSpendingKey::master(&seed);
+        let xsk_m = ExtendedSpendingKey::master(&seed).unwrap();
         let xfvk_m = xsk_m.to_diversifiable_full_viewing_key();
         let j_0 = DiversifierIndex::new();
         let addr_m = xfvk_m.address(j_0).unwrap();
@@ -1201,7 +1247,7 @@ mod tests {
     #[test]
     fn default_address() {
         let seed = [0; 32];
-        let xsk_m = ExtendedSpendingKey::master(&seed);
+        let xsk_m = ExtendedSpendingKey::master(&seed).unwrap();
         let (j_m, addr_m) = xsk_m.default_address();
         assert_eq!(j_m.as_bytes(), &[0; 11]);
         assert_eq!(
@@ -1215,7 +1261,7 @@ mod tests {
     #[allow(deprecated)]
     fn read_write() {
         let seed = [0; 32];
-        let xsk = ExtendedSpendingKey::master(&seed);
+        let xsk = ExtendedSpendingKey::master(&seed).unwrap();
         let fvk = xsk.to_extended_full_viewing_key();
 
         let mut ser = vec![];
@@ -1845,10 +1891,10 @@ mod tests {
         let i2h = ChildIndex::hardened(2);
         let i3h = ChildIndex::hardened(3);
 
-        let m = ExtendedSpendingKey::master(&seed);
-        let m_1h = m.derive_child(i1h);
-        let m_1h_2h = ExtendedSpendingKey::from_path(&m, &[i1h, i2h]);
-        let m_1h_2h_3h = m_1h_2h.derive_child(i3h);
+        let m = ExtendedSpendingKey::master(&seed).unwrap();
+        let m_1h = m.derive_child(i1h).unwrap();
+        let m_1h_2h = ExtendedSpendingKey::from_path(&m, &[i1h, i2h]).unwrap();
+        let m_1h_2h_3h = m_1h_2h.derive_child(i3h).unwrap();
 
         let xfvks = [
             m.to_extended_full_viewing_key(),
@@ -1861,10 +1907,10 @@ mod tests {
         let xsks = [m, m_1h, m_1h_2h, m_1h_2h_3h];
 
         for (xsk, tv) in xsks.iter().zip(test_vectors.iter()) {
-            assert_eq!(xsk.expsk.ask.to_bytes(), tv.ask.unwrap());
-            assert_eq!(xsk.expsk.nsk.to_repr().as_ref(), tv.nsk.unwrap());
+            assert_eq!(xsk.expsk.ask().to_bytes(), tv.ask.unwrap());
+            assert_eq!(xsk.expsk.nsk().to_repr().as_ref(), tv.nsk.unwrap());
 
-            assert_eq!(xsk.expsk.ovk.0, tv.ovk);
+            assert_eq!(xsk.expsk.ovk().0, tv.ovk);
             assert_eq!(xsk.dk.0, tv.dk);
             assert_eq!(xsk.chain_code.as_bytes(), &tv.c);
 
@@ -1872,14 +1918,14 @@ mod tests {
             xsk.write(&mut ser).unwrap();
             assert_eq!(&ser[..], &tv.xsk.unwrap()[..]);
 
-            let internal_xsk = xsk.derive_internal();
-            assert_eq!(internal_xsk.expsk.ask.to_bytes(), tv.ask.unwrap());
+            let internal_xsk = xsk.derive_internal().unwrap();
+            assert_eq!(internal_xsk.expsk.ask().to_bytes(), tv.ask.unwrap());
             assert_eq!(
-                internal_xsk.expsk.nsk.to_repr().as_ref(),
+                internal_xsk.expsk.nsk().to_repr().as_ref(),
                 tv.internal_nsk.unwrap()
             );
 
-            assert_eq!(internal_xsk.expsk.ovk.0, tv.internal_ovk);
+            assert_eq!(internal_xsk.expsk.ovk().0, tv.internal_ovk);
             assert_eq!(internal_xsk.dk.0, tv.internal_dk);
             assert_eq!(internal_xsk.chain_code.as_bytes(), &tv.c);
 
@@ -1932,7 +1978,7 @@ mod tests {
                 None => assert!(tv.dmax.is_none()),
             }
 
-            let internal_xfvk = xfvk.derive_internal();
+            let internal_xfvk = xfvk.derive_internal().unwrap();
             assert_eq!(internal_xfvk.fvk.vk.ak().to_bytes(), tv.ak);
             assert_eq!(internal_xfvk.fvk.vk.nk().0.to_bytes(), tv.internal_nk);
 
@@ -1967,13 +2013,18 @@ mod tests {
 #[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
 pub mod testing {
     use proptest::collection::vec;
-    use proptest::prelude::{any, prop_compose};
+    use proptest::prelude::{any, prop_compose, Strategy};
 
     use super::ExtendedSpendingKey;
 
     prop_compose! {
-        pub fn arb_extended_spending_key()(v in vec(any::<u8>(), 32..252)) -> ExtendedSpendingKey {
-            ExtendedSpendingKey::master(&v)
+        pub fn arb_extended_spending_key()(
+            xsk in vec(any::<u8>(), 32..252).prop_filter_map(
+                "master key must be valid",
+                |seed| ExtendedSpendingKey::master(&seed),
+            )
+        ) -> ExtendedSpendingKey {
+            xsk
         }
     }
 }
@@ -1986,7 +2037,7 @@ mod zeroize_tests {
 
     #[test]
     fn extended_spending_key_zeroizes() {
-        let mut xsk = ExtendedSpendingKey::master(&[7; 32]);
+        let mut xsk = ExtendedSpendingKey::master(&[7; 32]).unwrap();
         let before = xsk.to_bytes();
         assert_ne!(&before[9..], &[0u8; 160][..]);
 

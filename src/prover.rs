@@ -96,7 +96,7 @@ impl SpendProver for SpendParameters {
         };
 
         // Construct the viewing key
-        let viewing_key = proof_generation_key.to_viewing_key()?;
+        let viewing_key = proof_generation_key.to_viewing_key();
 
         // Construct the payment address with the viewing key / diversifier
         let payment_address = viewing_key.to_payment_address(diversifier)?;
@@ -204,7 +204,7 @@ pub mod mock {
         ) -> Option<circuit::Spend> {
             let payment_address = proof_generation_key
                 .to_viewing_key()
-                .and_then(|vk| vk.to_payment_address(diversifier));
+                .to_payment_address(diversifier);
             Some(circuit::Spend {
                 value_commitment_opening: Some(ValueCommitmentOpening {
                     value,

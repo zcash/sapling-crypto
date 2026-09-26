@@ -33,11 +33,7 @@ impl super::Spend {
         let vk = self
             .proof_generation_key
             .as_ref()
-            .map(|proof_generation_key| {
-                proof_generation_key
-                    .to_viewing_key()
-                    .expect("PCZT spends only hold proof generation keys with a valid ivk")
-            });
+            .map(|proof_generation_key| proof_generation_key.to_viewing_key());
 
         match (expected_fvk, vk, self.value.as_ref()) {
             (Some(expected_fvk), Some(vk), _) if vk == expected_fvk.vk => Ok(vk),

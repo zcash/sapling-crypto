@@ -404,7 +404,7 @@ impl ShieldedOutput<SaplingDomain> for CompactOutputDescription {
 ///
 /// let mut rng = UnwrapErr(SysRng);
 ///
-/// let extsk = ExtendedSpendingKey::master(&[0; 32]);
+/// let extsk = ExtendedSpendingKey::master(&[0; 32]).unwrap();
 /// let (_, to) = extsk.default_address();
 /// let ovk = Some(OutgoingViewingKey([0; 32]));
 ///

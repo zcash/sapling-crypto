@@ -209,13 +209,7 @@ impl SpendInfo {
         .expect("The path length corresponds to the length of the generated vector.");
 
         SpendInfo {
-            fvk: FullViewingKey {
-                vk: sk
-                    .proof_generation_key()
-                    .to_viewing_key()
-                    .expect("negligible chance of ivk == 0"),
-                ovk: sk.ovk,
-            },
+            fvk: FullViewingKey::from_expanded_spending_key(&sk),
             note,
             merkle_path,
             dummy_expsk: Some(sk),
@@ -289,7 +283,7 @@ impl PreparedSpendInfo {
             (Some(_), Some(_)) => Err(Error::WrongSpendingKey),
             (None, None) => Err(Error::MissingSpendingKey),
         }?;
-        if proof_generation_key.to_viewing_key().as_ref() != Some(&self.fvk.vk) {
+        if proof_generation_key.to_viewing_key() != self.fvk.vk {
             return Err(Error::WrongSpendingKey);
         }
 
@@ -320,7 +314,7 @@ impl PreparedSpendInfo {
             rk,
             zkproof,
             SigningMetadata {
-                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask.clone()),
+                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask().clone()),
                 parts: SigningParts { ak, alpha },
             },
         ))
@@ -346,7 +340,7 @@ impl PreparedSpendInfo {
             witness: Some(self.merkle_path),
             alpha: Some(alpha),
             zip32_derivation: None,
-            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask.clone()),
+            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask().clone()),
             proprietary: BTreeMap::new(),
         }
     }
@@ -770,7 +764,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: Rng, V: TryFrom<i64>>(
                             extsks.iter().find_map(|extsk| {
                                 let dfvk = extsk.to_diversifiable_full_viewing_key();
                                 (dfvk.fvk().to_bytes() == a.fvk.to_bytes())
-                                    .then(|| extsk.expsk.proof_generation_key())
+                                    .then(|| extsk.expsk().proof_generation_key())
                             })
                         })
                         .flatten();
@@ -1378,7 +1372,11 @@ pub(crate) mod testing {
                         bundle.create_proofs(&MockSpendProver, &MockOutputProver, &mut rng, ());
 
                     bundle
-                        .apply_signatures(&mut rng, fake_sighash_bytes, &[extsk.expsk.ask.clone()])
+                        .apply_signatures(
+                            &mut rng,
+                            fake_sighash_bytes,
+                            &[extsk.expsk().ask().clone()],
+                        )
                         .unwrap()
                 },
             )

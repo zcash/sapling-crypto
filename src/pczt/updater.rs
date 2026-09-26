@@ -66,11 +66,6 @@ impl SpendUpdater<'_> {
         &mut self,
         proof_generation_key: ProofGenerationKey,
     ) -> Result<(), UpdaterError> {
-        // A proof generation key with a zero ivk has no payment addresses, so it cannot
-        // own the spent note.
-        if proof_generation_key.to_viewing_key().is_none() {
-            return Err(UpdaterError::WrongProofGenerationKey);
-        }
         // TODO: Verify that the proof generation key matches the spend, if possible.
         self.0.proof_generation_key = Some(proof_generation_key);
         Ok(())
