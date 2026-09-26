@@ -13,6 +13,10 @@ use zip32::{ChainCode, ChildIndex, DiversifierIndex, Scope};
 
 use core::ops::AddAssign;
 use corez::io::{self, Read, Write};
+#[cfg(feature = "zeroize")]
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
+use crate::zeroize_secret;
 
 use super::{Diversifier, NullifierDerivingKey, PaymentAddress, ViewingKey};
 use crate::note_encryption::PreparedIncomingViewingKey;
@@ -151,6 +155,15 @@ impl FvkTag {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DiversifierKey([u8; 32]);
 
+/// `DiversifierKey` is `Copy`, so it cannot implement `ZeroizeOnDrop`; types that own
+/// one alongside secret key material are responsible for zeroizing it.
+#[cfg(feature = "zeroize")]
+impl Zeroize for DiversifierKey {
+    fn zeroize(&mut self) {
+        self.0.zeroize();
+    }
+}
+
 impl DiversifierKey {
     pub fn master(sk_m: &[u8]) -> Self {
         let mut dk_m = [0u8; 32];
@@ -258,6 +271,8 @@ impl KeyIndex {
 }
 
 /// A Sapling extended spending key
+///
+/// If the `zeroize` feature is enabled, the key material is zeroized on drop.
 #[derive(Clone)]
 pub struct ExtendedSpendingKey {
     depth: u8,
@@ -266,6 +281,25 @@ pub struct ExtendedSpendingKey {
     chain_code: ChainCode,
     pub expsk: ExpandedSpendingKey,
     dk: DiversifierKey,
+}
+
+#[cfg(feature = "zeroize")]
+impl Zeroize for ExtendedSpendingKey {
+    fn zeroize(&mut self) {
+        self.chain_code.zeroize();
+        self.expsk.zeroize();
+        self.dk.zeroize();
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl ZeroizeOnDrop for ExtendedSpendingKey {}
+
+#[cfg(feature = "zeroize")]
+impl Drop for ExtendedSpendingKey {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
 
 impl core::cmp::PartialEq for ExtendedSpendingKey {
@@ -293,23 +327,28 @@ impl core::fmt::Debug for ExtendedSpendingKey {
 
 impl ExtendedSpendingKey {
     pub fn master(seed: &[u8]) -> Self {
-        let i = Blake2bParams::new()
+        // The hasher's own output value cannot be zeroized; this copy of it can.
+        let mut i: [u8; 64] = *Blake2bParams::new()
             .hash_length(64)
             .personal(ZIP32_SAPLING_MASTER_PERSONALIZATION)
-            .hash(seed);
+            .hash(seed)
+            .as_array();
 
-        let sk_m = &i.as_bytes()[..32];
+        let sk_m = &i[..32];
         let mut c_m = [0u8; 32];
-        c_m.copy_from_slice(&i.as_bytes()[32..]);
+        c_m.copy_from_slice(&i[32..]);
 
-        ExtendedSpendingKey {
+        let xsk = ExtendedSpendingKey {
             depth: 0,
             parent_fvk_tag: FvkTag::master(),
             child_index: KeyIndex::Master,
             chain_code: ChainCode::new(c_m),
             expsk: ExpandedSpendingKey::from_spending_key(sk_m),
             dk: DiversifierKey::master(sk_m),
-        }
+        };
+        zeroize_secret(&mut c_m);
+        zeroize_secret(&mut i);
+        xsk
     }
 
     /// Decodes the extended spending key from its serialized representation as defined in
@@ -373,18 +412,24 @@ impl ExtendedSpendingKey {
         let mut dk = [0; 32];
         reader.read_exact(&mut dk)?;
 
-        Ok(ExtendedSpendingKey {
+        let xsk = ExtendedSpendingKey {
             depth,
             parent_fvk_tag: FvkTag(tag),
             child_index,
             chain_code: ChainCode::new(c),
             expsk,
             dk: DiversifierKey(dk),
-        })
+        };
+        zeroize_secret(&mut c);
+        zeroize_secret(&mut dk);
+        Ok(xsk)
     }
 
     /// Encodes the extended spending key to its serialized representation as defined in
     /// [ZIP 32](https://zips.z.cash/zip-0032)
+    ///
+    /// The returned array is secret key material; the caller is responsible for
+    /// zeroizing it once it is no longer needed.
     pub fn to_bytes(&self) -> [u8; 169] {
         let mut result = [0u8; 169];
         result[0] = self.depth;
@@ -420,41 +465,55 @@ impl ExtendedSpendingKey {
     #[must_use]
     pub fn derive_child(&self, i: ChildIndex) -> Self {
         let fvk = FullViewingKey::from_expanded_spending_key(&self.expsk);
-        let tmp = {
+        let mut tmp = {
             let le_i = i.index().to_le_bytes();
-            PrfExpand::SAPLING_ZIP32_CHILD_HARDENED.with(
+            let mut expsk_bytes = self.expsk.to_bytes();
+            let tmp = PrfExpand::SAPLING_ZIP32_CHILD_HARDENED.with(
                 self.chain_code.as_bytes(),
-                &self.expsk.to_bytes(),
+                &expsk_bytes,
                 &self.dk.0,
                 &le_i,
-            )
+            );
+            zeroize_secret(&mut expsk_bytes);
+            tmp
         };
         let i_l = &tmp[..32];
         let mut c_i = [0u8; 32];
         c_i.copy_from_slice(&tmp[32..]);
 
-        ExtendedSpendingKey {
+        let expsk = {
+            let mut ask_prf = PrfExpand::SAPLING_ZIP32_CHILD_I_ASK.with(i_l);
+            let mut ask = jubjub::Fr::from_bytes_wide(&ask_prf);
+            zeroize_secret(&mut ask_prf);
+            let mut nsk_prf = PrfExpand::SAPLING_ZIP32_CHILD_I_NSK.with(i_l);
+            let mut nsk = jubjub::Fr::from_bytes_wide(&nsk_prf);
+            zeroize_secret(&mut nsk_prf);
+            let mut parent_ask = self.expsk.ask.to_scalar();
+            ask.add_assign(&parent_ask);
+            zeroize_secret(&mut parent_ask);
+            nsk.add_assign(&self.expsk.nsk);
+            let ovk = derive_child_ovk(&self.expsk.ovk, i_l);
+            let expsk = ExpandedSpendingKey {
+                ask: SpendAuthorizingKey::from_scalar(ask).expect("negligible chance of ask == 0"),
+                nsk,
+                ovk,
+            };
+            zeroize_secret(&mut ask);
+            zeroize_secret(&mut nsk);
+            expsk
+        };
+
+        let xsk = ExtendedSpendingKey {
             depth: self.depth + 1,
             parent_fvk_tag: FvkFingerprint::from(&fvk).tag(),
             child_index: KeyIndex::Child(i),
             chain_code: ChainCode::new(c_i),
-            expsk: {
-                let mut ask =
-                    jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_ZIP32_CHILD_I_ASK.with(i_l));
-                let mut nsk =
-                    jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_ZIP32_CHILD_I_NSK.with(i_l));
-                ask.add_assign(self.expsk.ask.to_scalar());
-                nsk.add_assign(&self.expsk.nsk);
-                let ovk = derive_child_ovk(&self.expsk.ovk, i_l);
-                ExpandedSpendingKey {
-                    ask: SpendAuthorizingKey::from_scalar(ask)
-                        .expect("negligible chance of ask == 0"),
-                    nsk,
-                    ovk,
-                }
-            },
+            expsk,
             dk: self.dk.derive_child(i_l),
-        }
+        };
+        zeroize_secret(&mut c_i);
+        zeroize_secret(&mut tmp);
+        xsk
     }
 
     /// Returns the address with the lowest valid diversifier index, along with
@@ -478,14 +537,17 @@ impl ExtendedSpendingKey {
             h.update(&self.dk.0);
             h.finalize()
         };
-        let i_nsk =
-            jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_ZIP32_INTERNAL_NSK.with(i.as_bytes()));
-        let r = PrfExpand::SAPLING_ZIP32_INTERNAL_DK_OVK.with(i.as_bytes());
-        let nsk_internal = i_nsk + self.expsk.nsk;
+        let mut i_nsk_prf = PrfExpand::SAPLING_ZIP32_INTERNAL_NSK.with(i.as_bytes());
+        let mut i_nsk = jubjub::Fr::from_bytes_wide(&i_nsk_prf);
+        zeroize_secret(&mut i_nsk_prf);
+        let mut r = PrfExpand::SAPLING_ZIP32_INTERNAL_DK_OVK.with(i.as_bytes());
+        let mut nsk_internal = i_nsk + self.expsk.nsk;
+        zeroize_secret(&mut i_nsk);
         let dk_internal = DiversifierKey(r[..32].try_into().unwrap());
         let ovk_internal = OutgoingViewingKey(r[32..].try_into().unwrap());
+        zeroize_secret(&mut r);
 
-        ExtendedSpendingKey {
+        let xsk = ExtendedSpendingKey {
             depth: self.depth,
             parent_fvk_tag: self.parent_fvk_tag,
             child_index: self.child_index,
@@ -496,7 +558,9 @@ impl ExtendedSpendingKey {
                 ovk: ovk_internal,
             },
             dk: dk_internal,
-        }
+        };
+        zeroize_secret(&mut nsk_internal);
+        xsk
     }
 
     #[deprecated(note = "Use `to_diversifiable_full_viewing_key` instead.")]
@@ -1872,5 +1936,25 @@ pub mod testing {
         pub fn arb_extended_spending_key()(v in vec(any::<u8>(), 32..252)) -> ExtendedSpendingKey {
             ExtendedSpendingKey::master(&v)
         }
+    }
+}
+
+#[cfg(all(test, feature = "zeroize"))]
+mod zeroize_tests {
+    use zeroize::Zeroize;
+
+    use super::ExtendedSpendingKey;
+
+    #[test]
+    fn extended_spending_key_zeroizes() {
+        let mut xsk = ExtendedSpendingKey::master(&[7; 32]);
+        let before = xsk.to_bytes();
+        assert_ne!(&before[9..], &[0u8; 160][..]);
+
+        xsk.zeroize();
+        let after = xsk.to_bytes();
+        // The depth, parent tag and child index are not key material and are kept.
+        assert_eq!(&after[..9], &before[..9]);
+        assert_eq!(&after[9..], &[0u8; 160][..]);
     }
 }

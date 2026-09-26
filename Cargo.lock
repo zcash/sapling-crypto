@@ -126,6 +126,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bech32"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
+
+[[package]]
 name = "bellman"
 version = "0.14.0"
 source = "git+https://github.com/dannywillems/bellman.git?rev=4665bd6b22d4f02c37ff3f5339fcf3c041a692cf#4665bd6b22d4f02c37ff3f5339fcf3c041a692cf"
@@ -1461,6 +1467,7 @@ dependencies = [
  "tracing",
  "zcash_note_encryption",
  "zcash_spec",
+ "zeroize",
  "zip32",
 ]
 
@@ -2025,12 +2032,13 @@ dependencies = [
 
 [[package]]
 name = "zip32"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13ff9ea444cdbce820211f91e6aa3d3a56bde7202d3c0961b7c38f793abf5637"
+version = "0.2.1"
+source = "git+https://github.com/zcash/zip32.git?rev=0399cd62dae9b3abe5dc8d5e761b8ef11b57b12a#0399cd62dae9b3abe5dc8d5e761b8ef11b57b12a"
 dependencies = [
+ "bech32",
  "blake2b_simd",
  "memuse",
  "subtle",
  "zcash_spec",
+ "zeroize",
 ]

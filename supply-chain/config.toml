@@ -34,6 +34,9 @@ audit-as-crates-io = true
 [policy.sapling-crypto]
 audit-as-crates-io = true
 
+[policy.zip32]
+audit-as-crates-io = true
+
 [[exemptions.addchain]]
 version = "0.3.0"
 criteria = "safe-to-deploy"
@@ -60,6 +63,10 @@ criteria = "safe-to-run"
 
 [[exemptions.arrayvec]]
 version = "0.7.4"
+criteria = "safe-to-deploy"
+
+[[exemptions.bech32]]
+version = "0.11.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.bellman]]
@@ -547,5 +554,5 @@ version = "1.7.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.zip32]]
-version = "0.2.0"
+version = "0.2.1@git:0399cd62dae9b3abe5dc8d5e761b8ef11b57b12a"
 criteria = "safe-to-deploy"

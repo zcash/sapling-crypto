@@ -170,7 +170,7 @@ impl Note {
 
         let note = Note::from_parts(recipient.1, NoteValue::ZERO, rseed);
 
-        (extsk.expsk, fvk, note)
+        (extsk.expsk.clone(), fvk, note)
     }
 }
 
