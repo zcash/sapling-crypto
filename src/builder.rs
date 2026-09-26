@@ -210,7 +210,10 @@ impl SpendInfo {
 
         SpendInfo {
             fvk: FullViewingKey {
-                vk: sk.proof_generation_key().to_viewing_key(),
+                vk: sk
+                    .proof_generation_key()
+                    .to_viewing_key()
+                    .expect("negligible chance of ivk == 0"),
                 ovk: sk.ovk,
             },
             note,
@@ -262,14 +265,14 @@ impl PreparedSpendInfo {
         let alpha = jubjub::Fr::random(&mut rng);
         let cv = ValueCommitment::derive(self.note.value(), self.rcv.clone());
 
-        let ak = self.fvk.vk.ak.clone();
+        let ak = self.fvk.vk.ak().clone();
 
         // This is the result of the re-randomization, we compute it for the caller
         let rk = ak.randomize(&alpha);
 
         let nullifier = self
             .note
-            .nf(&self.fvk.vk.nk, u64::from(self.merkle_path.position()));
+            .nf(self.fvk.vk.nk(), u64::from(self.merkle_path.position()));
 
         (cv, nullifier, rk, alpha)
     }
@@ -286,8 +289,7 @@ impl PreparedSpendInfo {
             (Some(_), Some(_)) => Err(Error::WrongSpendingKey),
             (None, None) => Err(Error::MissingSpendingKey),
         }?;
-        let expected_vk = proof_generation_key.to_viewing_key();
-        if (&expected_vk.ak, &expected_vk.nk) != (&self.fvk.vk.ak, &self.fvk.vk.nk) {
+        if proof_generation_key.to_viewing_key().as_ref() != Some(&self.fvk.vk) {
             return Err(Error::WrongSpendingKey);
         }
 
@@ -297,7 +299,7 @@ impl PreparedSpendInfo {
         let node = Node::from_cmu(&self.note.cmu());
         let anchor = *self.merkle_path.root(node).inner();
 
-        let ak = self.fvk.vk.ak.clone();
+        let ak = self.fvk.vk.ak().clone();
 
         let zkproof = Pr::prepare_circuit(
             proof_generation_key,
@@ -394,7 +396,7 @@ impl OutputInfo {
             let mut diversifier = Diversifier([0; 11]);
             loop {
                 rng.fill_bytes(&mut diversifier.0);
-                let dummy_ivk = SaplingIvk(jubjub::Fr::random(&mut rng));
+                let dummy_ivk = SaplingIvk::random(&mut rng);
                 if let Some(addr) = dummy_ivk.to_payment_address(diversifier) {
                     break addr;
                 }

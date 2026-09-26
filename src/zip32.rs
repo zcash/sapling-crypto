@@ -97,16 +97,14 @@ pub fn sapling_derive_internal_fvk(
         jubjub::Fr::from_bytes_wide(&PrfExpand::SAPLING_ZIP32_INTERNAL_NSK.with(i.as_bytes()));
     let r = PrfExpand::SAPLING_ZIP32_INTERNAL_DK_OVK.with(i.as_bytes());
     // PROOF_GENERATION_KEY_GENERATOR = \mathcal{H}^Sapling
-    let nk_internal = NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * i_nsk + fvk.vk.nk.0);
+    let nk_internal = NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * i_nsk + fvk.vk.nk().0);
     let dk_internal = DiversifierKey(r[..32].try_into().unwrap());
     let ovk_internal = OutgoingViewingKey(r[32..].try_into().unwrap());
 
     (
         FullViewingKey {
-            vk: ViewingKey {
-                ak: fvk.vk.ak.clone(),
-                nk: nk_internal,
-            },
+            vk: ViewingKey::from_parts(fvk.vk.ak().clone(), nk_internal)
+                .expect("negligible chance of ivk == 0"),
             ovk: ovk_internal,
         },
         dk_internal,
@@ -273,6 +271,11 @@ impl KeyIndex {
 /// A Sapling extended spending key
 ///
 /// If the `zeroize` feature is enabled, the key material is zeroized on drop.
+///
+/// # Panics
+///
+/// Methods that derive a viewing key panic if its incoming viewing key is zero. ZIP 32
+/// treats such a key as invalid. This has a negligible probability of occurring.
 #[derive(Clone)]
 pub struct ExtendedSpendingKey {
     depth: u8,
@@ -460,11 +463,11 @@ impl ExtendedSpendingKey {
     ///
     /// # Panics
     ///
-    /// Panics if the child key has `ask = 0`. This has a negligible probability of
-    /// occurring.
+    /// Panics if the child key has `ask = 0`, or if the incoming viewing key of this key
+    /// is zero. Each has a negligible probability of occurring.
     #[must_use]
     pub fn derive_child(&self, i: ChildIndex) -> Self {
-        let fvk = FullViewingKey::from_expanded_spending_key(&self.expsk);
+        let fvk = self.fvk();
         let mut tmp = {
             let le_i = i.index().to_le_bytes();
             let mut expsk_bytes = self.expsk.to_bytes();
@@ -528,7 +531,7 @@ impl ExtendedSpendingKey {
     #[must_use]
     pub fn derive_internal(&self) -> Self {
         let i = {
-            let fvk = FullViewingKey::from_expanded_spending_key(&self.expsk);
+            let fvk = self.fvk();
             let mut h = Blake2bParams::new()
                 .hash_length(32)
                 .personal(ZIP32_SAPLING_INT_PERSONALIZATION)
@@ -563,6 +566,17 @@ impl ExtendedSpendingKey {
         xsk
     }
 
+    /// Derives the full viewing key corresponding to this spending key.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the derived incoming viewing key is zero. This has a negligible
+    /// probability of occurring.
+    fn fvk(&self) -> FullViewingKey {
+        FullViewingKey::from_expanded_spending_key(&self.expsk)
+            .expect("negligible chance of ivk == 0")
+    }
+
     #[deprecated(note = "Use `to_diversifiable_full_viewing_key` instead.")]
     pub fn to_extended_full_viewing_key(&self) -> ExtendedFullViewingKey {
         ExtendedFullViewingKey {
@@ -570,20 +584,25 @@ impl ExtendedSpendingKey {
             parent_fvk_tag: self.parent_fvk_tag,
             child_index: self.child_index,
             chain_code: self.chain_code,
-            fvk: FullViewingKey::from_expanded_spending_key(&self.expsk),
+            fvk: self.fvk(),
             dk: self.dk,
         }
     }
 
     pub fn to_diversifiable_full_viewing_key(&self) -> DiversifiableFullViewingKey {
         DiversifiableFullViewingKey {
-            fvk: FullViewingKey::from_expanded_spending_key(&self.expsk),
+            fvk: self.fvk(),
             dk: self.dk,
         }
     }
 }
 
-// A Sapling extended full viewing key
+/// A Sapling extended full viewing key
+///
+/// # Panics
+///
+/// Methods that derive a viewing key panic if its incoming viewing key is zero. ZIP 32
+/// treats such a key as invalid. This has a negligible probability of occurring.
 #[derive(Clone)]
 pub struct ExtendedFullViewingKey {
     depth: u8,
@@ -600,8 +619,8 @@ impl core::cmp::PartialEq for ExtendedFullViewingKey {
             && self.parent_fvk_tag == rhs.parent_fvk_tag
             && self.child_index == rhs.child_index
             && self.chain_code == rhs.chain_code
-            && self.fvk.vk.ak == rhs.fvk.vk.ak
-            && self.fvk.vk.nk == rhs.fvk.vk.nk
+            && self.fvk.vk.ak() == rhs.fvk.vk.ak()
+            && self.fvk.vk.nk() == rhs.fvk.vk.nk()
             && self.fvk.ovk == rhs.fvk.ovk
             && self.dk == rhs.dk
     }
@@ -718,6 +737,11 @@ impl ExtendedFullViewingKey {
 /// Sapling item in a [ZIP 316 Unified Full Viewing Key][zip-0316-ufvk].
 ///
 /// [zip-0316-ufvk]: https://zips.z.cash/zip-0316#encoding-of-unified-full-incoming-viewing-keys
+///
+/// # Panics
+///
+/// Methods that derive a viewing key panic if its incoming viewing key is zero. ZIP 32
+/// treats such a key as invalid. This has a negligible probability of occurring.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiversifiableFullViewingKey {
     fvk: FullViewingKey,
@@ -783,8 +807,8 @@ impl DiversifiableFullViewingKey {
     /// This API is provided so that nullifiers for change notes can be correctly computed.
     pub fn to_nk(&self, scope: Scope) -> NullifierDerivingKey {
         match scope {
-            Scope::External => self.fvk.vk.nk,
-            Scope::Internal => self.derive_internal().fvk.vk.nk,
+            Scope::External => *self.fvk.vk.nk(),
+            Scope::Internal => *self.derive_internal().fvk.vk.nk(),
         }
     }
 
@@ -915,11 +939,12 @@ impl IncomingViewingKey {
     /// Parses a `IncomingViewingKey` from its raw byte encoding.
     ///
     /// Returns `None` if the bytes do not contain a valid encoding of a diversifiable
-    /// Sapling incoming viewing key.
+    /// Sapling incoming viewing key. In particular, the `ivk` component must encode an
+    /// integer in the range $\{1 .. 2^{251} - 1\}$.
     pub fn from_bytes(bytes: &[u8; 64]) -> CtOption<Self> {
-        jubjub::Fr::from_bytes(&bytes[32..].try_into().unwrap()).map(|fr| IncomingViewingKey {
+        SaplingIvk::parse_with(&bytes[32..].try_into().unwrap(), |ivk| IncomingViewingKey {
             dk: DiversifierKey::from_bytes(bytes[..32].try_into().unwrap()),
-            ivk: SaplingIvk(fr),
+            ivk,
         })
     }
 
@@ -927,7 +952,7 @@ impl IncomingViewingKey {
     pub fn to_bytes(&self) -> [u8; 64] {
         let mut bytes = [0; 64];
         bytes[..32].copy_from_slice(&self.dk.as_bytes()[..]);
-        bytes[32..].copy_from_slice(&self.ivk.0.to_bytes()[..]);
+        bytes[32..].copy_from_slice(&self.ivk.to_repr()[..]);
         bytes
     }
 
@@ -1114,8 +1139,8 @@ mod tests {
         // Check value -> bytes -> parsed round trip.
         let dfvk_bytes = dfvk.to_bytes();
         let dfvk_parsed = DiversifiableFullViewingKey::from_bytes(&dfvk_bytes).unwrap();
-        assert_eq!(dfvk_parsed.fvk.vk.ak, dfvk.fvk.vk.ak);
-        assert_eq!(dfvk_parsed.fvk.vk.nk, dfvk.fvk.vk.nk);
+        assert_eq!(dfvk_parsed.fvk.vk.ak(), dfvk.fvk.vk.ak());
+        assert_eq!(dfvk_parsed.fvk.vk.nk(), dfvk.fvk.vk.nk());
         assert_eq!(dfvk_parsed.fvk.ovk, dfvk.fvk.ovk);
         assert_eq!(dfvk_parsed.dk, dfvk.dk);
 
@@ -1136,10 +1161,24 @@ mod tests {
         let ivk_bytes = ivk.to_bytes();
         let ivk_parsed = IncomingViewingKey::from_bytes(&ivk_bytes).unwrap();
         assert_eq!(ivk_parsed.dk, ivk.dk);
-        assert_eq!(ivk_parsed.ivk.0, ivk.ivk.0);
+        assert_eq!(ivk_parsed.ivk, ivk.ivk);
 
         // Check bytes -> parsed -> bytes round trip.
         assert_eq!(ivk_parsed.to_bytes(), ivk_bytes);
+    }
+
+    #[test]
+    fn ivk_must_be_nonzero() {
+        let ivk = {
+            let extsk = ExtendedSpendingKey::master(&[]);
+            extsk.to_diversifiable_full_viewing_key().to_external_ivk()
+        };
+
+        let mut ivk_bytes = ivk.to_bytes();
+        ivk_bytes[32..].fill(0);
+        assert!(bool::from(
+            IncomingViewingKey::from_bytes(&ivk_bytes).is_none()
+        ));
     }
 
     #[test]
@@ -1850,8 +1889,8 @@ mod tests {
         }
 
         for (xfvk, tv) in xfvks.iter().zip(test_vectors.iter()) {
-            assert_eq!(xfvk.fvk.vk.ak.to_bytes(), tv.ak);
-            assert_eq!(xfvk.fvk.vk.nk.0.to_bytes(), tv.nk);
+            assert_eq!(xfvk.fvk.vk.ak().to_bytes(), tv.ak);
+            assert_eq!(xfvk.fvk.vk.nk().0.to_bytes(), tv.nk);
 
             assert_eq!(xfvk.fvk.ovk.0, tv.ovk);
             assert_eq!(xfvk.dk.0, tv.dk);
@@ -1894,8 +1933,8 @@ mod tests {
             }
 
             let internal_xfvk = xfvk.derive_internal();
-            assert_eq!(internal_xfvk.fvk.vk.ak.to_bytes(), tv.ak);
-            assert_eq!(internal_xfvk.fvk.vk.nk.0.to_bytes(), tv.internal_nk);
+            assert_eq!(internal_xfvk.fvk.vk.ak().to_bytes(), tv.ak);
+            assert_eq!(internal_xfvk.fvk.vk.nk().0.to_bytes(), tv.internal_nk);
 
             assert_eq!(internal_xfvk.fvk.ovk.0, tv.internal_ovk);
             assert_eq!(internal_xfvk.dk.0, tv.internal_dk);
@@ -1919,7 +1958,7 @@ mod tests {
 
             let ivk_rt = IncomingViewingKey::from_bytes(&ivk_bytes).unwrap();
             assert_eq!(ivk.dk, ivk_rt.dk);
-            assert_eq!(ivk.ivk.0, ivk_rt.ivk.0);
+            assert_eq!(ivk.ivk, ivk_rt.ivk);
         }
     }
 }

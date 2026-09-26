@@ -19,6 +19,9 @@ and this library adheres to Rust's notion of
   - `impl zeroize::Zeroize for sapling_crypto::zip32::DiversifierKey`
   When enabled, the spending-key types are zeroized on drop, and the
   intermediate values produced while deriving them are zeroized after use.
+- `sapling_crypto::SaplingIvk::from_bytes`
+- `sapling_crypto::ViewingKey::{from_parts, ak, nk}`
+- `sapling_crypto::keys::DecodingError::InvalidIvk`
 
 ### Changed
 - MSRV is now 1.88
@@ -36,6 +39,27 @@ and this library adheres to Rust's notion of
 - `tracing` is now an optional dependency, enabled by the `circuit` feature. It was
   only ever used by the `circuit`-gated batch validator, and its `tracing-core`
   dependency does not build for targets without atomic compare-and-swap.
+- A `SaplingIvk` is now always in the range $\{1 .. 2^{251} - 1\}$, and a
+  `ViewingKey` always derives an `ivk` in that range:
+  - The field of `SaplingIvk` is now private. Use `SaplingIvk::from_bytes` to
+    construct one.
+  - The `ak` and `nk` fields of `ViewingKey` are now private. Use
+    `ViewingKey::from_parts` to construct one, and `ViewingKey::{ak, nk}` to
+    access them.
+  - `ProofGenerationKey::to_viewing_key` and
+    `FullViewingKey::from_expanded_spending_key` now return `Option`, and
+    return `None` if the derived `ivk` is zero.
+  - `zip32::IncomingViewingKey::from_bytes` now rejects an `ivk` that is not in
+    range.
+  - `FullViewingKey::read`, `ExpandedSpendingKey::{from_bytes, read}`, and the
+    `zip32` decoders that use them now reject a key whose derived `ivk` is zero.
+  - `pczt::Spend::parse` now returns `ParseError::InvalidProofGenerationKey`,
+    and `pczt::SpendUpdater::set_proof_generation_key` now returns
+    `UpdaterError::WrongProofGenerationKey`, for a proof generation key whose
+    derived `ivk` is zero.
+  - Methods of `zip32::{ExtendedSpendingKey, ExtendedFullViewingKey,
+    DiversifiableFullViewingKey}` that derive a viewing key now panic if its
+    `ivk` is zero. This has a negligible probability of occurring.
 
 ## [0.7.0] - 2026-04-21
 

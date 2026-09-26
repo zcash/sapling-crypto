@@ -44,6 +44,8 @@ pub enum DecodingError {
     InvalidAsk,
     /// Could not decode the `nsk` bytes to a jubjub field element.
     InvalidNsk,
+    /// The incoming viewing key derived from the decoded key is zero.
+    InvalidIvk,
     /// An extended spending key had an unsupported child index: either a non-hardened
     /// index, or a non-zero index at depth 0.
     UnsupportedChildIndex,
@@ -57,6 +59,7 @@ impl fmt::Display for DecodingError {
             }
             DecodingError::InvalidAsk => write!(f, "invalid `ask`"),
             DecodingError::InvalidNsk => write!(f, "invalid `nsk`"),
+            DecodingError::InvalidIvk => write!(f, "derived `ivk` is zero"),
             DecodingError::UnsupportedChildIndex => write!(
                 f,
                 "unsupported child index (either non-hardened, or non-zero at depth 0)"
@@ -337,6 +340,8 @@ impl ExpandedSpendingKey {
     /// Decodes the expanded spending key from its serialized representation
     /// as part of the encoding of the extended spending key as defined in
     /// [ZIP 32](https://zips.z.cash/zip-0032)
+    ///
+    /// Returns an error if the incoming viewing key derived from the key is zero.
     pub fn from_bytes(b: &[u8]) -> Result<Self, DecodingError> {
         if b.len() != 96 {
             return Err(DecodingError::LengthInvalid {
@@ -350,7 +355,12 @@ impl ExpandedSpendingKey {
             .ok_or(DecodingError::InvalidNsk)?;
         let ovk = OutgoingViewingKey(b[64..96].try_into().unwrap());
 
-        Ok(ExpandedSpendingKey { ask, nsk, ovk })
+        let expsk = ExpandedSpendingKey { ask, nsk, ovk };
+        expsk
+            .proof_generation_key()
+            .to_viewing_key()
+            .map(|_| expsk)
+            .ok_or(DecodingError::InvalidIvk)
     }
 
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
@@ -365,6 +375,7 @@ impl ExpandedSpendingKey {
             DecodingError::InvalidNsk => {
                 io::Error::new(io::ErrorKind::InvalidData, "nsk not in field")
             }
+            DecodingError::InvalidIvk => io::Error::new(io::ErrorKind::InvalidData, "ivk is zero"),
             DecodingError::LengthInvalid { .. } | DecodingError::UnsupportedChildIndex => {
                 unreachable!()
             }
@@ -426,11 +437,15 @@ impl fmt::Debug for ProofGenerationKey {
 }
 
 impl ProofGenerationKey {
-    pub fn to_viewing_key(&self) -> ViewingKey {
-        ViewingKey {
-            ak: self.ak.clone(),
-            nk: NullifierDerivingKey(constants::PROOF_GENERATION_KEY_GENERATOR * self.nsk),
-        }
+    /// Derives the viewing key corresponding to this proof generation key.
+    ///
+    /// Returns `None` if the derived incoming viewing key is zero. Such a key is invalid
+    /// and has no payment addresses.
+    pub fn to_viewing_key(&self) -> Option<ViewingKey> {
+        ViewingKey::from_parts(
+            self.ak.clone(),
+            NullifierDerivingKey(constants::PROOF_GENERATION_KEY_GENERATOR * self.nsk),
+        )
     }
 }
 
@@ -438,19 +453,46 @@ impl ProofGenerationKey {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct NullifierDerivingKey(pub jubjub::SubgroupPoint);
 
+/// A Sapling viewing key: the spend validating key `ak` and the nullifier deriving key
+/// `nk`.
+///
+/// The incoming viewing key derived from a `ViewingKey` is never zero.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewingKey {
-    pub ak: SpendValidatingKey,
-    pub nk: NullifierDerivingKey,
+    ak: SpendValidatingKey,
+    nk: NullifierDerivingKey,
 }
 
 impl ViewingKey {
+    /// Constructs a viewing key from its components.
+    ///
+    /// Returns `None` if the incoming viewing key derived from `ak` and `nk` is zero.
+    /// Such a key is invalid and has no payment addresses.
+    pub fn from_parts(ak: SpendValidatingKey, nk: NullifierDerivingKey) -> Option<Self> {
+        let ivk = crh_ivk(ak.to_bytes(), nk.0.to_bytes());
+        SaplingIvk::from_scalar(ivk)
+            .into_option()
+            .map(|_| ViewingKey { ak, nk })
+    }
+
+    /// Returns the spend validating key.
+    pub fn ak(&self) -> &SpendValidatingKey {
+        &self.ak
+    }
+
+    /// Returns the nullifier deriving key.
+    pub fn nk(&self) -> &NullifierDerivingKey {
+        &self.nk
+    }
+
     pub fn rk(&self, ar: jubjub::Fr) -> redjubjub::VerificationKey<SpendAuth> {
         self.ak.randomize(&ar)
     }
 
+    /// Derives the incoming viewing key.
     pub fn ivk(&self) -> SaplingIvk {
-        SaplingIvk(crh_ivk(self.ak.to_bytes(), self.nk.0.to_bytes()))
+        SaplingIvk::from_scalar(crh_ivk(self.ak.to_bytes(), self.nk.0.to_bytes()))
+            .expect("ViewingKey::from_parts rejects a zero ivk")
     }
 
     pub fn to_payment_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
@@ -468,26 +510,29 @@ pub struct FullViewingKey {
 impl Clone for FullViewingKey {
     fn clone(&self) -> Self {
         FullViewingKey {
-            vk: ViewingKey {
-                ak: self.vk.ak.clone(),
-                nk: self.vk.nk,
-            },
+            vk: self.vk.clone(),
             ovk: self.ovk,
         }
     }
 }
 
 impl FullViewingKey {
-    pub fn from_expanded_spending_key(expsk: &ExpandedSpendingKey) -> Self {
-        FullViewingKey {
-            vk: ViewingKey {
-                ak: (&expsk.ask).into(),
-                nk: NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * expsk.nsk),
-            },
-            ovk: expsk.ovk,
-        }
+    /// Derives the full viewing key corresponding to an expanded spending key.
+    ///
+    /// Returns `None` if the derived incoming viewing key is zero. Such a key is invalid
+    /// and has no payment addresses.
+    pub fn from_expanded_spending_key(expsk: &ExpandedSpendingKey) -> Option<Self> {
+        ViewingKey::from_parts(
+            (&expsk.ask).into(),
+            NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * expsk.nsk),
+        )
+        .map(|vk| FullViewingKey { vk, ovk: expsk.ovk })
     }
 
+    /// Reads a full viewing key from its raw encoding.
+    ///
+    /// Returns an error if `ak` is not a prime-order point, if `nk` is not in the
+    /// prime-order subgroup, or if the derived incoming viewing key is zero.
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
         let ak = {
             let mut buf = [0u8; 32];
@@ -513,19 +558,21 @@ impl FullViewingKey {
         }
         let ak = ak.unwrap();
         let nk = NullifierDerivingKey(nk.unwrap());
+        let vk = ViewingKey::from_parts(ak, nk)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ivk is zero"))?;
 
         let mut ovk = [0u8; 32];
         reader.read_exact(&mut ovk)?;
 
         Ok(FullViewingKey {
-            vk: ViewingKey { ak, nk },
+            vk,
             ovk: OutgoingViewingKey(ovk),
         })
     }
 
     pub fn write<W: Write>(&self, mut writer: W) -> io::Result<()> {
-        writer.write_all(&self.vk.ak.to_bytes())?;
-        writer.write_all(&self.vk.nk.0.to_bytes())?;
+        writer.write_all(&self.vk.ak().to_bytes())?;
+        writer.write_all(&self.vk.nk().0.to_bytes())?;
         writer.write_all(&self.ovk.0)?;
 
         Ok(())
@@ -539,10 +586,56 @@ impl FullViewingKey {
     }
 }
 
+/// A Sapling incoming viewing key.
+///
+/// Defined in [Zcash Protocol Spec § 4.2.2: Sapling Key Components][saplingkeycomponents]
+/// as an integer in the range $\{1 .. 2^{\ell_{\mathsf{ivk}}} - 1\}$, where
+/// $\ell_{\mathsf{ivk}} = 251$.
+///
+/// [saplingkeycomponents]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SaplingIvk(pub jubjub::Fr);
+pub struct SaplingIvk(jubjub::Fr);
 
 impl SaplingIvk {
+    /// Parses an incoming viewing key from its little-endian encoding.
+    ///
+    /// Returns `None` if `bytes` does not encode an integer in the range
+    /// $\{1 .. 2^{251} - 1\}$.
+    pub fn from_bytes(bytes: &[u8; 32]) -> CtOption<Self> {
+        Self::parse_with(bytes, |ivk| ivk)
+    }
+
+    /// Parses an incoming viewing key from its little-endian encoding, and passes it to
+    /// `f`.
+    ///
+    /// Returns `None` if `bytes` does not encode an integer in the range
+    /// $\{1 .. 2^{251} - 1\}$. Validity is determined in constant time.
+    pub(crate) fn parse_with<T>(bytes: &[u8; 32], f: impl FnOnce(Self) -> T) -> CtOption<T> {
+        // An encoding with any of the five most significant bits set is at least 2^251.
+        let in_range = (bytes[31] & 0b1111_1000).ct_eq(&0);
+        jubjub::Fr::from_repr(*bytes)
+            .and_then(|ivk| CtOption::new(f(SaplingIvk(ivk)), in_range & !ivk.is_zero()))
+    }
+
+    /// Samples a uniformly random incoming viewing key.
+    pub(crate) fn random<R: rand_core::Rng + ?Sized>(rng: &mut R) -> Self {
+        loop {
+            let mut bytes = [0u8; 32];
+            rng.fill_bytes(&mut bytes);
+            bytes[31] &= 0b0000_0111;
+            if let Some(ivk) = Self::from_bytes(&bytes).into_option() {
+                break ivk;
+            }
+        }
+    }
+
+    /// Constructs an incoming viewing key from a scalar.
+    ///
+    /// Returns `None` if `ivk` is not in the range $\{1 .. 2^{251} - 1\}$.
+    pub(crate) fn from_scalar(ivk: jubjub::Fr) -> CtOption<Self> {
+        Self::from_bytes(&ivk.to_repr())
+    }
+
     pub fn to_payment_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
         let prepared_ivk = PreparedIncomingViewingKey::new(self);
         DiversifiedTransmissionKey::derive(&prepared_ivk, &diversifier)
@@ -589,8 +682,8 @@ impl Diversifier {
 ///
 /// Defined in [Zcash Protocol Spec § 4.2.2: Sapling Key Components][saplingkeycomponents].
 ///
-/// Note that this type is allowed to be the identity in the protocol, but we reject this
-/// in [`PaymentAddress::from_parts`].
+/// The protocol requires this key to not be the identity. [`PaymentAddress::from_parts`]
+/// enforces this.
 ///
 /// [saplingkeycomponents]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -793,6 +886,7 @@ pub mod testing {
     prop_compose! {
         pub fn arb_full_viewing_key()(sk in arb_expanded_spending_key()) -> FullViewingKey {
             FullViewingKey::from_expanded_spending_key(&sk)
+                .expect("negligible chance of ivk == 0")
         }
     }
 
@@ -808,7 +902,13 @@ mod tests {
     use alloc::string::ToString;
     use group::{Group, GroupEncoding};
 
-    use super::{FullViewingKey, SpendAuthorizingKey, SpendValidatingKey};
+    use ff::PrimeField;
+    use proptest::prelude::*;
+
+    use super::{
+        testing::arb_incoming_viewing_key, FullViewingKey, SaplingIvk, SpendAuthorizingKey,
+        SpendValidatingKey,
+    };
     use crate::{constants::SPENDING_KEY_GENERATOR, test_vectors};
 
     #[test]
@@ -858,6 +958,35 @@ mod tests {
                 rvk.verify(&tv.m, &sig),
                 Err(redjubjub::Error::InvalidSignature),
             );
+        }
+    }
+
+    #[test]
+    fn ivk_encoding_must_be_in_range() {
+        let parses = |bytes: [u8; 32]| bool::from(SaplingIvk::from_bytes(&bytes).is_some());
+
+        // The range is {1 .. 2^251 - 1}.
+        assert!(!parses([0; 32]));
+
+        let mut one = [0; 32];
+        one[0] = 1;
+        assert!(parses(one));
+
+        let mut max = [0xff; 32];
+        max[31] = 0b0000_0111;
+        assert!(parses(max));
+
+        // 2^251 and r - 1 are canonical scalars, but are not in range.
+        let mut two_pow_251 = [0; 32];
+        two_pow_251[31] = 0b0000_1000;
+        assert!(!parses(two_pow_251));
+        assert!(!parses((-jubjub::Fr::one()).to_repr()));
+    }
+
+    proptest! {
+        #[test]
+        fn ivk_encoding_round_trip(ivk in arb_incoming_viewing_key()) {
+            prop_assert_eq!(SaplingIvk::from_bytes(&ivk.to_repr()).into_option(), Some(ivk));
         }
     }
 }

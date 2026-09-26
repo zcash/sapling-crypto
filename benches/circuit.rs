@@ -50,7 +50,9 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         let proof_generation_key = expsk.proof_generation_key();
 
-        let viewing_key = proof_generation_key.to_viewing_key();
+        let viewing_key = proof_generation_key
+            .to_viewing_key()
+            .expect("negligible chance of ivk == 0");
 
         let payment_address = loop {
             let diversifier = {
