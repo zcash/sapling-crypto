@@ -28,8 +28,13 @@ and this library adheres to Rust's notion of
 - `sapling_crypto::zip32::ExtendedFullViewingKey::fvk`
 - A bytes tier holding a Spend or Output description with `cv` and `rk` left
   compressed, so reading from disk/wire costs no curve arithmetic
-  - `bundle::{SpendDescriptionBytes, SpendDescriptionV5Bytes, OutputDescriptionBytes, OutputDescriptionV5Bytes, BundleBytes}`, mirroring their point-tier counterparts,
-    with `to_bytes`/`from_bytes`
+  - `bundle::{SpendDescriptionBytes, SpendDescriptionV5Bytes, OutputDescriptionBytes, OutputDescriptionV5Bytes, BundleBytes}`,
+    mirroring their point-tier counterparts
+  - `to_bytes`/`from_bytes` on `SpendDescriptionBytes<Authorized>`,
+    `SpendDescriptionV5Bytes`, `OutputDescriptionBytes<GrothProofBytes>` and
+    `OutputDescriptionV5Bytes`
+  - `bundle::{SPEND_DESCRIPTION_V4_SIZE, SPEND_DESCRIPTION_V5_SIZE, OUTPUT_DESCRIPTION_V4_SIZE, OUTPUT_DESCRIPTION_V5_SIZE}`,
+    the encoded sizes of the corresponding description byte representations
   - `decompress` on each `*DescriptionBytes`, recovering the point tier, plus
     `bundle::{DescriptionParseError, DecompressionError, BundleDecompressionError}`
   - `compress` on `SpendDescription`, `SpendDescriptionV5`, `OutputDescription`,
