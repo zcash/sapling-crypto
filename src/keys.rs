@@ -10,7 +10,7 @@ use corez::io::{self, Read, Write};
 
 use super::{
     address::PaymentAddress,
-    constants::{self, PROOF_GENERATION_KEY_GENERATOR},
+    constants,
     note_encryption::KDF_SAPLING_PERSONALIZATION,
     spec::{
         crh_ivk, diversify_hash, ka_sapling_agree, ka_sapling_agree_prepared,
@@ -44,6 +44,8 @@ pub enum DecodingError {
     InvalidAsk,
     /// Could not decode the `nsk` bytes to a jubjub field element.
     InvalidNsk,
+    /// The incoming viewing key derived from the decoded key is zero.
+    InvalidIvk,
     /// An extended spending key had an unsupported child index: either a non-hardened
     /// index, or a non-zero index at depth 0.
     UnsupportedChildIndex,
@@ -57,6 +59,7 @@ impl fmt::Display for DecodingError {
             }
             DecodingError::InvalidAsk => write!(f, "invalid `ask`"),
             DecodingError::InvalidNsk => write!(f, "invalid `nsk`"),
+            DecodingError::InvalidIvk => write!(f, "derived `ivk` is zero"),
             DecodingError::UnsupportedChildIndex => write!(
                 f,
                 "unsupported child index (either non-hardened, or non-zero at depth 0)"
@@ -273,12 +276,14 @@ impl Zeroize for OutgoingViewingKey {
 
 /// A Sapling expanded spending key
 ///
+/// The incoming viewing key derived from an `ExpandedSpendingKey` is never zero.
+///
 /// If the `zeroize` feature is enabled, the key material is zeroized on drop.
 #[derive(Clone)]
 pub struct ExpandedSpendingKey {
-    pub ask: SpendAuthorizingKey,
-    pub nsk: jubjub::Fr,
-    pub ovk: OutgoingViewingKey,
+    ask: SpendAuthorizingKey,
+    nsk: jubjub::Fr,
+    ovk: OutgoingViewingKey,
 }
 
 #[cfg(feature = "zeroize")]
@@ -310,24 +315,56 @@ impl fmt::Debug for ExpandedSpendingKey {
 impl ExpandedSpendingKey {
     /// Expands a spending key into its components.
     ///
-    /// # Panics
-    ///
-    /// Panics if this spending key expands to `ask = 0`. This has a negligible
-    /// probability of occurring.
-    pub fn from_spending_key(sk: &[u8]) -> Self {
-        let ask =
-            SpendAuthorizingKey::from_spending_key(sk).expect("negligible chance of ask == 0");
+    /// Returns `None` if the spending key expands to `ask = 0`, or to a key whose
+    /// incoming viewing key is zero. The protocol requires such a spending key to be
+    /// discarded. This has a negligible probability of occurring.
+    pub fn from_spending_key(sk: &[u8]) -> Option<Self> {
+        let ask = SpendAuthorizingKey::from_spending_key(sk)?;
         let mut nsk_prf = PrfExpand::SAPLING_NSK.with(sk);
-        let nsk = jubjub::Fr::from_bytes_wide(&nsk_prf);
+        let mut nsk = jubjub::Fr::from_bytes_wide(&nsk_prf);
         zeroize_secret(&mut nsk_prf);
         let mut ovk_prf = PrfExpand::SAPLING_OVK.with(sk);
         let mut ovk = OutgoingViewingKey([0u8; 32]);
         ovk.0.copy_from_slice(&ovk_prf[..32]);
         zeroize_secret(&mut ovk_prf);
-        ExpandedSpendingKey { ask, nsk, ovk }
+        let expsk = Self::from_parts(ask, nsk, ovk);
+        zeroize_secret(&mut nsk);
+        zeroize_secret(&mut ovk.0);
+        expsk
+    }
+
+    /// Constructs an expanded spending key from its components.
+    ///
+    /// Returns `None` if the incoming viewing key derived from the components is zero.
+    pub fn from_parts(
+        ask: SpendAuthorizingKey,
+        nsk: jubjub::Fr,
+        ovk: OutgoingViewingKey,
+    ) -> Option<Self> {
+        ProofGenerationKey::from_parts((&ask).into(), nsk).map(|_| ExpandedSpendingKey {
+            ask,
+            nsk,
+            ovk,
+        })
+    }
+
+    /// Returns the spend authorizing key.
+    pub fn ask(&self) -> &SpendAuthorizingKey {
+        &self.ask
+    }
+
+    /// Returns the proof authorizing key.
+    pub fn nsk(&self) -> &jubjub::Fr {
+        &self.nsk
+    }
+
+    /// Returns the outgoing viewing key.
+    pub fn ovk(&self) -> &OutgoingViewingKey {
+        &self.ovk
     }
 
     pub fn proof_generation_key(&self) -> ProofGenerationKey {
+        // `ExpandedSpendingKey::from_parts` has checked this key.
         ProofGenerationKey {
             ak: (&self.ask).into(),
             nsk: self.nsk,
@@ -337,6 +374,8 @@ impl ExpandedSpendingKey {
     /// Decodes the expanded spending key from its serialized representation
     /// as part of the encoding of the extended spending key as defined in
     /// [ZIP 32](https://zips.z.cash/zip-0032)
+    ///
+    /// Returns an error if the incoming viewing key derived from the key is zero.
     pub fn from_bytes(b: &[u8]) -> Result<Self, DecodingError> {
         if b.len() != 96 {
             return Err(DecodingError::LengthInvalid {
@@ -350,7 +389,7 @@ impl ExpandedSpendingKey {
             .ok_or(DecodingError::InvalidNsk)?;
         let ovk = OutgoingViewingKey(b[64..96].try_into().unwrap());
 
-        Ok(ExpandedSpendingKey { ask, nsk, ovk })
+        Self::from_parts(ask, nsk, ovk).ok_or(DecodingError::InvalidIvk)
     }
 
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
@@ -365,6 +404,7 @@ impl ExpandedSpendingKey {
             DecodingError::InvalidNsk => {
                 io::Error::new(io::ErrorKind::InvalidData, "nsk not in field")
             }
+            DecodingError::InvalidIvk => io::Error::new(io::ErrorKind::InvalidData, "ivk is zero"),
             DecodingError::LengthInvalid { .. } | DecodingError::UnsupportedChildIndex => {
                 unreachable!()
             }
@@ -392,11 +432,13 @@ impl ExpandedSpendingKey {
 
 /// A Sapling proof generation key.
 ///
+/// The incoming viewing key derived from a `ProofGenerationKey` is never zero.
+///
 /// If the `zeroize` feature is enabled, `nsk` is zeroized on drop.
 #[derive(Clone)]
 pub struct ProofGenerationKey {
-    pub ak: SpendValidatingKey,
-    pub nsk: jubjub::Fr,
+    ak: SpendValidatingKey,
+    nsk: jubjub::Fr,
 }
 
 #[cfg(feature = "zeroize")]
@@ -426,7 +468,28 @@ impl fmt::Debug for ProofGenerationKey {
 }
 
 impl ProofGenerationKey {
+    /// Constructs a proof generation key from its components.
+    ///
+    /// Returns `None` if the incoming viewing key derived from `ak` and `nsk` is zero.
+    /// Such a key is invalid and has no payment addresses.
+    pub fn from_parts(ak: SpendValidatingKey, nsk: jubjub::Fr) -> Option<Self> {
+        let nk = NullifierDerivingKey(constants::PROOF_GENERATION_KEY_GENERATOR * nsk);
+        ViewingKey::from_parts(ak.clone(), nk).map(|_| ProofGenerationKey { ak, nsk })
+    }
+
+    /// Returns the spend validating key.
+    pub fn ak(&self) -> &SpendValidatingKey {
+        &self.ak
+    }
+
+    /// Returns the proof authorizing key.
+    pub fn nsk(&self) -> &jubjub::Fr {
+        &self.nsk
+    }
+
+    /// Derives the viewing key corresponding to this proof generation key.
     pub fn to_viewing_key(&self) -> ViewingKey {
+        // `ProofGenerationKey::from_parts` has checked this key.
         ViewingKey {
             ak: self.ak.clone(),
             nk: NullifierDerivingKey(constants::PROOF_GENERATION_KEY_GENERATOR * self.nsk),
@@ -438,19 +501,46 @@ impl ProofGenerationKey {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct NullifierDerivingKey(pub jubjub::SubgroupPoint);
 
+/// A Sapling viewing key: the spend validating key `ak` and the nullifier deriving key
+/// `nk`.
+///
+/// The incoming viewing key derived from a `ViewingKey` is never zero.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ViewingKey {
-    pub ak: SpendValidatingKey,
-    pub nk: NullifierDerivingKey,
+    ak: SpendValidatingKey,
+    nk: NullifierDerivingKey,
 }
 
 impl ViewingKey {
+    /// Constructs a viewing key from its components.
+    ///
+    /// Returns `None` if the incoming viewing key derived from `ak` and `nk` is zero.
+    /// Such a key is invalid and has no payment addresses.
+    pub fn from_parts(ak: SpendValidatingKey, nk: NullifierDerivingKey) -> Option<Self> {
+        let ivk = crh_ivk(ak.to_bytes(), nk.0.to_bytes());
+        SaplingIvk::from_scalar(ivk)
+            .into_option()
+            .map(|_| ViewingKey { ak, nk })
+    }
+
+    /// Returns the spend validating key.
+    pub fn ak(&self) -> &SpendValidatingKey {
+        &self.ak
+    }
+
+    /// Returns the nullifier deriving key.
+    pub fn nk(&self) -> &NullifierDerivingKey {
+        &self.nk
+    }
+
     pub fn rk(&self, ar: jubjub::Fr) -> redjubjub::VerificationKey<SpendAuth> {
         self.ak.randomize(&ar)
     }
 
+    /// Derives the incoming viewing key.
     pub fn ivk(&self) -> SaplingIvk {
-        SaplingIvk(crh_ivk(self.ak.to_bytes(), self.nk.0.to_bytes()))
+        SaplingIvk::from_scalar(crh_ivk(self.ak.to_bytes(), self.nk.0.to_bytes()))
+            .expect("ViewingKey constructors reject a zero ivk")
     }
 
     pub fn to_payment_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
@@ -468,26 +558,25 @@ pub struct FullViewingKey {
 impl Clone for FullViewingKey {
     fn clone(&self) -> Self {
         FullViewingKey {
-            vk: ViewingKey {
-                ak: self.vk.ak.clone(),
-                nk: self.vk.nk,
-            },
+            vk: self.vk.clone(),
             ovk: self.ovk,
         }
     }
 }
 
 impl FullViewingKey {
+    /// Derives the full viewing key corresponding to an expanded spending key.
     pub fn from_expanded_spending_key(expsk: &ExpandedSpendingKey) -> Self {
         FullViewingKey {
-            vk: ViewingKey {
-                ak: (&expsk.ask).into(),
-                nk: NullifierDerivingKey(PROOF_GENERATION_KEY_GENERATOR * expsk.nsk),
-            },
+            vk: expsk.proof_generation_key().to_viewing_key(),
             ovk: expsk.ovk,
         }
     }
 
+    /// Reads a full viewing key from its raw encoding.
+    ///
+    /// Returns an error if `ak` is not a prime-order point, if `nk` is not in the
+    /// prime-order subgroup, or if the derived incoming viewing key is zero.
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
         let ak = {
             let mut buf = [0u8; 32];
@@ -513,19 +602,21 @@ impl FullViewingKey {
         }
         let ak = ak.unwrap();
         let nk = NullifierDerivingKey(nk.unwrap());
+        let vk = ViewingKey::from_parts(ak, nk)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ivk is zero"))?;
 
         let mut ovk = [0u8; 32];
         reader.read_exact(&mut ovk)?;
 
         Ok(FullViewingKey {
-            vk: ViewingKey { ak, nk },
+            vk,
             ovk: OutgoingViewingKey(ovk),
         })
     }
 
     pub fn write<W: Write>(&self, mut writer: W) -> io::Result<()> {
-        writer.write_all(&self.vk.ak.to_bytes())?;
-        writer.write_all(&self.vk.nk.0.to_bytes())?;
+        writer.write_all(&self.vk.ak().to_bytes())?;
+        writer.write_all(&self.vk.nk().0.to_bytes())?;
         writer.write_all(&self.ovk.0)?;
 
         Ok(())
@@ -539,10 +630,56 @@ impl FullViewingKey {
     }
 }
 
+/// A Sapling incoming viewing key.
+///
+/// Defined in [Zcash Protocol Spec § 4.2.2: Sapling Key Components][saplingkeycomponents]
+/// as an integer in the range $\{1 .. 2^{\ell_{\mathsf{ivk}}} - 1\}$, where
+/// $\ell_{\mathsf{ivk}} = 251$.
+///
+/// [saplingkeycomponents]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SaplingIvk(pub jubjub::Fr);
+pub struct SaplingIvk(jubjub::Fr);
 
 impl SaplingIvk {
+    /// Parses an incoming viewing key from its little-endian encoding.
+    ///
+    /// Returns `None` if `bytes` does not encode an integer in the range
+    /// $\{1 .. 2^{251} - 1\}$.
+    pub fn from_bytes(bytes: &[u8; 32]) -> CtOption<Self> {
+        Self::parse_with(bytes, |ivk| ivk)
+    }
+
+    /// Parses an incoming viewing key from its little-endian encoding, and passes it to
+    /// `f`.
+    ///
+    /// Returns `None` if `bytes` does not encode an integer in the range
+    /// $\{1 .. 2^{251} - 1\}$. Validity is determined in constant time.
+    pub(crate) fn parse_with<T>(bytes: &[u8; 32], f: impl FnOnce(Self) -> T) -> CtOption<T> {
+        // An encoding with any of the five most significant bits set is at least 2^251.
+        let in_range = (bytes[31] & 0b1111_1000).ct_eq(&0);
+        jubjub::Fr::from_repr(*bytes)
+            .and_then(|ivk| CtOption::new(f(SaplingIvk(ivk)), in_range & !ivk.is_zero()))
+    }
+
+    /// Samples a uniformly random incoming viewing key.
+    pub(crate) fn random<R: rand_core::Rng + ?Sized>(rng: &mut R) -> Self {
+        loop {
+            let mut bytes = [0u8; 32];
+            rng.fill_bytes(&mut bytes);
+            bytes[31] &= 0b0000_0111;
+            if let Some(ivk) = Self::from_bytes(&bytes).into_option() {
+                break ivk;
+            }
+        }
+    }
+
+    /// Constructs an incoming viewing key from a scalar.
+    ///
+    /// Returns `None` if `ivk` is not in the range $\{1 .. 2^{251} - 1\}$.
+    pub(crate) fn from_scalar(ivk: jubjub::Fr) -> CtOption<Self> {
+        Self::from_bytes(&ivk.to_repr())
+    }
+
     pub fn to_payment_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
         let prepared_ivk = PreparedIncomingViewingKey::new(self);
         DiversifiedTransmissionKey::derive(&prepared_ivk, &diversifier)
@@ -589,8 +726,8 @@ impl Diversifier {
 ///
 /// Defined in [Zcash Protocol Spec § 4.2.2: Sapling Key Components][saplingkeycomponents].
 ///
-/// Note that this type is allowed to be the identity in the protocol, but we reject this
-/// in [`PaymentAddress::from_parts`].
+/// The protocol requires this key to not be the identity. [`PaymentAddress::from_parts`]
+/// enforces this.
 ///
 /// [saplingkeycomponents]: https://zips.z.cash/protocol/protocol.pdf#saplingkeycomponents
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -785,8 +922,13 @@ pub mod testing {
     use super::{ExpandedSpendingKey, FullViewingKey, SaplingIvk};
 
     prop_compose! {
-        pub fn arb_expanded_spending_key()(v in vec(any::<u8>(), 32..252)) -> ExpandedSpendingKey {
-            ExpandedSpendingKey::from_spending_key(&v)
+        pub fn arb_expanded_spending_key()(
+            expsk in vec(any::<u8>(), 32..252).prop_filter_map(
+                "spending key must be valid",
+                |sk| ExpandedSpendingKey::from_spending_key(&sk),
+            )
+        ) -> ExpandedSpendingKey {
+            expsk
         }
     }
 
@@ -808,7 +950,13 @@ mod tests {
     use alloc::string::ToString;
     use group::{Group, GroupEncoding};
 
-    use super::{FullViewingKey, SpendAuthorizingKey, SpendValidatingKey};
+    use ff::PrimeField;
+    use proptest::prelude::*;
+
+    use super::{
+        testing::arb_incoming_viewing_key, FullViewingKey, SaplingIvk, SpendAuthorizingKey,
+        SpendValidatingKey,
+    };
     use crate::{constants::SPENDING_KEY_GENERATOR, test_vectors};
 
     #[test]
@@ -860,6 +1008,35 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn ivk_encoding_must_be_in_range() {
+        let parses = |bytes: [u8; 32]| bool::from(SaplingIvk::from_bytes(&bytes).is_some());
+
+        // The range is {1 .. 2^251 - 1}.
+        assert!(!parses([0; 32]));
+
+        let mut one = [0; 32];
+        one[0] = 1;
+        assert!(parses(one));
+
+        let mut max = [0xff; 32];
+        max[31] = 0b0000_0111;
+        assert!(parses(max));
+
+        // 2^251 and r - 1 are canonical scalars, but are not in range.
+        let mut two_pow_251 = [0; 32];
+        two_pow_251[31] = 0b0000_1000;
+        assert!(!parses(two_pow_251));
+        assert!(!parses((-jubjub::Fr::one()).to_repr()));
+    }
+
+    proptest! {
+        #[test]
+        fn ivk_encoding_round_trip(ivk in arb_incoming_viewing_key()) {
+            prop_assert_eq!(SaplingIvk::from_bytes(&ivk.to_repr()).into_option(), Some(ivk));
+        }
+    }
 }
 
 #[cfg(all(test, feature = "zeroize"))]
@@ -870,7 +1047,7 @@ mod zeroize_tests {
 
     #[test]
     fn expanded_spending_key_zeroizes() {
-        let mut expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]);
+        let mut expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]).unwrap();
         assert_ne!(expsk.to_bytes(), [0; 96]);
 
         expsk.zeroize();
@@ -879,7 +1056,7 @@ mod zeroize_tests {
 
     #[test]
     fn proof_generation_key_zeroizes() {
-        let expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]);
+        let expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]).unwrap();
         let mut pgk = expsk.proof_generation_key();
         assert_ne!(pgk.nsk, <jubjub::Fr as ff::Field>::ZERO);
 
@@ -889,7 +1066,7 @@ mod zeroize_tests {
 
     #[test]
     fn spend_authorizing_key_zeroizes() {
-        let expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]);
+        let expsk = ExpandedSpendingKey::from_spending_key(&[7; 32]).unwrap();
         let mut ask = expsk.ask.clone();
         assert_ne!(ask.to_bytes(), [0; 32]);
 

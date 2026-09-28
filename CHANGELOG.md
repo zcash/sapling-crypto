@@ -19,11 +19,19 @@ and this library adheres to Rust's notion of
   - `impl zeroize::Zeroize for sapling_crypto::zip32::DiversifierKey`
   When enabled, the spending-key types are zeroized on drop, and the
   intermediate values produced while deriving them are zeroized after use.
+- `sapling_crypto::SaplingIvk::from_bytes`
+- `sapling_crypto::ViewingKey::{from_parts, ak, nk}`
+- `sapling_crypto::ProofGenerationKey::{from_parts, ak, nsk}`
+- `sapling_crypto::keys::ExpandedSpendingKey::{from_parts, ask, nsk, ovk}`
+- `sapling_crypto::keys::DecodingError::InvalidIvk`
+- `sapling_crypto::zip32::ExtendedSpendingKey::expsk`
+- `sapling_crypto::zip32::ExtendedFullViewingKey::fvk`
 
 ### Changed
 - MSRV is now 1.88
 - Migrated to `ff` 0.14, `group` 0.14, `rand`/`rand_core` 0.10, `bls12_381`
-  0.9, `jubjub` 0.11, `redjubjub` 0.9, and `zcash_note_encryption` 0.5.
+  0.9, `jubjub` 0.11, `redjubjub` 0.9, `zcash_note_encryption` 0.5,
+  `bellman` 0.15, `groth16` 0.2.
 - `rand_core` 0.10 merges `RngCore` into `Rng`, so every public API that was
   bounded by `R: RngCore` is now bounded by `R: Rng`.
 - `bellman`'s Groth16 implementation now lives in the standalone `groth16`
@@ -36,6 +44,37 @@ and this library adheres to Rust's notion of
 - `tracing` is now an optional dependency, enabled by the `circuit` feature. It was
   only ever used by the `circuit`-gated batch validator, and its `tracing-core`
   dependency does not build for targets without atomic compare-and-swap.
+- A `SaplingIvk` is now always in the range $\{1 .. 2^{251} - 1\}$. The key
+  types `ViewingKey`, `ProofGenerationKey`, and `keys::ExpandedSpendingKey` now
+  always derive an `ivk` in that range, and the `zip32` key types
+  `ExtendedSpendingKey`, `ExtendedFullViewingKey`, and
+  `DiversifiableFullViewingKey` now always derive an external and an internal
+  `ivk` in that range:
+  - The field of `SaplingIvk` is now private. Use `SaplingIvk::from_bytes` to
+    construct one.
+  - The fields of `ViewingKey`, `ProofGenerationKey`, and
+    `keys::ExpandedSpendingKey` are now private. Use their `from_parts`
+    constructors and their accessor methods instead.
+  - The `expsk` field of `zip32::ExtendedSpendingKey` and the `fvk` field of
+    `zip32::ExtendedFullViewingKey` are now private. Use the accessor methods
+    of the same names instead.
+  - `keys::ExpandedSpendingKey::from_spending_key`,
+    `zip32::ExtendedSpendingKey::{master, derive_child}`, and
+    `zip32::ExtendedSpendingKey::from_path` now return `Option`, and return
+    `None` for an invalid key instead of panicking.
+  - `zip32::ExtendedSpendingKey::derive_internal`,
+    `zip32::ExtendedFullViewingKey::derive_internal`, and
+    `zip32::sapling_derive_internal_fvk` now return `Option`.
+  - `zip32::IncomingViewingKey::from_bytes` now rejects an `ivk` that is not in
+    range.
+  - `FullViewingKey::read` and `keys::ExpandedSpendingKey::{from_bytes, read}`
+    now reject a key whose derived `ivk` is zero.
+    `zip32::ExtendedSpendingKey::{from_bytes, read}`,
+    `zip32::ExtendedFullViewingKey::read`, and
+    `zip32::DiversifiableFullViewingKey::from_bytes` now also reject a key
+    whose derived internal `ivk` is zero.
+  - `pczt::Spend::parse` now returns `ParseError::InvalidProofGenerationKey`
+    for a proof generation key whose derived `ivk` is zero.
 
 ## [0.7.0] - 2026-04-21
 

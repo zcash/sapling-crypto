@@ -209,10 +209,7 @@ impl SpendInfo {
         .expect("The path length corresponds to the length of the generated vector.");
 
         SpendInfo {
-            fvk: FullViewingKey {
-                vk: sk.proof_generation_key().to_viewing_key(),
-                ovk: sk.ovk,
-            },
+            fvk: FullViewingKey::from_expanded_spending_key(&sk),
             note,
             merkle_path,
             dummy_expsk: Some(sk),
@@ -262,14 +259,14 @@ impl PreparedSpendInfo {
         let alpha = jubjub::Fr::random(&mut rng);
         let cv = ValueCommitment::derive(self.note.value(), self.rcv.clone());
 
-        let ak = self.fvk.vk.ak.clone();
+        let ak = self.fvk.vk.ak().clone();
 
         // This is the result of the re-randomization, we compute it for the caller
         let rk = ak.randomize(&alpha);
 
         let nullifier = self
             .note
-            .nf(&self.fvk.vk.nk, u64::from(self.merkle_path.position()));
+            .nf(self.fvk.vk.nk(), u64::from(self.merkle_path.position()));
 
         (cv, nullifier, rk, alpha)
     }
@@ -286,8 +283,7 @@ impl PreparedSpendInfo {
             (Some(_), Some(_)) => Err(Error::WrongSpendingKey),
             (None, None) => Err(Error::MissingSpendingKey),
         }?;
-        let expected_vk = proof_generation_key.to_viewing_key();
-        if (&expected_vk.ak, &expected_vk.nk) != (&self.fvk.vk.ak, &self.fvk.vk.nk) {
+        if proof_generation_key.to_viewing_key() != self.fvk.vk {
             return Err(Error::WrongSpendingKey);
         }
 
@@ -297,7 +293,7 @@ impl PreparedSpendInfo {
         let node = Node::from_cmu(&self.note.cmu());
         let anchor = *self.merkle_path.root(node).inner();
 
-        let ak = self.fvk.vk.ak.clone();
+        let ak = self.fvk.vk.ak().clone();
 
         let zkproof = Pr::prepare_circuit(
             proof_generation_key,
@@ -318,7 +314,7 @@ impl PreparedSpendInfo {
             rk,
             zkproof,
             SigningMetadata {
-                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask.clone()),
+                dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask().clone()),
                 parts: SigningParts { ak, alpha },
             },
         ))
@@ -344,7 +340,7 @@ impl PreparedSpendInfo {
             witness: Some(self.merkle_path),
             alpha: Some(alpha),
             zip32_derivation: None,
-            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask.clone()),
+            dummy_ask: self.dummy_expsk.map(|expsk| expsk.ask().clone()),
             proprietary: BTreeMap::new(),
         }
     }
@@ -394,7 +390,7 @@ impl OutputInfo {
             let mut diversifier = Diversifier([0; 11]);
             loop {
                 rng.fill_bytes(&mut diversifier.0);
-                let dummy_ivk = SaplingIvk(jubjub::Fr::random(&mut rng));
+                let dummy_ivk = SaplingIvk::random(&mut rng);
                 if let Some(addr) = dummy_ivk.to_payment_address(diversifier) {
                     break addr;
                 }
@@ -768,7 +764,7 @@ pub fn bundle<SP: SpendProver, OP: OutputProver, R: Rng, V: TryFrom<i64>>(
                             extsks.iter().find_map(|extsk| {
                                 let dfvk = extsk.to_diversifiable_full_viewing_key();
                                 (dfvk.fvk().to_bytes() == a.fvk.to_bytes())
-                                    .then(|| extsk.expsk.proof_generation_key())
+                                    .then(|| extsk.expsk().proof_generation_key())
                             })
                         })
                         .flatten();
@@ -1376,7 +1372,11 @@ pub(crate) mod testing {
                         bundle.create_proofs(&MockSpendProver, &MockOutputProver, &mut rng, ());
 
                     bundle
-                        .apply_signatures(&mut rng, fake_sighash_bytes, &[extsk.expsk.ask.clone()])
+                        .apply_signatures(
+                            &mut rng,
+                            fake_sighash_bytes,
+                            &[extsk.expsk().ask().clone()],
+                        )
                         .unwrap()
                 },
             )

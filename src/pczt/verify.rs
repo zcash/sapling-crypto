@@ -36,11 +36,7 @@ impl super::Spend {
             .map(|proof_generation_key| proof_generation_key.to_viewing_key());
 
         match (expected_fvk, vk, self.value.as_ref()) {
-            (Some(expected_fvk), Some(vk), _)
-                if vk.ak == expected_fvk.vk.ak && vk.nk == expected_fvk.vk.nk =>
-            {
-                Ok(vk)
-            }
+            (Some(expected_fvk), Some(vk), _) if vk == expected_fvk.vk => Ok(vk),
             // `expected_fvk` is ignored if the spent note is a dummy note.
             (Some(_), Some(vk), Some(value)) if value.inner() == 0 => Ok(vk),
             (Some(_), Some(_), _) => Err(VerifyError::MismatchedFullViewingKey),
@@ -85,7 +81,7 @@ impl super::Spend {
 
         let merkle_path = self.witness().as_ref().ok_or(VerifyError::MissingWitness)?;
 
-        if note.nf(&vk.nk, merkle_path.position().into()) == self.nullifier {
+        if note.nf(vk.nk(), merkle_path.position().into()) == self.nullifier {
             Ok(())
         } else {
             Err(VerifyError::InvalidNullifier)
@@ -108,7 +104,7 @@ impl super::Spend {
             .as_ref()
             .ok_or(VerifyError::MissingSpendAuthRandomizer)?;
 
-        if vk.ak.randomize(alpha) == self.rk {
+        if vk.ak().randomize(alpha) == self.rk {
             Ok(())
         } else {
             Err(VerifyError::InvalidRandomizedVerificationKey)

@@ -133,8 +133,9 @@ checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
 
 [[package]]
 name = "bellman"
-version = "0.14.0"
-source = "git+https://github.com/dannywillems/bellman.git?rev=4665bd6b22d4f02c37ff3f5339fcf3c041a692cf#4665bd6b22d4f02c37ff3f5339fcf3c041a692cf"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "973b16549796a1274a63e00159a03250e66e8263e2ac6344b1c9fdfe9b7a8325"
 dependencies = [
  "bitvec",
  "blake2s_simd",
@@ -142,7 +143,6 @@ dependencies = [
  "crossbeam-channel",
  "ff",
  "group",
- "lazy_static",
  "log",
  "num_cpus",
  "rand_core 0.10.1",
@@ -703,8 +703,9 @@ checksum = "4271d37baee1b8c7e4b708028c57d816cf9d2434acb33a549475f78c181f6253"
 
 [[package]]
 name = "groth16"
-version = "0.1.0"
-source = "git+https://github.com/dannywillems/bellman.git?rev=4665bd6b22d4f02c37ff3f5339fcf3c041a692cf#4665bd6b22d4f02c37ff3f5339fcf3c041a692cf"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bb1e0bde2dbacd81474ae216c5dd4901307bd1c75fd26ed49590e88048c8442"
 dependencies = [
  "bellman",
  "byteorder",

@@ -392,7 +392,6 @@ impl ShieldedOutput<SaplingDomain> for CompactOutputDescription {
 /// # Examples
 ///
 /// ```
-/// use ff::Field;
 /// use rand::rngs::SysRng;
 /// use rand_core::UnwrapErr;
 /// use sapling_crypto::{
@@ -400,14 +399,13 @@ impl ShieldedOutput<SaplingDomain> for CompactOutputDescription {
 ///     note_encryption::{sapling_note_encryption, Zip212Enforcement},
 ///     util::generate_random_rseed,
 ///     value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
-///     Diversifier, PaymentAddress, Rseed, SaplingIvk,
+///     zip32::ExtendedSpendingKey,
 /// };
 ///
 /// let mut rng = UnwrapErr(SysRng);
 ///
-/// let ivk = SaplingIvk(jubjub::Scalar::random(&mut rng));
-/// let diversifier = Diversifier([0; 11]);
-/// let to = ivk.to_payment_address(diversifier).unwrap();
+/// let extsk = ExtendedSpendingKey::master(&[0; 32]).unwrap();
+/// let (_, to) = extsk.default_address();
 /// let ovk = Some(OutgoingViewingKey([0; 32]));
 ///
 /// let value = NoteValue::from_raw(1000);
@@ -542,7 +540,7 @@ mod tests {
         PreparedIncomingViewingKey,
         OutputDescription<GrothProofBytes>,
     ) {
-        let ivk = SaplingIvk(jubjub::Fr::random(&mut rng));
+        let ivk = SaplingIvk::random(&mut rng);
         let prepared_ivk = PreparedIncomingViewingKey::new(&ivk);
 
         let (ovk, ock, output) = random_enc_ciphertext_with(&ivk, zip212_enforcement, rng);
@@ -742,7 +740,7 @@ mod tests {
 
             assert_eq!(
                 try_sapling_note_decryption(
-                    &PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::random(&mut rng))),
+                    &PreparedIncomingViewingKey::new(&SaplingIvk::random(&mut rng)),
                     &output,
                     zip212_enforcement,
                 ),
@@ -914,7 +912,7 @@ mod tests {
 
             assert_eq!(
                 try_sapling_compact_note_decryption(
-                    &PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::random(&mut rng))),
+                    &PreparedIncomingViewingKey::new(&SaplingIvk::random(&mut rng)),
                     &CompactOutputDescription::from(output),
                     zip212_enforcement,
                 ),
@@ -1404,7 +1402,7 @@ mod tests {
             // Load the test vector components
             //
 
-            let ivk = PreparedIncomingViewingKey::new(&SaplingIvk(read_jubjub_scalar!(tv.ivk)));
+            let ivk = PreparedIncomingViewingKey::new(&SaplingIvk::from_bytes(&tv.ivk).unwrap());
             let pk_d = read_pk_d!(tv.default_pk_d);
             let rcm = read_jubjub_scalar!(tv.rcm);
             let cv = read_cv!(tv.cv);
@@ -1524,9 +1522,8 @@ mod tests {
         let zip212_enforcement = Zip212Enforcement::On;
 
         // Test batch trial-decryption with multiple IVKs and outputs.
-        let invalid_ivk =
-            PreparedIncomingViewingKey::new(&SaplingIvk(jubjub::Fr::random(&mut rng)));
-        let valid_ivk = SaplingIvk(jubjub::Fr::random(&mut rng));
+        let invalid_ivk = PreparedIncomingViewingKey::new(&SaplingIvk::random(&mut rng));
+        let valid_ivk = SaplingIvk::random(&mut rng);
         let outputs: Vec<_> = (0..10)
             .map(|_| {
                 (

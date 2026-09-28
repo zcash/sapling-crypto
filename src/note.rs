@@ -157,10 +157,14 @@ impl Note {
     ///
     /// [saplingdummynotes]: https://zips.z.cash/protocol/nu5.pdf#saplingdummynotes
     pub(crate) fn dummy<R: Rng>(mut rng: R) -> (ExpandedSpendingKey, FullViewingKey, Self) {
-        let mut sk_bytes = [0; 32];
-        rng.fill_bytes(&mut sk_bytes);
-
-        let extsk = ExtendedSpendingKey::master(&sk_bytes[..]);
+        // The protocol discards an invalid spending key and chooses a new one.
+        let extsk = loop {
+            let mut sk_bytes = [0; 32];
+            rng.fill_bytes(&mut sk_bytes);
+            if let Some(extsk) = ExtendedSpendingKey::master(&sk_bytes[..]) {
+                break extsk;
+            }
+        };
         let fvk = extsk.to_diversifiable_full_viewing_key().fvk().clone();
         let recipient = extsk.default_address();
 
@@ -170,7 +174,7 @@ impl Note {
 
         let note = Note::from_parts(recipient.1, NoteValue::ZERO, rseed);
 
-        (extsk.expsk.clone(), fvk, note)
+        (extsk.expsk().clone(), fvk, note)
     }
 }
 

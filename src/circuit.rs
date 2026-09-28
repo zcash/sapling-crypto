@@ -157,7 +157,7 @@ impl Circuit<bls12_381::Scalar> for Spend {
         // Prover witnesses ak (ensures that it's on the curve)
         let ak = ecc::EdwardsPoint::witness(
             cs.namespace(|| "ak"),
-            self.proof_generation_key.as_ref().map(|k| (&k.ak).into()),
+            self.proof_generation_key.as_ref().map(|k| k.ak().into()),
         )?;
 
         // There are no sensible attacks on small order points
@@ -187,7 +187,7 @@ impl Circuit<bls12_381::Scalar> for Spend {
             // Witness nsk as bits
             let nsk = boolean::field_into_boolean_vec_le(
                 cs.namespace(|| "nsk"),
-                self.proof_generation_key.as_ref().map(|k| k.nsk),
+                self.proof_generation_key.as_ref().map(|k| *k.nsk()),
             )?;
 
             // NB: We don't ensure that the bit representation of nsk
@@ -656,10 +656,11 @@ fn test_input_circuit_with_bls12_381() {
             randomness: jubjub::Fr::random(&mut rng),
         };
 
-        let proof_generation_key = ProofGenerationKey {
-            ak: SpendValidatingKey::fake_random(&mut rng),
-            nsk: jubjub::Fr::random(&mut rng),
-        };
+        let proof_generation_key = ProofGenerationKey::from_parts(
+            SpendValidatingKey::fake_random(&mut rng),
+            jubjub::Fr::random(&mut rng),
+        )
+        .unwrap();
 
         let viewing_key = proof_generation_key.to_viewing_key();
 
@@ -728,7 +729,7 @@ fn test_input_circuit_with_bls12_381() {
                 }
             }
 
-            let expected_nf = note.nf(&viewing_key.nk, position);
+            let expected_nf = note.nf(viewing_key.nk(), position);
             let expected_nf = multipack::bytes_to_bits_le(&expected_nf.0);
             let expected_nf = multipack::compute_multipacking(&expected_nf);
             assert_eq!(expected_nf.len(), 2);
@@ -831,10 +832,11 @@ fn test_input_circuit_with_bls12_381_external_test_vectors() {
             randomness: jubjub::Fr::from(1000 * (i + 1)),
         };
 
-        let proof_generation_key = ProofGenerationKey {
-            ak: SpendValidatingKey::fake_random(&mut rng),
-            nsk: jubjub::Fr::random(&mut rng),
-        };
+        let proof_generation_key = ProofGenerationKey::from_parts(
+            SpendValidatingKey::fake_random(&mut rng),
+            jubjub::Fr::random(&mut rng),
+        )
+        .unwrap();
 
         let viewing_key = proof_generation_key.to_viewing_key();
 
@@ -911,7 +913,7 @@ fn test_input_circuit_with_bls12_381_external_test_vectors() {
                 }
             }
 
-            let expected_nf = note.nf(&viewing_key.nk, position);
+            let expected_nf = note.nf(viewing_key.nk(), position);
             let expected_nf = multipack::bytes_to_bits_le(&expected_nf.0);
             let expected_nf = multipack::compute_multipacking(&expected_nf);
             assert_eq!(expected_nf.len(), 2);
@@ -987,7 +989,7 @@ fn test_output_circuit_with_bls12_381() {
         let nsk = jubjub::Fr::random(&mut rng);
         let ak = SpendValidatingKey::fake_random(&mut rng);
 
-        let proof_generation_key = ProofGenerationKey { ak, nsk };
+        let proof_generation_key = ProofGenerationKey::from_parts(ak, nsk).unwrap();
 
         let viewing_key = proof_generation_key.to_viewing_key();
 
