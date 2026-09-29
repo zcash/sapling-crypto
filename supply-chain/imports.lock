@@ -1,6 +1,17 @@
 
 # cargo-vet imports lock
 
+[[unpublished.sapling-crypto]]
+version = "0.8.0"
+audited_as = "0.7.0"
+
+[[publisher.bellman]]
+version = "0.15.0"
+when = "2026-09-26"
+user-id = 6289
+user-login = "str4d"
+user-name = "Jack Grigg"
+
 [[publisher.bls12_381]]
 version = "0.9.0"
 when = "2026-09-15"
@@ -28,6 +39,13 @@ when = "2026-05-30"
 user-id = 1244
 user-login = "ebfull"
 user-name = "Sean Bowe"
+
+[[publisher.groth16]]
+version = "0.2.0"
+when = "2026-09-26"
+user-id = 6289
+user-login = "str4d"
+user-name = "Jack Grigg"
 
 [[publisher.group]]
 version = "0.14.0"
@@ -93,6 +111,13 @@ trusted-publisher = "github:bytecodealliance/wit-bindgen"
 [[publisher.zcash_note_encryption]]
 version = "0.5.0"
 when = "2026-09-15"
+user-id = 169181
+user-login = "nuttycom"
+user-name = "Kris Nuttycombe"
+
+[[publisher.zip32]]
+version = "0.3.0"
+when = "2026-09-29"
 user-id = 169181
 user-login = "nuttycom"
 user-name = "Kris Nuttycombe"

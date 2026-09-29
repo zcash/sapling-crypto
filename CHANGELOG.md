@@ -7,6 +7,8 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-29
+
 ### Added
 - `zeroize` feature flag (enabled by default), which enables the `zeroize`
   dependency (without its default features, so `no_std` is preserved), turns on
