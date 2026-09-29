@@ -31,7 +31,7 @@ and this library adheres to Rust's notion of
 - MSRV is now 1.88
 - Migrated to `ff` 0.14, `group` 0.14, `rand`/`rand_core` 0.10, `bls12_381`
   0.9, `jubjub` 0.11, `redjubjub` 0.9, `zcash_note_encryption` 0.5,
-  `bellman` 0.15, `groth16` 0.2.
+  `bellman` 0.15, `groth16` 0.2, `zip32` 0.3.
 - `rand_core` 0.10 merges `RngCore` into `Rng`, so every public API that was
   bounded by `R: RngCore` is now bounded by `R: Rng`.
 - `bellman`'s Groth16 implementation now lives in the standalone `groth16`

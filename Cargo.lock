@@ -2033,8 +2033,9 @@ dependencies = [
 
 [[package]]
 name = "zip32"
-version = "0.2.1"
-source = "git+https://github.com/zcash/zip32.git?rev=0399cd62dae9b3abe5dc8d5e761b8ef11b57b12a#0399cd62dae9b3abe5dc8d5e761b8ef11b57b12a"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "601ab4bc5f8312fa39f5411e07eb66b538687064c6e936b34eaa78f1e99ebe4d"
 dependencies = [
  "bech32",
  "blake2b_simd",
