@@ -70,7 +70,7 @@ zeroize = { version = "1", optional = true, default-features = false }
 lazy_static = "1"
 
 # Test dependencies
-proptest = { version = ">=1.0.0, <1.7.0", optional = true }
+proptest = { version = "1", optional = true }
 
 # ZIP 32
 aes = "0.9"
@@ -83,7 +83,7 @@ chacha20poly1305 = "0.10"
 rand = { version = "0.10", features = ["std_rng", "sys_rng"] }
 criterion = "0.5"
 incrementalmerkletree = { version = "0.9", features = ["legacy-api", "test-dependencies"] }
-proptest = ">=1.0.0, <1.7.0"
+proptest = "1"
 rand_xorshift = "0.5"
 
 [target.'cfg(unix)'.dev-dependencies]
