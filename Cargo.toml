@@ -79,7 +79,7 @@ zip32 = { version = "0.3", default-features = false }
 
 
 [dev-dependencies]
-chacha20poly1305 = "0.10"
+chacha20poly1305 = "0.11"
 rand = { version = "0.10", features = ["std_rng", "sys_rng"] }
 criterion = "0.5"
 incrementalmerkletree = { version = "0.9", features = ["legacy-api", "test-dependencies"] }
