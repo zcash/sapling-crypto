@@ -7,6 +7,8 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-30
+
 ### Changed
 - Migrated to `incrementalmerkletree` 0.9.
 - The `proptest` dependency (used by the `test-dependencies` feature flag) now
