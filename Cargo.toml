@@ -60,7 +60,7 @@ bitvec = { version = "1", default-features = false }
 incrementalmerkletree = { version = "0.9", default-features = false, features = ["legacy-api"] }
 
 # Note encryption
-zcash_note_encryption = { version = "0.5", features = ["pre-zip-212"] }
+zcash_note_encryption = { version = "0.5.1", features = ["pre-zip-212"] }
 
 # Secret management
 subtle = { version = "2.6", default-features = false }
