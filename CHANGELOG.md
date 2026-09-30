@@ -7,6 +7,11 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Changed
+- Migrated to `incrementalmerkletree` 0.9.
+- The `proptest` dependency (used by the `test-dependencies` feature flag) now
+  accepts any `1.x` version.
+
 ## [0.8.0] - 2026-09-29
 
 ### Added
