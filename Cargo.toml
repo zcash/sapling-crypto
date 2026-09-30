@@ -73,8 +73,8 @@ lazy_static = "1"
 proptest = { version = ">=1.0.0, <1.7.0", optional = true }
 
 # ZIP 32
-aes = "0.8"
-fpe = { version = "0.6", default-features = false, features = ["alloc"] }
+aes = "0.9"
+fpe = { version = "0.7", default-features = false, features = ["alloc"] }
 zip32 = { version = "0.3", default-features = false }
 
 

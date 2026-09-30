@@ -37,7 +37,7 @@ version = "0.5.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.aes]]
-version = "0.8.3"
+version = "0.9.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.ahash]]
@@ -60,10 +60,6 @@ criteria = "safe-to-deploy"
 version = "0.11.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.bellman]]
-version = "0.14.0@git:4665bd6b22d4f02c37ff3f5339fcf3c041a692cf"
-criteria = "safe-to-deploy"
-
 [[exemptions.bitvec]]
 version = "1.0.1"
 criteria = "safe-to-deploy"
@@ -81,7 +77,7 @@ version = "1.25.0"
 criteria = "safe-to-run"
 
 [[exemptions.cbc]]
-version = "0.1.2"
+version = "0.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.cc]]
@@ -112,6 +108,10 @@ criteria = "safe-to-run"
 version = "0.2.1"
 criteria = "safe-to-run"
 
+[[exemptions.cipher]]
+version = "0.5.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.clap]]
 version = "4.6.1"
 criteria = "safe-to-run"
@@ -125,6 +125,10 @@ version = "1.1.0"
 criteria = "safe-to-run"
 
 [[exemptions.corez]]
+version = "0.1.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.cpubits]]
 version = "0.1.1"
 criteria = "safe-to-deploy"
 
@@ -160,6 +164,10 @@ criteria = "safe-to-deploy"
 version = "0.8.16"
 criteria = "safe-to-deploy"
 
+[[exemptions.crypto-common]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.equator]]
 version = "0.4.2"
 criteria = "safe-to-run"
@@ -179,10 +187,6 @@ criteria = "safe-to-run"
 [[exemptions.findshlibs]]
 version = "0.10.2"
 criteria = "safe-to-run"
-
-[[exemptions.fpe]]
-version = "0.6.1"
-criteria = "safe-to-deploy"
 
 [[exemptions.funty]]
 version = "2.0.0"
@@ -206,6 +210,10 @@ criteria = "safe-to-run"
 
 [[exemptions.hermit-abi]]
 version = "0.3.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.hybrid-array]]
+version = "0.4.15"
 criteria = "safe-to-deploy"
 
 [[exemptions.incrementalmerkletree]]
@@ -252,9 +260,17 @@ criteria = "safe-to-deploy"
 version = "0.2.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.num-bigint]]
+version = "0.5.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.num-format]]
 version = "0.4.4"
 criteria = "safe-to-run"
+
+[[exemptions.num-integer]]
+version = "0.1.47"
+criteria = "safe-to-deploy"
 
 [[exemptions.num_cpus]]
 version = "1.16.0"
