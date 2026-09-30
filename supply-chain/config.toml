@@ -33,7 +33,7 @@ version = "0.3.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.aead]]
-version = "0.5.2"
+version = "0.6.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.aes]]
@@ -72,6 +72,10 @@ criteria = "safe-to-deploy"
 version = "1.0.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.block-buffer]]
+version = "0.12.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.bytemuck]]
 version = "1.25.0"
 criteria = "safe-to-run"
@@ -85,15 +89,11 @@ version = "1.2.60"
 criteria = "safe-to-run"
 
 [[exemptions.chacha20]]
-version = "0.9.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.chacha20]]
 version = "0.10.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.chacha20poly1305]]
-version = "0.10.1"
+version = "0.11.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.ciborium]]
@@ -124,16 +124,16 @@ criteria = "safe-to-run"
 version = "1.1.0"
 criteria = "safe-to-run"
 
+[[exemptions.cmov]]
+version = "0.5.4"
+criteria = "safe-to-deploy"
+
 [[exemptions.corez]]
 version = "0.1.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.cpubits]]
 version = "0.1.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cpufeatures]]
-version = "0.2.11"
 criteria = "safe-to-deploy"
 
 [[exemptions.cpufeatures]]
@@ -168,6 +168,10 @@ criteria = "safe-to-deploy"
 version = "0.2.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.ctutils]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.equator]]
 version = "0.4.2"
 criteria = "safe-to-run"
@@ -190,10 +194,6 @@ criteria = "safe-to-run"
 
 [[exemptions.funty]]
 version = "2.0.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.generic-array]]
-version = "0.14.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.getrandom]]
@@ -289,7 +289,7 @@ version = "0.3.5"
 criteria = "safe-to-run"
 
 [[exemptions.poly1305]]
-version = "0.8.0"
+version = "0.9.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.pprof]]
@@ -420,6 +420,10 @@ criteria = "safe-to-deploy"
 version = "1.20.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.universal-hash]]
+version = "0.6.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.uuid]]
 version = "1.6.1"
 criteria = "safe-to-run"
@@ -434,7 +438,7 @@ criteria = "safe-to-run"
 
 [[exemptions.wasi]]
 version = "0.11.0+wasi-snapshot-preview1"
-criteria = "safe-to-deploy"
+criteria = "safe-to-run"
 
 [[exemptions.wasm-bindgen]]
 version = "0.2.89"
