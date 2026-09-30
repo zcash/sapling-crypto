@@ -789,14 +789,14 @@ dependencies = [
 
 [[package]]
 name = "incrementalmerkletree"
-version = "0.8.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53227276b450ef58e4899e656ab4e9b4188aab0efc465f761bdbe56403ede61a"
+checksum = "c3b0c166f7f34e02988f84a7bed22be9707b1569acc6aeb3afaf34152d0e0400"
 dependencies = [
  "either",
  "proptest",
- "rand 0.8.6",
- "rand_core 0.6.4",
+ "rand 0.10.2",
+ "rand_core 0.10.1",
 ]
 
 [[package]]

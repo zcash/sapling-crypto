@@ -57,7 +57,7 @@ tracing = { version = "0.1", optional = true, default-features = false }
 
 # Note Commitment Trees
 bitvec = { version = "1", default-features = false }
-incrementalmerkletree = { version = "0.8.1", default-features = false, features = ["legacy-api"] }
+incrementalmerkletree = { version = "0.9", default-features = false, features = ["legacy-api"] }
 
 # Note encryption
 zcash_note_encryption = { version = "0.5", features = ["pre-zip-212"] }
@@ -82,7 +82,7 @@ zip32 = { version = "0.3", default-features = false }
 chacha20poly1305 = "0.10"
 rand = { version = "0.10", features = ["std_rng", "sys_rng"] }
 criterion = "0.5"
-incrementalmerkletree = { version = "0.8.1", features = ["legacy-api", "test-dependencies"] }
+incrementalmerkletree = { version = "0.9", features = ["legacy-api", "test-dependencies"] }
 proptest = ">=1.0.0, <1.7.0"
 rand_xorshift = "0.5"
 
