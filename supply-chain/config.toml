@@ -25,16 +25,7 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [imports.zcash]
 url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
 
-[policy.bellman]
-audit-as-crates-io = true
-
-[policy.groth16]
-audit-as-crates-io = true
-
 [policy.sapling-crypto]
-audit-as-crates-io = true
-
-[policy.zip32]
 audit-as-crates-io = true
 
 [[exemptions.addchain]]
@@ -212,10 +203,6 @@ criteria = "safe-to-deploy"
 [[exemptions.gimli]]
 version = "0.28.1"
 criteria = "safe-to-run"
-
-[[exemptions.groth16]]
-version = "0.1.0@git:4665bd6b22d4f02c37ff3f5339fcf3c041a692cf"
-criteria = "safe-to-deploy"
 
 [[exemptions.hermit-abi]]
 version = "0.3.3"
@@ -551,8 +538,4 @@ criteria = "safe-to-run"
 
 [[exemptions.zeroize]]
 version = "1.7.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.zip32]]
-version = "0.2.1@git:0399cd62dae9b3abe5dc8d5e761b8ef11b57b12a"
 criteria = "safe-to-deploy"

@@ -7,6 +7,8 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-29
+
 ### Added
 - `zeroize` feature flag (enabled by default), which enables the `zeroize`
   dependency (without its default features, so `no_std` is preserved), turns on
@@ -26,17 +28,25 @@ and this library adheres to Rust's notion of
 - `sapling_crypto::keys::DecodingError::InvalidIvk`
 - `sapling_crypto::zip32::ExtendedSpendingKey::expsk`
 - `sapling_crypto::zip32::ExtendedFullViewingKey::fvk`
+- `sapling_crypto::note_encryption::{NotePlaintextBytes, NoteCiphertextBytes,
+  CompactNotePlaintextBytes, CompactNoteCiphertextBytes}`
 
 ### Changed
 - MSRV is now 1.88
 - Migrated to `ff` 0.14, `group` 0.14, `rand`/`rand_core` 0.10, `bls12_381`
   0.9, `jubjub` 0.11, `redjubjub` 0.9, `zcash_note_encryption` 0.5,
-  `bellman` 0.15, `groth16` 0.2.
+  `bellman` 0.15, `groth16` 0.2, `zip32` 0.3.
 - `rand_core` 0.10 merges `RngCore` into `Rng`, so every public API that was
   bounded by `R: RngCore` is now bounded by `R: Rng`.
 - `bellman`'s Groth16 implementation now lives in the standalone `groth16`
-  crate, which the `circuit` feature depends on alongside `bellman`.
+  crate, which the `circuit` feature depends on alongside `bellman`. The
+  `SpendProver::Proof` and `OutputProver::Proof` types of
+  `circuit::{SpendParameters, OutputParameters}` are now `groth16::Proof<Bls12>`
+  (previously `bellman::groth16::Proof<Bls12>`).
 - The `test-dependencies` feature now enables `rand/std_rng`.
+- `impl Distribution<Node> for rand::distributions::Standard` (under the
+  `test-dependencies` feature) is now
+  `impl Distribution<Node> for rand::distr::StandardUniform`.
 - Migrated to the generalized `zcash_note_encryption::Domain`, which makes the
   note plaintext size variable. `COMPACT_NOTE_SIZE`, `NOTE_PLAINTEXT_SIZE`, and
   `ENC_CIPHERTEXT_SIZE` are no longer re-exported from `zcash_note_encryption`
