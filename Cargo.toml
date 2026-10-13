@@ -77,6 +77,8 @@ aes = "0.9"
 fpe = { version = "0.7", default-features = false, features = ["alloc"] }
 zip32 = { version = "0.3", default-features = false }
 
+# ZIP 304
+base64 = { version = "0.22", default-features = false, features = ["alloc"], optional = true }
 
 [dev-dependencies]
 chacha20poly1305 = "0.11"
@@ -85,6 +87,7 @@ criterion = "0.5"
 incrementalmerkletree = { version = "0.9", features = ["legacy-api", "test-dependencies"] }
 proptest = "1"
 rand_xorshift = "0.5"
+wagyu-zcash-parameters = "0.2"
 
 [target.'cfg(unix)'.dev-dependencies]
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
@@ -92,6 +95,7 @@ pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
 [features]
 default = ["multicore", "circuit", "zeroize"]
 std = [
+  "base64?/std",
   "corez/std",
   "dep:document-features",
   "group/wnaf-memuse",
@@ -100,6 +104,7 @@ std = [
 
 ## Enables creation of Sapling proofs
 circuit = [
+  "dep:base64",
   "dep:bellman",
   "dep:tracing",
   "dep:groth16",
