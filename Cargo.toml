@@ -78,7 +78,7 @@ fpe = { version = "0.7", default-features = false, features = ["alloc"] }
 zip32 = { version = "0.3", default-features = false }
 
 # ZIP 304
-base64 = "0.22"
+base64 = { version = "0.22", default-features = false, features = ["alloc"], optional = true }
 
 [dev-dependencies]
 chacha20poly1305 = "0.11"
@@ -95,6 +95,7 @@ pprof = { version = "0.15", features = ["criterion", "flamegraph"] } # MSRV 1.74
 [features]
 default = ["multicore", "circuit", "zeroize"]
 std = [
+  "base64?/std",
   "corez/std",
   "dep:document-features",
   "group/wnaf-memuse",
@@ -103,6 +104,7 @@ std = [
 
 ## Enables creation of Sapling proofs
 circuit = [
+  "dep:base64",
   "dep:bellman",
   "dep:tracing",
   "dep:groth16",

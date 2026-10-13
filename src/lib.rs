@@ -44,6 +44,7 @@ pub mod util;
 pub mod value;
 #[cfg(feature = "circuit")]
 mod verifier;
+#[cfg(feature = "circuit")]
 pub mod zip304;
 pub mod zip32;
 

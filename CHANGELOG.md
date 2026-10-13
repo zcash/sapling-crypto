@@ -7,6 +7,13 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `sapling_crypto::zip304` module (behind the `circuit` feature flag), implementing
+  [ZIP 304](https://zips.z.cash/zip-0304) message signing and verification for
+  Sapling payment addresses:
+  - `sapling_crypto::zip304::{Signature, ParseError, InvalidSignature}`
+  - `sapling_crypto::zip304::{sign_message, verify_message}`
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed

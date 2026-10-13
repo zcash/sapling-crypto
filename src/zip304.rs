@@ -5,12 +5,10 @@
 use core::{fmt, str::FromStr};
 
 use base64::{prelude::BASE64_STANDARD, Engine};
-use bellman::{
-    gadgets::multipack,
-    groth16::{verify_proof, Proof},
-};
+use bellman::gadgets::multipack;
+use groth16::{verify_proof, Proof};
 use group::{ff::Field, Curve};
-use rand_core::{CryptoRng, OsRng, RngCore};
+use rand_core::{CryptoRng, Rng};
 use redjubjub::SpendAuth;
 
 use super::{
@@ -109,7 +107,7 @@ impl From<base64::DecodeSliceError> for ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ParseError::Base64(e) => write!(f, "Invalid Base64: {}", e),
+            ParseError::Base64(e) => write!(f, "Invalid Base64: {e}"),
             ParseError::InvalidLength => {
                 write!(
                     f,
@@ -162,17 +160,18 @@ impl fmt::Display for Signature {
 /// The coin type is used here in its index form, not its hardened form (i.e. 133 for
 /// mainnet Zcash).
 ///
+/// `rng` must be a cryptographically secure random number generator; it provides the
+/// re-randomization of the address and the proof randomness.
+///
 /// [`SLIP 44`]: https://github.com/satoshilabs/slips/blob/master/slip-0044.md
-pub fn sign_message<Pr: SpendProver>(
+pub fn sign_message<Pr: SpendProver, R: Rng + CryptoRng>(
+    mut rng: R,
     expsk: &ExpandedSpendingKey,
     payment_address: PaymentAddress,
     coin_type: u32,
     message: &[u8],
     prover: &Pr,
 ) -> Signature {
-    // Initialize secure RNG.
-    let mut rng = OsRng;
-
     // Derive the necessary key components.
     let proof_generation_key = expsk.proof_generation_key();
 
@@ -180,15 +179,20 @@ pub fn sign_message<Pr: SpendProver>(
     let alpha = jubjub::Scalar::random(&mut rng);
 
     // Create the address proof.
-    let (nullifier, zkproof) =
-        create_address_proof(proof_generation_key, payment_address, alpha, prover, rng);
+    let (nullifier, zkproof) = create_address_proof(
+        proof_generation_key,
+        payment_address,
+        alpha,
+        prover,
+        &mut rng,
+    );
 
     // Compute the message digest to be signed.
     let digest = message_digest(coin_type, &zkproof, message);
 
     // Create the signature.
-    let rsk = expsk.ask.randomize(&alpha);
-    let spend_auth_sig = rsk.sign(rng, &digest);
+    let rsk = expsk.ask().randomize(&alpha);
+    let spend_auth_sig = rsk.sign(&mut rng, &digest);
 
     Signature {
         nullifier,
@@ -203,7 +207,7 @@ pub(crate) fn create_address_proof<Pr: SpendProver>(
     payment_address: PaymentAddress,
     alpha: jubjub::Scalar,
     prover: &Pr,
-    mut rng: impl RngCore + CryptoRng,
+    mut rng: impl CryptoRng,
 ) -> (Nullifier, GrothProofBytes) {
     // We make a Sapling spend proof for a fake note with value of 1 zatoshi, setting rcm
     // and rcv to zero.
@@ -231,7 +235,7 @@ pub(crate) fn create_address_proof<Pr: SpendProver>(
     // Derive the nullifier for the fake note.
     let nullifier = {
         let vk = proof_generation_key.to_viewing_key();
-        note.nf(&vk.nk, witness.position().into())
+        note.nf(vk.nk(), witness.position().into())
     };
 
     // We now have the full witness for our circuit!
@@ -368,12 +372,18 @@ impl std::error::Error for InvalidSignature {}
 mod tests {
     use std::string::ToString;
 
+    use rand::{rngs::StdRng, SeedableRng};
+
     use crate::{
         circuit::SpendParameters,
         keys::ExpandedSpendingKey,
         zip304::{sign_message, verify_message, Signature},
         Diversifier,
     };
+
+    fn rng() -> StdRng {
+        StdRng::seed_from_u64(0)
+    }
 
     #[test]
     fn test_signatures() {
@@ -382,7 +392,7 @@ mod tests {
             .expect("Sapling parameters should be valid");
         let spend_vk = params.prepared_verifying_key();
 
-        let expsk = ExpandedSpendingKey::from_spending_key(&[42; 32][..]);
+        let expsk = ExpandedSpendingKey::from_spending_key(&[42; 32][..]).unwrap();
         let addr = {
             let diversifier = Diversifier([0; 11]);
             expsk
@@ -395,8 +405,8 @@ mod tests {
         let msg1 = b"Foo bar";
         let msg2 = b"Spam eggs";
 
-        let sig1 = sign_message(&expsk, addr, 1, msg1, &params);
-        let sig2 = sign_message(&expsk, addr, 1, msg2, &params);
+        let sig1 = sign_message(rng(), &expsk, addr, 1, msg1, &params);
+        let sig2 = sign_message(rng(), &expsk, addr, 1, msg2, &params);
 
         // The signatures are bound to the specific message they were created over
         assert!(verify_message(addr, 1, msg1, &sig1, &spend_vk).is_ok());
@@ -417,7 +427,7 @@ mod tests {
                 .to_payment_address(diversifier)
                 .unwrap()
         };
-        let sig1_b = sign_message(&expsk, addr_b, 1, msg1, &params);
+        let sig1_b = sign_message(rng(), &expsk, addr_b, 1, msg1, &params);
 
         // The signatures are bound to the specific address they were created with
         assert!(verify_message(addr_b, 1, msg1, &sig1_b, &spend_vk).is_ok());
@@ -435,7 +445,7 @@ mod tests {
         let params = SpendParameters::read(&spend_buf[..], false)
             .expect("Sapling parameters should be valid");
 
-        let expsk = ExpandedSpendingKey::from_spending_key(&[42; 32][..]);
+        let expsk = ExpandedSpendingKey::from_spending_key(&[42; 32][..]).unwrap();
         let addr = {
             let diversifier = Diversifier([0; 11]);
             expsk
@@ -446,7 +456,7 @@ mod tests {
         };
 
         let msg = b"Foo bar";
-        let sig = sign_message(&expsk, addr.clone(), 1, msg, &params);
+        let sig = sign_message(rng(), &expsk, addr, 1, msg, &params);
 
         let sigs_equal = |a: Signature, b: &Signature| {
             a.nullifier == b.nullifier
