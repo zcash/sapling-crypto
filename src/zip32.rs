@@ -2066,4 +2066,4 @@ mod zeroize_tests {
         assert_eq!(&after[..9], &before[..9]);
         assert_eq!(&after[9..], &[0u8; 160][..]);
     }
-                    }
+}
