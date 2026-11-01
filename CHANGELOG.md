@@ -7,6 +7,11 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Fixed
+- `sapling_crypto::zip32::ExtendedSpendingKey::derive_child` now returns `None`
+  for a key at depth 255, instead of panicking (in debug builds) or wrapping the
+  child's depth around to 0 (in release builds).
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed

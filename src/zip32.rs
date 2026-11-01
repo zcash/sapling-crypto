@@ -500,8 +500,12 @@ impl ExtendedSpendingKey {
     /// incoming viewing key of its external or internal full viewing key is zero. This
     /// has a negligible probability of occurring. ZIP 32 directs the caller to proceed
     /// with the next index in that case.
+    ///
+    /// Also returns `None` if this key is at depth 255, because the child's depth
+    /// would not fit in the single byte that ZIP 32 encodes it in.
     #[must_use]
     pub fn derive_child(&self, i: ChildIndex) -> Option<Self> {
+        let depth = self.depth.checked_add(1)?;
         let fvk = self.fvk();
         let mut tmp = {
             let le_i = i.index().to_le_bytes();
@@ -540,7 +544,7 @@ impl ExtendedSpendingKey {
 
         let xsk = expsk.and_then(|expsk| {
             Self::from_parts(
-                self.depth + 1,
+                depth,
                 FvkFingerprint::from(&fvk).tag(),
                 KeyIndex::Child(i),
                 ChainCode::new(c_i),
@@ -1075,6 +1079,19 @@ mod tests {
 
         let i_5h = ChildIndex::hardened(5);
         let _ = xsk_m.derive_child(i_5h).unwrap();
+    }
+
+    #[test]
+    fn derive_child_depth_overflow() {
+        let seed = [0; 32];
+        let mut xsk = ExtendedSpendingKey::master(&seed).unwrap();
+
+        let i_5h = ChildIndex::hardened(5);
+        for _ in 0..255 {
+            xsk = xsk.derive_child(i_5h).unwrap();
+        }
+        assert_eq!(xsk.depth, 255);
+        assert!(xsk.derive_child(i_5h).is_none());
     }
 
     #[test]
