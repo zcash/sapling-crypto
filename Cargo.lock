@@ -765,8 +765,7 @@ dependencies = [
 [[package]]
 name = "incrementalmerkletree"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3b0c166f7f34e02988f84a7bed22be9707b1569acc6aeb3afaf34152d0e0400"
+source = "git+https://github.com/elicbarbieri/incrementalmerkletree.git?rev=e11bf32479c30059f94e652e390d5939831cc901#d5e07689456e0be0154934aa39d347a9e5f18765"
 dependencies = [
  "either",
  "proptest",
@@ -1471,6 +1470,7 @@ dependencies = [
  "rand 0.10.2",
  "rand_core 0.10.1",
  "rand_xorshift 0.5.0",
+ "rayon",
  "redjubjub",
  "subtle",
  "tracing",

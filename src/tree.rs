@@ -177,10 +177,48 @@ impl Hashable for Node {
         Node(hash.to_affine().get_u())
     }
 
+    /// - [`Node::combine_batch`] over each task's pairs
+    /// - `multicore`: one task per rayon thread, clamped to `MIN..=MAX_PAIRS_PER_TASK` pairs
+    fn combine_pairs(level: Level, children: &[Self]) -> Vec<Self> {
+        assert!(children.len().is_multiple_of(2), "children pair up");
+        let parents = |children: &[Self]| {
+            Self::combine_batch(
+                level,
+                children
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|[lhs, rhs]| (lhs, rhs)),
+            )
+        };
+        #[cfg(feature = "multicore")]
+        {
+            use rayon::prelude::*;
+            let per_task = (children.len() / 2)
+                .div_ceil(rayon::current_num_threads())
+                .clamp(MIN_PAIRS_PER_TASK, MAX_PAIRS_PER_TASK);
+            if children.len() > 2 * per_task {
+                return children
+                    .par_chunks(2 * per_task)
+                    .flat_map_iter(parents)
+                    .collect();
+            }
+        }
+        parents(children)
+    }
+
     fn empty_root(level: Level) -> Self {
         EMPTY_ROOTS[<usize>::from(level)]
     }
 }
+
+/// Fewest pairs per rayon task (below: pool handoff > the hashing it spreads)
+#[cfg(feature = "multicore")]
+const MIN_PAIRS_PER_TASK: usize = 32;
+
+/// Most pairs per rayon task (more tasks than threads: balance across P- and E-cores)
+#[cfg(feature = "multicore")]
+const MAX_PAIRS_PER_TASK: usize = 256;
 
 impl From<Node> for bls12_381::Scalar {
     fn from(node: Node) -> Self {
@@ -248,6 +286,36 @@ mod tests {
                 assert_eq!(actual, expected, "level {level:?}, width {width}");
             }
         }
+    }
+
+    /// 1000 pairs: several rayon tasks under `multicore` (on any machine with >= 2 threads)
+    #[test]
+    fn combine_pairs_equals_combine_per_pair_across_task_splits() {
+        let rng = &mut XorShiftRng::from_seed([9; 16]);
+        let children: Vec<Node> = (0..2 * 1000).map(|_| Node::random(rng)).collect();
+
+        for level in [0, 31].map(Level::from) {
+            for pairs in [0, 1, 31, 32, 33, 1000] {
+                let children = &children[..2 * pairs];
+                let expected: Vec<Node> = children
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|[lhs, rhs]| Node::combine(level, lhs, rhs))
+                    .collect();
+                assert_eq!(
+                    Node::combine_pairs(level, children),
+                    expected,
+                    "level {level:?}, {pairs} pairs"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "children pair up")]
+    fn combine_pairs_refuses_an_odd_count() {
+        Node::combine_pairs(Level::from(0), &[Node::empty_leaf()]);
     }
 
     /// Published Sapling empty root (zcashd's `3e49b5f9…c2fb`, byte-reversed here)

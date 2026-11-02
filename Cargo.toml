@@ -77,6 +77,9 @@ aes = "0.9"
 fpe = { version = "0.7", default-features = false, features = ["alloc"] }
 zip32 = { version = "0.3", default-features = false }
 
+# Multicore tree hashing
+rayon = { version = "1", optional = true }
+
 
 [dev-dependencies]
 chacha20poly1305 = "0.11"
@@ -110,8 +113,8 @@ circuit = [
   "std"
 ]
 
-## Enables multithreading support for creating proofs.
-multicore = ["bellman?/multicore", "groth16?/multicore"]
+## Enables multithreading support for creating proofs and hashing wide Merkle tree levels.
+multicore = ["std", "dep:rayon", "bellman?/multicore", "groth16?/multicore"]
 
 ### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
 ### should not be relied upon and will be removed in a future release.
@@ -138,3 +141,7 @@ harness = false
 [[bench]]
 name = "pedersen_hash"
 harness = false
+
+[patch.crates-io]
+# `Hashable::combine_pairs` (zcash/incrementalmerkletree#219); drop once released
+incrementalmerkletree = { git = "https://github.com/elicbarbieri/incrementalmerkletree.git", rev = "e11bf32479c30059f94e652e390d5939831cc901" }
