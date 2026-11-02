@@ -117,6 +117,10 @@ multicore = ["bellman?/multicore", "groth16?/multicore"]
 ### should not be relied upon and will be removed in a future release.
 temporary-zcashd = []
 
+## Hashes Merkle tree nodes against precomputed window tables (≈2.8 MiB, built on
+## first use), about twice as fast as the generic Pedersen hash with identical output.
+runtime-precomputation = []
+
 ## Zeroizes spending-key material on drop, and exposes `Zeroize` impls.
 zeroize = ["dep:zeroize", "jubjub/zeroize", "redjubjub/zeroize", "zip32/zeroize"]
 
