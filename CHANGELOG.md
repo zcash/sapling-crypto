@@ -7,6 +7,19 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `Hashable::combine_pairs` for `Node`, equal to `Hashable::combine` per pair
+  via `Node::combine_batch`; the `multicore` feature (now implying `std`) splits
+  wide levels across rayon tasks. Requires `incrementalmerkletree` with
+  `Hashable::combine_pairs`.
+- `sapling_crypto::Node::combine_batch`, which hashes same-level node pairs
+  together, sharing one projective-to-affine normalization across the batch.
+- `runtime-precomputation` feature flag, not enabled by default. It makes
+  `sapling_crypto::merkle_hash`, `Hashable::combine` for `Node` and
+  `Node::combine_batch` about twice as fast by evaluating Merkle hashes against
+  precomputed 9-bit window tables, which are built once on first use (about
+  2.8 MiB). Outputs are unchanged.
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed

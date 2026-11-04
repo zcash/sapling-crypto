@@ -3,6 +3,9 @@
 #[cfg(test)]
 pub(crate) mod test_vectors;
 
+#[cfg(feature = "runtime-precomputation")]
+pub(crate) mod windowed;
+
 use alloc::vec::Vec;
 use core::ops::{AddAssign, Neg};
 use ff::PrimeField;
