@@ -1,12 +1,36 @@
+#[cfg(feature = "multicore")]
+use alloc::vec::Vec;
 use bls12_381::Bls12;
 use group::GroupEncoding;
 use rand_core::{CryptoRng, Rng};
+#[cfg(feature = "multicore")]
+use rayon::prelude::*;
 
 use super::SaplingVerificationContextInner;
 use crate::{
     bundle::{Authorized, Bundle},
     circuit::{OutputVerifyingKey, SpendVerifyingKey},
 };
+
+#[cfg(test)]
+mod tests;
+
+/// Prepares only large lists; an empty iterator leaves small lists streaming.
+#[cfg(feature = "multicore")]
+fn read_proofs_in_parallel<T: Sync>(
+    descriptions: &[T],
+    proof_bytes: impl Fn(&T) -> &crate::bundle::GrothProofBytes + Sync,
+) -> alloc::vec::IntoIter<Option<groth16::Proof<Bls12>>> {
+    if descriptions.len() >= 4 {
+        descriptions
+            .par_iter()
+            .map(|description| groth16::Proof::read(&proof_bytes(description)[..]).ok())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    }
+    .into_iter()
+}
 
 /// Batch validation context for Sapling.
 ///
@@ -82,11 +106,22 @@ impl BatchValidator {
 
         let mut ctx = SaplingVerificationContextInner::new();
 
+        // Indexed parallel collection preserves each proof's association with its description.
+        // Keep individual failures so earlier items are still queued before returning false.
+        #[cfg(feature = "multicore")]
+        let mut spend_proofs =
+            read_proofs_in_parallel(bundle.shielded_spends(), |spend| spend.zkproof());
+
         for (spend, sighash) in bundle.shielded_spends().iter().zip(spend_sighashes) {
             // Deserialize the proof
-            let zkproof = match groth16::Proof::read(&spend.zkproof()[..]) {
-                Ok(p) => p,
-                Err(_) => return false,
+            let read_proof = || groth16::Proof::read(&spend.zkproof()[..]).ok();
+            #[cfg(feature = "multicore")]
+            let zkproof = spend_proofs.next().unwrap_or_else(read_proof);
+            #[cfg(not(feature = "multicore"))]
+            let zkproof = read_proof();
+            let zkproof = match zkproof {
+                Some(p) => p,
+                None => return false,
             };
 
             // Check the Spend consensus rules, and batch its proof and spend
@@ -113,6 +148,13 @@ impl BatchValidator {
             }
         }
 
+        // Do not parse outputs after an invalid spend, or retain both parsed lists at once.
+        #[cfg(feature = "multicore")]
+        drop(spend_proofs);
+        #[cfg(feature = "multicore")]
+        let mut output_proofs =
+            read_proofs_in_parallel(bundle.shielded_outputs(), |output| output.zkproof());
+
         for output in bundle.shielded_outputs() {
             // Deserialize the ephemeral key
             let epk = match jubjub::ExtendedPoint::from_bytes(&output.ephemeral_key().0).into() {
@@ -121,9 +163,14 @@ impl BatchValidator {
             };
 
             // Deserialize the proof
-            let zkproof = match groth16::Proof::read(&output.zkproof()[..]) {
-                Ok(p) => p,
-                Err(_) => return false,
+            let read_proof = || groth16::Proof::read(&output.zkproof()[..]).ok();
+            #[cfg(feature = "multicore")]
+            let zkproof = output_proofs.next().unwrap_or_else(read_proof);
+            #[cfg(not(feature = "multicore"))]
+            let zkproof = read_proof();
+            let zkproof = match zkproof {
+                Some(p) => p,
+                None => return false,
             };
 
             // Check the Output consensus rules, and batch its proof.
@@ -196,165 +243,5 @@ impl BatchValidator {
         }
 
         true
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use alloc::vec::Vec;
-
-    use rand::{rngs::StdRng, SeedableRng};
-
-    use crate::{
-        builder::testing::proven_two_spend_bundle,
-        bundle::{Authorized, Bundle, GrothProofBytes, OutputDescription, SpendDescription},
-    };
-
-    use super::BatchValidator;
-
-    fn decodable_proof() -> GrothProofBytes {
-        let proof = groth16::Proof::<bls12_381::Bls12> {
-            a: bls12_381::G1Affine::generator(),
-            b: bls12_381::G2Affine::generator(),
-            c: bls12_381::G1Affine::generator(),
-        };
-        let mut bytes = Vec::new();
-        proof.write(&mut bytes).unwrap();
-        bytes.try_into().unwrap()
-    }
-
-    /// Replaces the mock proofs, which are all zeroes and thus do not decode, with
-    /// encodable proofs. Signature batch validation does not use the proofs.
-    fn with_decodable_proofs(bundle: Bundle<Authorized, i64>) -> Bundle<Authorized, i64> {
-        let proof = decodable_proof();
-        let spends = bundle
-            .shielded_spends()
-            .iter()
-            .map(|spend| {
-                SpendDescription::from_parts(
-                    spend.cv().clone(),
-                    *spend.anchor(),
-                    *spend.nullifier(),
-                    *spend.rk(),
-                    proof,
-                    *spend.spend_auth_sig(),
-                )
-            })
-            .collect();
-        let outputs = bundle
-            .shielded_outputs()
-            .iter()
-            .map(|output| {
-                OutputDescription::from_parts(
-                    output.cv().clone(),
-                    *output.cmu(),
-                    output.ephemeral_key().clone(),
-                    *output.enc_ciphertext(),
-                    *output.out_ciphertext(),
-                    proof,
-                )
-            })
-            .collect();
-        Bundle::from_parts(
-            spends,
-            outputs,
-            *bundle.value_balance(),
-            Authorized {
-                binding_sig: bundle.authorization().binding_sig,
-            },
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn queues_each_spend_and_binding_under_their_own_sighash() {
-        let mut rng = StdRng::seed_from_u64(1);
-        let (bundle, ask) = proven_two_spend_bundle();
-        let spend_sighashes = [[1; 32], [2; 32]];
-        let binding_sighash = [3; 32];
-        let bundle = with_decodable_proofs(
-            bundle
-                .apply_signatures_with_sighashes(
-                    &mut rng,
-                    &spend_sighashes,
-                    binding_sighash,
-                    core::slice::from_ref(&ask),
-                )
-                .unwrap(),
-        );
-
-        let mut validator = BatchValidator::new();
-        assert!(validator.check_bundle_with_sighashes(
-            bundle.clone(),
-            &spend_sighashes,
-            binding_sighash,
-        ));
-        assert!(validator.signatures.verify(&mut rng).is_ok());
-
-        // The same signatures do not verify when the per-spend digests are not matched
-        // to their spends.
-        let mut validator = BatchValidator::new();
-        assert!(validator.check_bundle_with_sighashes(
-            bundle,
-            &[spend_sighashes[1], spend_sighashes[0]],
-            binding_sighash,
-        ));
-        assert!(validator.signatures.verify(&mut rng).is_err());
-    }
-
-    #[test]
-    fn rejects_mismatched_sighash_count() {
-        let mut rng = StdRng::seed_from_u64(2);
-        let (bundle, ask) = proven_two_spend_bundle();
-        let spend_sighashes = [[1; 32], [2; 32]];
-        let binding_sighash = [3; 32];
-        let authorized = with_decodable_proofs(
-            bundle
-                .apply_signatures_with_sighashes(
-                    &mut rng,
-                    &spend_sighashes,
-                    binding_sighash,
-                    core::slice::from_ref(&ask),
-                )
-                .unwrap(),
-        );
-
-        let mut validator = BatchValidator::new();
-        assert!(!validator.check_bundle_with_sighashes(
-            authorized.clone(),
-            &spend_sighashes[..1],
-            binding_sighash,
-        ));
-
-        let mut validator = BatchValidator::new();
-        assert!(!validator.check_bundle_with_sighashes(
-            authorized.clone(),
-            &[spend_sighashes[0], spend_sighashes[1], [4; 32]],
-            binding_sighash,
-        ));
-
-        let mut validator = BatchValidator::new();
-        assert!(validator.check_bundle_with_sighashes(
-            authorized,
-            &spend_sighashes,
-            binding_sighash,
-        ));
-        assert!(validator.signatures.verify(&mut rng).is_ok());
-    }
-
-    #[test]
-    fn shared_sighash_wrapper_queues_the_shared_digest() {
-        let mut rng = StdRng::seed_from_u64(3);
-        let (bundle, ask) = proven_two_spend_bundle();
-        let sighash = [4; 32];
-        let bundle = with_decodable_proofs(
-            bundle
-                .apply_signatures(&mut rng, sighash, core::slice::from_ref(&ask))
-                .unwrap(),
-        );
-
-        let mut validator = BatchValidator::new();
-        assert!(validator.check_bundle(bundle, sighash));
-        assert!(validator.signatures.verify(&mut rng).is_ok());
     }
 }
