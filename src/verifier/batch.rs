@@ -1,12 +1,36 @@
+#[cfg(feature = "multicore")]
+use alloc::vec::Vec;
 use bls12_381::Bls12;
 use group::GroupEncoding;
 use rand_core::{CryptoRng, Rng};
+#[cfg(feature = "multicore")]
+use rayon::prelude::*;
 
 use super::SaplingVerificationContextInner;
 use crate::{
     bundle::{Authorized, Bundle},
     circuit::{OutputVerifyingKey, SpendVerifyingKey},
 };
+
+#[cfg(test)]
+mod tests;
+
+/// Prepares only large lists; an empty iterator leaves small lists streaming.
+#[cfg(feature = "multicore")]
+fn read_proofs_in_parallel<T: Sync>(
+    descriptions: &[T],
+    proof_bytes: impl Fn(&T) -> &crate::bundle::GrothProofBytes + Sync,
+) -> alloc::vec::IntoIter<Option<groth16::Proof<Bls12>>> {
+    if descriptions.len() >= 4 {
+        descriptions
+            .par_iter()
+            .map(|description| groth16::Proof::read(&proof_bytes(description)[..]).ok())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    }
+    .into_iter()
+}
 
 /// Batch validation context for Sapling.
 ///
@@ -53,11 +77,22 @@ impl BatchValidator {
 
         let mut ctx = SaplingVerificationContextInner::new();
 
+        // Indexed parallel collection preserves each proof's association with its description.
+        // Keep individual failures so earlier items are still queued before returning false.
+        #[cfg(feature = "multicore")]
+        let mut spend_proofs =
+            read_proofs_in_parallel(bundle.shielded_spends(), |spend| spend.zkproof());
+
         for spend in bundle.shielded_spends() {
             // Deserialize the proof
-            let zkproof = match groth16::Proof::read(&spend.zkproof()[..]) {
-                Ok(p) => p,
-                Err(_) => return false,
+            let read_proof = || groth16::Proof::read(&spend.zkproof()[..]).ok();
+            #[cfg(feature = "multicore")]
+            let zkproof = spend_proofs.next().unwrap_or_else(read_proof);
+            #[cfg(not(feature = "multicore"))]
+            let zkproof = read_proof();
+            let zkproof = match zkproof {
+                Some(p) => p,
+                None => return false,
             };
 
             // Check the Spend consensus rules, and batch its proof and spend
@@ -84,6 +119,13 @@ impl BatchValidator {
             }
         }
 
+        // Do not parse outputs after an invalid spend, or retain both parsed lists at once.
+        #[cfg(feature = "multicore")]
+        drop(spend_proofs);
+        #[cfg(feature = "multicore")]
+        let mut output_proofs =
+            read_proofs_in_parallel(bundle.shielded_outputs(), |output| output.zkproof());
+
         for output in bundle.shielded_outputs() {
             // Deserialize the ephemeral key
             let epk = match jubjub::ExtendedPoint::from_bytes(&output.ephemeral_key().0).into() {
@@ -92,9 +134,14 @@ impl BatchValidator {
             };
 
             // Deserialize the proof
-            let zkproof = match groth16::Proof::read(&output.zkproof()[..]) {
-                Ok(p) => p,
-                Err(_) => return false,
+            let read_proof = || groth16::Proof::read(&output.zkproof()[..]).ok();
+            #[cfg(feature = "multicore")]
+            let zkproof = output_proofs.next().unwrap_or_else(read_proof);
+            #[cfg(not(feature = "multicore"))]
+            let zkproof = read_proof();
+            let zkproof = match zkproof {
+                Some(p) => p,
+                None => return false,
             };
 
             // Check the Output consensus rules, and batch its proof.
