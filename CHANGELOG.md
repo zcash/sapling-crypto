@@ -7,6 +7,11 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Changed
+- With `multicore`, `BatchValidator::check_bundle` parses spend and output proofs
+  in parallel when their respective list contains at least four proofs. Smaller
+  lists and builds without `multicore` retain streaming proof parsing.
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed
