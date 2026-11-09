@@ -213,7 +213,7 @@ impl Add<&ValueCommitment> for ValueCommitment {
     type Output = CommitmentSum;
 
     fn add(self, rhs: &Self) -> Self::Output {
-        CommitmentSum(self.0 + rhs.0)
+        CommitmentSum(self.point() + rhs.point())
     }
 }
 
@@ -221,13 +221,13 @@ impl Add<&ValueCommitment> for CommitmentSum {
     type Output = CommitmentSum;
 
     fn add(self, rhs: &ValueCommitment) -> Self::Output {
-        CommitmentSum(self.0 + rhs.0)
+        CommitmentSum(self.0 + rhs.point())
     }
 }
 
 impl AddAssign<&ValueCommitment> for CommitmentSum {
     fn add_assign(&mut self, rhs: &ValueCommitment) {
-        self.0 += rhs.0;
+        self.0 += rhs.point();
     }
 }
 
@@ -235,13 +235,13 @@ impl Sub<&ValueCommitment> for ValueCommitment {
     type Output = CommitmentSum;
 
     fn sub(self, rhs: &Self) -> Self::Output {
-        CommitmentSum(self.0 - rhs.0)
+        CommitmentSum(self.point() - rhs.point())
     }
 }
 
 impl SubAssign<&ValueCommitment> for CommitmentSum {
     fn sub_assign(&mut self, rhs: &ValueCommitment) {
-        self.0 -= rhs.0;
+        self.0 -= rhs.point();
     }
 }
 

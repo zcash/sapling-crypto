@@ -131,7 +131,14 @@ impl ValueCommitTrapdoor {
 /// - [`ValueCommitment::from_bytes_not_small_order`] enforces this by definition, and is
 ///   the only constructor that can be used with data received over the network.
 #[derive(Clone, Debug)]
-pub struct ValueCommitment(jubjub::ExtendedPoint);
+pub struct ValueCommitment(Repr);
+
+// `Bytes` only for commitments parsed inside `trusted::with_trusted_encodings`.
+#[derive(Clone, Debug)]
+enum Repr {
+    Point(jubjub::ExtendedPoint),
+    Bytes([u8; 32]),
+}
 
 impl ValueCommitment {
     /// Derives a `ValueCommitment` by $\mathsf{ValueCommit^{Sapling}}$.
@@ -143,14 +150,23 @@ impl ValueCommitment {
         let cv = (VALUE_COMMITMENT_VALUE_GENERATOR * jubjub::Scalar::from(value.0))
             + (VALUE_COMMITMENT_RANDOMNESS_GENERATOR * rcv.0);
 
-        ValueCommitment(cv.into())
+        ValueCommitment(Repr::Point(cv.into()))
+    }
+
+    /// Returns the point, decompressing it if this commitment was read from bytes.
+    pub(crate) fn point(&self) -> jubjub::ExtendedPoint {
+        match &self.0 {
+            Repr::Point(point) => *point,
+            Repr::Bytes(bytes) => Option::from(jubjub::ExtendedPoint::from_bytes(bytes))
+                .expect("trusted value commitments are valid points"),
+        }
     }
 
     /// Returns the inner Jubjub point representing this value commitment.
     ///
     /// This is public for access by `zcash_proofs`.
-    pub fn as_inner(&self) -> &jubjub::ExtendedPoint {
-        &self.0
+    pub fn as_inner(&self) -> jubjub::ExtendedPoint {
+        self.point()
     }
 
     /// Deserializes a value commitment from its byte representation.
@@ -165,13 +181,23 @@ impl ValueCommitment {
     /// [spenddesc]: https://zips.z.cash/protocol/protocol.pdf#spenddesc
     /// [outputdesc]: https://zips.z.cash/protocol/protocol.pdf#outputdesc
     pub fn from_bytes_not_small_order(bytes: &[u8; 32]) -> CtOption<ValueCommitment> {
+        // The caller validated these bytes before, so decompress the point on first use.
+        if crate::trusted::encodings_are_trusted() {
+            return CtOption::new(
+                ValueCommitment(Repr::Bytes(*bytes)),
+                subtle::Choice::from(1),
+            );
+        }
         jubjub::ExtendedPoint::from_bytes(bytes)
-            .and_then(|cv| CtOption::new(ValueCommitment(cv), !cv.is_small_order()))
+            .and_then(|cv| CtOption::new(ValueCommitment(Repr::Point(cv)), !cv.is_small_order()))
     }
 
     /// Serializes this value commitment to its canonical byte representation.
     pub fn to_bytes(&self) -> [u8; 32] {
-        self.0.to_bytes()
+        match &self.0 {
+            Repr::Point(point) => point.to_bytes(),
+            Repr::Bytes(bytes) => *bytes,
+        }
     }
 }
 

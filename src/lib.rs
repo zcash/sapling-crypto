@@ -40,6 +40,7 @@ pub mod pedersen_hash;
 pub mod prover;
 mod spec;
 mod tree;
+pub mod trusted;
 pub mod util;
 pub mod value;
 #[cfg(feature = "circuit")]
