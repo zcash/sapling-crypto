@@ -133,7 +133,7 @@ impl ValueCommitTrapdoor {
 #[derive(Clone, Debug)]
 pub struct ValueCommitment(Repr);
 
-// Proof of concept: commitments read from bytes keep the encoding and decompress on use.
+// `Bytes` only for commitments parsed inside `trusted::with_trusted_encodings`.
 #[derive(Clone, Debug)]
 enum Repr {
     Point(jubjub::ExtendedPoint),
@@ -158,7 +158,7 @@ impl ValueCommitment {
         match &self.0 {
             Repr::Point(point) => *point,
             Repr::Bytes(bytes) => Option::from(jubjub::ExtendedPoint::from_bytes(bytes))
-                .expect("stored value commitments are valid points"),
+                .expect("trusted value commitments are valid points"),
         }
     }
 
@@ -181,11 +181,15 @@ impl ValueCommitment {
     /// [spenddesc]: https://zips.z.cash/protocol/protocol.pdf#spenddesc
     /// [outputdesc]: https://zips.z.cash/protocol/protocol.pdf#outputdesc
     pub fn from_bytes_not_small_order(bytes: &[u8; 32]) -> CtOption<ValueCommitment> {
-        // Proof of concept: the encoding and small-order checks are skipped.
-        CtOption::new(
-            ValueCommitment(Repr::Bytes(*bytes)),
-            subtle::Choice::from(1),
-        )
+        // The caller validated these bytes before, so decompress the point on first use.
+        if crate::trusted::encodings_are_trusted() {
+            return CtOption::new(
+                ValueCommitment(Repr::Bytes(*bytes)),
+                subtle::Choice::from(1),
+            );
+        }
+        jubjub::ExtendedPoint::from_bytes(bytes)
+            .and_then(|cv| CtOption::new(ValueCommitment(Repr::Point(cv)), !cv.is_small_order()))
     }
 
     /// Serializes this value commitment to its canonical byte representation.
