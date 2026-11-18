@@ -7,6 +7,21 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `sapling_crypto::trusted::with_trusted_encodings`, which runs a closure with
+  decompression of value commitments parsed on the current thread deferred to
+  first use. It is for encodings the caller has already validated, such as
+  transactions a node reads back from its own state; it must never be used for
+  network input. Inside the scope:
+  - `ValueCommitment::from_bytes_not_small_order` accepts any bytes, and
+    `ValueCommitment::to_bytes` returns them unchanged.
+  - The canonical-encoding and small-order checks run on first use. The
+    Sapling verifiers reject a spend or output whose value commitment fails
+    them, and `ValueCommitment::as_inner` and commitment arithmetic panic.
+  - The flag is per thread, so the closure must not block on rayon or drive an
+    executor.
+  It is a no-op without the `std` feature.
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed
