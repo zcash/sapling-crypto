@@ -130,14 +130,21 @@ impl ValueCommitTrapdoor {
 ///   produce zero with negligible probability (assuming a non-broken PRNG).
 /// - [`ValueCommitment::from_bytes_not_small_order`] enforces this by definition, and is
 ///   the only constructor that can be used with data received over the network.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ValueCommitment(Repr);
 
-// `Bytes` only for commitments parsed inside `trusted::with_trusted_encodings`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum Repr {
     Point(jubjub::ExtendedPoint),
-    Bytes([u8; 32]),
+    // Parsed inside `trusted::with_trusted_encodings` (which needs `std`): the bytes as given,
+    // and the point once it has been decoded and checked.
+    #[cfg(feature = "std")]
+    Lazy([u8; 32], std::sync::OnceLock<jubjub::ExtendedPoint>),
+}
+
+/// Decodes a value commitment, rejecting non-canonical encodings and small order points.
+fn decode(bytes: &[u8; 32]) -> CtOption<jubjub::ExtendedPoint> {
+    jubjub::ExtendedPoint::from_bytes(bytes).and_then(|cv| CtOption::new(cv, !cv.is_small_order()))
 }
 
 impl ValueCommitment {
@@ -153,19 +160,35 @@ impl ValueCommitment {
         ValueCommitment(Repr::Point(cv.into()))
     }
 
-    /// Returns the point, decompressing it if this commitment was read from bytes.
-    pub(crate) fn point(&self) -> jubjub::ExtendedPoint {
+    /// Returns the point, or `None` for a commitment parsed inside
+    /// [`with_trusted_encodings`](crate::trusted::with_trusted_encodings) whose bytes are not a
+    /// canonical, non-small-order point. A lazy point is decoded once and then kept.
+    pub(crate) fn checked_point(&self) -> Option<&jubjub::ExtendedPoint> {
         match &self.0 {
-            Repr::Point(point) => *point,
-            Repr::Bytes(bytes) => Option::from(jubjub::ExtendedPoint::from_bytes(bytes))
-                .expect("trusted value commitments are valid points"),
+            Repr::Point(point) => Some(point),
+            #[cfg(feature = "std")]
+            Repr::Lazy(bytes, point) => match point.get() {
+                Some(point) => Some(point),
+                None => Option::from(decode(bytes)).map(|decoded| point.get_or_init(|| decoded)),
+            },
         }
+    }
+
+    fn point(&self) -> &jubjub::ExtendedPoint {
+        self.checked_point()
+            .expect("value commitments parsed in a trusted scope are valid, non-small-order points")
     }
 
     /// Returns the inner Jubjub point representing this value commitment.
     ///
     /// This is public for access by `zcash_proofs`.
-    pub fn as_inner(&self) -> jubjub::ExtendedPoint {
+    ///
+    /// # Panics
+    ///
+    /// Panics if this commitment was parsed inside
+    /// [`with_trusted_encodings`](crate::trusted::with_trusted_encodings) from bytes that are
+    /// not a canonical, non-small-order point.
+    pub fn as_inner(&self) -> &jubjub::ExtendedPoint {
         self.point()
     }
 
@@ -178,25 +201,47 @@ impl ValueCommitment {
     /// in [Zcash Protocol Spec § 4.4: Spend Descriptions][spenddesc] and
     /// [§ 4.5: Output Descriptions][outputdesc].
     ///
+    /// Inside [`with_trusted_encodings`](crate::trusted::with_trusted_encodings) it accepts any
+    /// bytes, including off-curve, non-canonical and small order ones, and defers these checks
+    /// to the commitment's first use. The Sapling verifiers then reject the description, and
+    /// other uses panic.
+    ///
     /// [spenddesc]: https://zips.z.cash/protocol/protocol.pdf#spenddesc
     /// [outputdesc]: https://zips.z.cash/protocol/protocol.pdf#outputdesc
     pub fn from_bytes_not_small_order(bytes: &[u8; 32]) -> CtOption<ValueCommitment> {
-        // The caller validated these bytes before, so decompress the point on first use.
+        #[cfg(feature = "std")]
         if crate::trusted::encodings_are_trusted() {
             return CtOption::new(
-                ValueCommitment(Repr::Bytes(*bytes)),
+                ValueCommitment(Repr::Lazy(*bytes, std::sync::OnceLock::new())),
                 subtle::Choice::from(1),
             );
         }
-        jubjub::ExtendedPoint::from_bytes(bytes)
-            .and_then(|cv| CtOption::new(ValueCommitment(Repr::Point(cv)), !cv.is_small_order()))
+        decode(bytes).map(|cv| ValueCommitment(Repr::Point(cv)))
     }
 
     /// Serializes this value commitment to its canonical byte representation.
+    ///
+    /// A commitment parsed inside
+    /// [`with_trusted_encodings`](crate::trusted::with_trusted_encodings) returns the bytes it
+    /// was parsed from, even if they are not a canonical point encoding.
     pub fn to_bytes(&self) -> [u8; 32] {
         match &self.0 {
             Repr::Point(point) => point.to_bytes(),
-            Repr::Bytes(bytes) => *bytes,
+            #[cfg(feature = "std")]
+            Repr::Lazy(bytes, _) => *bytes,
+        }
+    }
+}
+
+// Same output for lazy and eagerly decoded commitments.
+impl core::fmt::Debug for ValueCommitment {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.checked_point() {
+            Some(point) => f.debug_tuple("ValueCommitment").field(point).finish(),
+            None => f
+                .debug_struct("ValueCommitment")
+                .field("invalid_bytes", &self.to_bytes())
+                .finish(),
         }
     }
 }

@@ -213,7 +213,7 @@ impl Add<&ValueCommitment> for ValueCommitment {
     type Output = CommitmentSum;
 
     fn add(self, rhs: &Self) -> Self::Output {
-        CommitmentSum(self.point() + rhs.point())
+        CommitmentSum(*self.point() + rhs.point())
     }
 }
 
@@ -235,7 +235,7 @@ impl Sub<&ValueCommitment> for ValueCommitment {
     type Output = CommitmentSum;
 
     fn sub(self, rhs: &Self) -> Self::Output {
-        CommitmentSum(self.point() - rhs.point())
+        CommitmentSum(*self.point() - rhs.point())
     }
 }
 

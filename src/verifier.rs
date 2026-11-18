@@ -46,6 +46,10 @@ impl SaplingVerificationContextInner {
         // The "cv is not small order" happens when a SpendDescription is deserialized.
         // This happens when transactions or blocks are received over the network, or when
         // mined blocks are introduced via the `submitblock` RPC method on full nodes.
+        // Commitments parsed inside `trusted::with_trusted_encodings` are checked here instead.
+        let Some(cv_point) = cv.checked_point() else {
+            return false;
+        };
         let rk_affine = jubjub::AffinePoint::from_bytes((*rk).into()).unwrap();
         if rk_affine.is_small_order().into() {
             return false;
@@ -71,7 +75,7 @@ impl SaplingVerificationContextInner {
             public_input[1] = v;
         }
         {
-            let affine = cv.as_inner().to_affine();
+            let affine = cv_point.to_affine();
             let (u, v) = (affine.get_u(), affine.get_v());
             public_input[2] = u;
             public_input[3] = v;
@@ -106,6 +110,10 @@ impl SaplingVerificationContextInner {
         // The "cv is not small order" happens when an OutputDescription is deserialized.
         // This happens when transactions or blocks are received over the network, or when
         // mined blocks are introduced via the `submitblock` RPC method on full nodes.
+        // Commitments parsed inside `trusted::with_trusted_encodings` are checked here instead.
+        let Some(cv_point) = cv.checked_point() else {
+            return false;
+        };
         if epk.is_small_order().into() {
             return false;
         }
@@ -116,7 +124,7 @@ impl SaplingVerificationContextInner {
         // Construct public input for circuit
         let mut public_input = [bls12_381::Scalar::zero(); 5];
         {
-            let affine = cv.as_inner().to_affine();
+            let affine = cv_point.to_affine();
             let (u, v) = (affine.get_u(), affine.get_v());
             public_input[0] = u;
             public_input[1] = v;
@@ -146,5 +154,75 @@ impl SaplingVerificationContextInner {
 
         // Verify the binding_sig
         binding_sig_verifier(bvk)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bls12_381::{G1Affine, G2Affine};
+    use groth16::Proof;
+    use group::{Group, GroupEncoding};
+    use rand_core::SeedableRng;
+
+    use super::SaplingVerificationContextInner;
+    use crate::{
+        note::ExtractedNoteCommitment,
+        trusted::with_trusted_encodings,
+        value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
+    };
+
+    fn proof() -> Proof<bls12_381::Bls12> {
+        Proof {
+            a: G1Affine::generator(),
+            b: G2Affine::generator(),
+            c: G1Affine::generator(),
+        }
+    }
+
+    // Runs the spend and output checks with the proof and signature checks passing.
+    fn checks_pass(cv: &ValueCommitment) -> (bool, bool) {
+        let point = jubjub::ExtendedPoint::from(jubjub::SubgroupPoint::generator());
+        let rk = redjubjub::VerificationKey::try_from(point.to_bytes()).unwrap();
+        let cmu = ExtractedNoteCommitment::from_bytes(&[0; 32]).unwrap();
+        let spend = SaplingVerificationContextInner::new().check_spend(
+            cv,
+            bls12_381::Scalar::zero(),
+            &[0; 32],
+            &rk,
+            proof(),
+            &mut (),
+            |_, _| true,
+            |_, _, _| true,
+        );
+        let output =
+            SaplingVerificationContextInner::new()
+                .check_output(cv, cmu, point, proof(), |_, _| true);
+        (spend, output)
+    }
+
+    #[test]
+    fn invalid_commitments_parsed_inside_the_scope_fail_verification() {
+        let mut rng = rand_xorshift::XorShiftRng::from_seed([7; 16]);
+        let valid = ValueCommitment::derive(
+            NoteValue::from_raw(1),
+            ValueCommitTrapdoor::random(&mut rng),
+        )
+        .to_bytes();
+        let order_two = jubjub::ExtendedPoint::from(jubjub::AffinePoint::from_raw_unchecked(
+            bls12_381::Scalar::zero(),
+            -bls12_381::Scalar::one(),
+        ));
+        let parse = |bytes: [u8; 32]| {
+            with_trusted_encodings(|| ValueCommitment::from_bytes_not_small_order(&bytes)).unwrap()
+        };
+
+        assert_eq!(checks_pass(&parse(valid)), (true, true));
+        for invalid in [
+            jubjub::ExtendedPoint::identity().to_bytes(),
+            order_two.to_bytes(),
+            [0xff; 32],
+        ] {
+            assert_eq!(checks_pass(&parse(invalid)), (false, false));
+        }
     }
 }
