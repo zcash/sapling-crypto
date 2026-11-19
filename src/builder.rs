@@ -131,6 +131,13 @@ pub enum Error {
     InvalidExternalSignature,
     /// A bundle could not be built because required signatures were missing.
     MissingSignatures,
+    /// The number of per-spend sighashes did not match the number of spends in the bundle.
+    MismatchedSighashCount {
+        /// The number of spends in the bundle.
+        expected: usize,
+        /// The number of per-spend sighashes provided.
+        actual: usize,
+    },
     /// A required spending key was not provided.
     MissingSpendingKey,
     /// [`Builder::build_for_pczt`] requires [`Zip212Enforcement::On`].
@@ -154,6 +161,10 @@ impl fmt::Display for Error {
             Error::InvalidAmount => write!(f, "Invalid amount"),
             Error::InvalidExternalSignature => write!(f, "External signature was invalid"),
             Error::MissingSignatures => write!(f, "Required signatures were missing during build"),
+            Error::MismatchedSighashCount { expected, actual } => write!(
+                f,
+                "Expected {expected} per-spend sighashes, but {actual} were provided"
+            ),
             Error::MissingSpendingKey => write!(f, "A required spending key was not provided"),
             Error::PcztRequiresZip212 => {
                 write!(f, "PCZTs require that ZIP 212 is enforced for outputs")
@@ -1117,7 +1128,31 @@ pub struct SigningParts {
 #[derive(Clone, Debug)]
 pub struct PartiallyAuthorized {
     binding_signature: redjubjub::Signature<Binding>,
-    sighash: [u8; 32],
+    /// The sighash to sign each spend with, indexed by the spend's position in the
+    /// bundle.
+    spend_sighashes: Vec<[u8; 32]>,
+}
+
+/// Yields the per-spend sighashes in bundle order.
+struct SighashCursor<'a> {
+    sighashes: &'a [[u8; 32]],
+    index: usize,
+}
+
+impl<'a> SighashCursor<'a> {
+    fn new(sighashes: &'a [[u8; 32]]) -> Self {
+        Self {
+            sighashes,
+            index: 0,
+        }
+    }
+
+    /// Returns the sighash for the next spend in order.
+    fn next(&mut self) -> [u8; 32] {
+        let sighash = self.sighashes[self.index];
+        self.index += 1;
+        sighash
+    }
 }
 
 /// Container for metadata needed to sign a Sapling input.
@@ -1160,29 +1195,65 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, Unsigned>, V> {
     /// Loads the sighash into this bundle, preparing it for signing.
     ///
     /// This API ensures that all signatures are created over the same sighash.
+    ///
+    /// Prefer [`Bundle::prepare_with_sighashes`] when the bundle requires a distinct
+    /// sighash per spend, as for v7 transactions.
     pub fn prepare<R: Rng + CryptoRng>(
         self,
-        mut rng: R,
+        rng: R,
         sighash: [u8; 32],
     ) -> Bundle<InProgress<P, PartiallyAuthorized>, V> {
-        self.map_authorization(
-            &mut rng,
+        let spend_sighashes = vec![sighash; self.shielded_spends().len()];
+        self.prepare_with_sighashes(rng, &spend_sighashes, sighash)
+            .expect("the sighash count matches the number of spends")
+    }
+
+    /// Loads the per-spend and binding sighashes into this bundle, preparing it for
+    /// signing.
+    ///
+    /// `spend_sighashes` must contain one sighash per spend, ordered by the spends'
+    /// positions in this bundle. Dummy spends are signed immediately, each over the
+    /// sighash at its own position; the binding signature is created over
+    /// `binding_sighash`.
+    ///
+    /// Returns [`Error::MismatchedSighashCount`] if `spend_sighashes` does not contain
+    /// exactly one entry per spend.
+    pub fn prepare_with_sighashes<R: Rng + CryptoRng>(
+        self,
+        mut rng: R,
+        spend_sighashes: &[[u8; 32]],
+        binding_sighash: [u8; 32],
+    ) -> Result<Bundle<InProgress<P, PartiallyAuthorized>, V>, Error> {
+        let expected = self.shielded_spends().len();
+        if spend_sighashes.len() != expected {
+            return Err(Error::MismatchedSighashCount {
+                expected,
+                actual: spend_sighashes.len(),
+            });
+        }
+
+        let mut cursor = SighashCursor::new(spend_sighashes);
+        Ok(self.map_authorization(
+            (&mut rng, &mut cursor),
             |_, proof| proof,
             |_, proof| proof,
-            |rng, SigningMetadata { dummy_ask, parts }| match dummy_ask {
-                None => MaybeSigned::SigningParts(parts),
-                Some(ask) => {
-                    MaybeSigned::Signature(ask.randomize(&parts.alpha).sign(rng, &sighash))
+            |(rng, cursor), SigningMetadata { dummy_ask, parts }| {
+                let sighash = cursor.next();
+                match dummy_ask {
+                    None => MaybeSigned::SigningParts(parts),
+                    Some(ask) => {
+                        MaybeSigned::Signature(ask.randomize(&parts.alpha).sign(rng, &sighash))
+                    }
                 }
             },
-            |rng, auth: InProgress<P, Unsigned>| InProgress {
+            |(rng, _), auth: InProgress<P, Unsigned>| InProgress {
                 sigs: PartiallyAuthorized {
-                    binding_signature: auth.sigs.bsk.sign(rng, &sighash),
-                    sighash,
+                    binding_signature: auth.sigs.bsk.sign(rng, &binding_sighash),
+                    spend_sighashes: spend_sighashes.to_vec(),
                 },
                 _proof_state: PhantomData,
             },
-        )
+        ))
     }
 }
 
@@ -1191,17 +1262,41 @@ impl<V> Bundle<InProgress<Proven, Unsigned>, V> {
     ///
     /// This is a helper method that wraps [`Bundle::prepare`], [`Bundle::sign`], and
     /// [`Bundle::finalize`].
+    ///
+    /// Prefer [`Bundle::apply_signatures_with_sighashes`] when the bundle requires a
+    /// distinct sighash per spend, as for v7 transactions.
     pub fn apply_signatures<R: Rng + CryptoRng>(
         self,
         mut rng: R,
         sighash: [u8; 32],
         signing_keys: &[SpendAuthorizingKey],
     ) -> Result<Bundle<Authorized, V>, Error> {
+        let spend_sighashes = vec![sighash; self.shielded_spends().len()];
+        self.apply_signatures_with_sighashes(&mut rng, &spend_sighashes, sighash, signing_keys)
+    }
+
+    /// Applies signatures to this bundle, in order to authorize it.
+    ///
+    /// `spend_sighashes` must contain one sighash per spend, ordered by the spends'
+    /// positions in this bundle. Each spend is signed over the sighash at its own
+    /// position, and the binding signature is created over `binding_sighash`.
+    ///
+    /// This is a helper method that wraps [`Bundle::prepare_with_sighashes`],
+    /// [`Bundle::sign`], and [`Bundle::finalize`].
+    ///
+    /// Returns [`Error::MismatchedSighashCount`] if `spend_sighashes` does not contain
+    /// exactly one entry per spend.
+    pub fn apply_signatures_with_sighashes<R: Rng + CryptoRng>(
+        self,
+        mut rng: R,
+        spend_sighashes: &[[u8; 32]],
+        binding_sighash: [u8; 32],
+        signing_keys: &[SpendAuthorizingKey],
+    ) -> Result<Bundle<Authorized, V>, Error> {
+        let partial = self.prepare_with_sighashes(&mut rng, spend_sighashes, binding_sighash)?;
         signing_keys
             .iter()
-            .fold(self.prepare(&mut rng, sighash), |partial, ask| {
-                partial.sign(&mut rng, ask)
-            })
+            .fold(partial, |partial, ask| partial.sign(&mut rng, ask))
             .finalize()
     }
 }
@@ -1209,19 +1304,24 @@ impl<V> Bundle<InProgress<Proven, Unsigned>, V> {
 impl<P: InProgressProofs, V> Bundle<InProgress<P, PartiallyAuthorized>, V> {
     /// Signs this bundle with the given [`redjubjub::SigningKey`].
     ///
-    /// This will apply signatures for all notes controlled by this spending key.
+    /// This will apply signatures for all notes controlled by this spending key. Each
+    /// spend is signed over the sighash at its own position in the bundle.
     pub fn sign<R: Rng + CryptoRng>(self, mut rng: R, ask: &SpendAuthorizingKey) -> Self {
         let expected_ak = ask.into();
-        let sighash = self.authorization().sigs.sighash;
+        let spend_sighashes = self.authorization().sigs.spend_sighashes.clone();
+        let mut cursor = SighashCursor::new(&spend_sighashes);
         self.map_authorization(
-            &mut rng,
+            (&mut rng, &mut cursor),
             |_, proof| proof,
             |_, proof| proof,
-            |rng, maybe| match maybe {
-                MaybeSigned::SigningParts(parts) if parts.ak == expected_ak => {
-                    MaybeSigned::Signature(ask.randomize(&parts.alpha).sign(rng, &sighash))
+            |(rng, cursor), maybe| {
+                let sighash = cursor.next();
+                match maybe {
+                    MaybeSigned::SigningParts(parts) if parts.ak == expected_ak => {
+                        MaybeSigned::Signature(ask.randomize(&parts.alpha).sign(rng, &sighash))
+                    }
+                    s => s,
                 }
-                s => s,
             },
             |_, partial| partial,
         )
@@ -1229,9 +1329,9 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, PartiallyAuthorized>, V> {
 
     /// Appends externally computed [`redjubjub::Signature`]s.
     ///
-    /// Each signature will be applied to the one input for which it is valid. An error
-    /// will be returned if the signature is not valid for any inputs, or if it is valid
-    /// for more than one input.
+    /// Each signature will be applied to the one input for which it is valid, using the
+    /// sighash at that input's position in the bundle. An error will be returned if the
+    /// signature is not valid for any inputs, or if it is valid for more than one input.
     pub fn append_signatures(
         self,
         signatures: &[redjubjub::Signature<SpendAuth>],
@@ -1240,24 +1340,28 @@ impl<P: InProgressProofs, V> Bundle<InProgress<P, PartiallyAuthorized>, V> {
     }
 
     fn append_signature(self, signature: &redjubjub::Signature<SpendAuth>) -> Result<Self, Error> {
-        let sighash = self.authorization().sigs.sighash;
         let mut signature_valid_for = 0usize;
+        let spend_sighashes = self.authorization().sigs.spend_sighashes.clone();
+        let mut cursor = SighashCursor::new(&spend_sighashes);
         let bundle = self.map_authorization(
-            &mut signature_valid_for,
+            (&mut signature_valid_for, &mut cursor),
             |_, proof| proof,
             |_, proof| proof,
-            |ctx, maybe| match maybe {
-                MaybeSigned::SigningParts(parts) => {
-                    let rk = parts.ak.randomize(&parts.alpha);
-                    if rk.verify(&sighash, signature).is_ok() {
-                        **ctx += 1;
-                        MaybeSigned::Signature(*signature)
-                    } else {
-                        // Signature isn't for this input.
-                        MaybeSigned::SigningParts(parts)
+            |(ctx, cursor), maybe| {
+                let sighash = cursor.next();
+                match maybe {
+                    MaybeSigned::SigningParts(parts) => {
+                        let rk = parts.ak.randomize(&parts.alpha);
+                        if rk.verify(&sighash, signature).is_ok() {
+                            **ctx += 1;
+                            MaybeSigned::Signature(*signature)
+                        } else {
+                            // Signature isn't for this input.
+                            MaybeSigned::SigningParts(parts)
+                        }
                     }
+                    s => s,
                 }
-                s => s,
             },
             |_, partial| partial,
         );
@@ -1312,6 +1416,16 @@ pub(crate) mod testing {
 
     #[cfg(feature = "circuit")]
     use crate::prover::mock::{MockOutputProver, MockSpendProver};
+
+    #[cfg(test)]
+    use {
+        crate::{
+            keys::SpendAuthorizingKey, value::NoteValue, zip32::ExtendedSpendingKey, MerklePath,
+            Note, Rseed, NOTE_COMMITMENT_TREE_DEPTH,
+        },
+        incrementalmerkletree::{Hashable, Position},
+        zip32::DiversifierIndex,
+    };
 
     #[allow(dead_code)]
     #[cfg(feature = "circuit")]
@@ -1380,5 +1494,256 @@ pub(crate) mod testing {
                         .unwrap()
                 },
             )
+    }
+
+    /// Builds a proven bundle with two spends of zero-valued notes, both controlled by
+    /// the returned spend authorizing key.
+    #[cfg(test)]
+    pub(crate) fn proven_two_spend_bundle() -> (
+        Bundle<super::InProgress<super::Proven, super::Unsigned>, i64>,
+        SpendAuthorizingKey,
+    ) {
+        let mut rng = StdRng::seed_from_u64(0);
+        let extsk = ExtendedSpendingKey::master(&[]).unwrap();
+        let dfvk = extsk.to_diversifiable_full_viewing_key();
+
+        let mut builder = Builder::new(
+            Zip212Enforcement::On,
+            BundleType::DEFAULT,
+            Anchor::empty_tree(),
+        );
+        for i in 0..2u32 {
+            let address = dfvk.find_address(DiversifierIndex::from(i)).unwrap().1;
+            let note =
+                Note::from_parts(address, NoteValue::ZERO, Rseed::AfterZip212([i as u8; 32]));
+            let path = MerklePath::from_parts(
+                vec![Node::empty_leaf(); NOTE_COMMITMENT_TREE_DEPTH.into()],
+                Position::from(u64::from(i)),
+            )
+            .unwrap();
+            builder.add_spend(dfvk.fvk().clone(), note, path).unwrap();
+        }
+
+        let (bundle, _) = builder
+            .build::<MockSpendProver, MockOutputProver, _, _>(
+                core::slice::from_ref(&extsk),
+                &mut rng,
+            )
+            .unwrap()
+            .unwrap();
+        let bundle = bundle.create_proofs(&MockSpendProver, &MockOutputProver, &mut rng, ());
+
+        (bundle, extsk.expsk().ask().clone())
+    }
+}
+
+#[cfg(all(test, feature = "circuit"))]
+mod tests {
+    use core::marker::PhantomData;
+
+    use alloc::vec::Vec;
+
+    use rand::{rngs::StdRng, SeedableRng};
+    use redjubjub::Binding;
+
+    use crate::{
+        bundle::{Authorized, Bundle, SpendDescription},
+        prover::mock::MockSpendProver,
+    };
+
+    use super::{
+        testing::proven_two_spend_bundle, Error, InProgress, MaybeSigned, SpendInfo, Unproven,
+        Unsigned,
+    };
+
+    /// Builds an unsigned bundle with two dummy spends.
+    fn unsigned_dummy_bundle() -> Bundle<InProgress<Unproven, Unsigned>, i64> {
+        let mut rng = StdRng::seed_from_u64(9);
+        let bsk = redjubjub::SigningKey::<Binding>::new(&mut rng);
+        let spends = (0..2)
+            .map(|_| {
+                SpendInfo::dummy(&mut rng)
+                    .prepare(&mut rng)
+                    .build::<MockSpendProver, _>(None, &mut rng)
+                    .unwrap()
+            })
+            .collect::<Vec<SpendDescription<InProgress<Unproven, Unsigned>>>>();
+
+        Bundle::from_parts(
+            spends,
+            vec![],
+            0,
+            InProgress {
+                sigs: Unsigned { bsk },
+                _proof_state: PhantomData,
+            },
+        )
+        .unwrap()
+    }
+
+    fn spent_sighash<P: super::InProgressProofs>(
+        bundle: &Bundle<InProgress<P, super::PartiallyAuthorized>, i64>,
+        index: usize,
+    ) -> redjubjub::Signature<redjubjub::SpendAuth> {
+        match bundle.shielded_spends()[index].spend_auth_sig() {
+            MaybeSigned::Signature(sig) => *sig,
+            MaybeSigned::SigningParts(_) => panic!("spend {index} is not signed"),
+        }
+    }
+
+    fn binding_verification_key(
+        bundle: &Bundle<Authorized, i64>,
+    ) -> redjubjub::VerificationKey<Binding> {
+        crate::bundle::binding_verification_key(bundle)
+    }
+
+    #[test]
+    fn each_spend_and_binding_use_their_own_sighash() {
+        let mut rng = StdRng::seed_from_u64(1);
+        let (bundle, ask) = proven_two_spend_bundle();
+        let spend_sighashes = [[1; 32], [2; 32]];
+        let binding_sighash = [3; 32];
+
+        let authorized = bundle
+            .apply_signatures_with_sighashes(
+                &mut rng,
+                &spend_sighashes,
+                binding_sighash,
+                core::slice::from_ref(&ask),
+            )
+            .unwrap();
+
+        for (i, spend) in authorized.shielded_spends().iter().enumerate() {
+            assert!(spend
+                .rk()
+                .verify(&spend_sighashes[i], spend.spend_auth_sig())
+                .is_ok());
+            assert!(spend
+                .rk()
+                .verify(&spend_sighashes[1 - i], spend.spend_auth_sig())
+                .is_err());
+        }
+
+        let bvk = binding_verification_key(&authorized);
+        assert!(bvk
+            .verify(&binding_sighash, &authorized.authorization().binding_sig)
+            .is_ok());
+        assert!(bvk
+            .verify(&spend_sighashes[0], &authorized.authorization().binding_sig)
+            .is_err());
+    }
+
+    #[test]
+    fn mismatched_sighash_count_is_rejected() {
+        let mut rng = StdRng::seed_from_u64(2);
+        let (bundle, _) = proven_two_spend_bundle();
+
+        assert_eq!(
+            bundle
+                .prepare_with_sighashes(&mut rng, &[[0; 32]], [1; 32])
+                .unwrap_err(),
+            Error::MismatchedSighashCount {
+                expected: 2,
+                actual: 1,
+            }
+        );
+
+        let (bundle, ask) = proven_two_spend_bundle();
+        assert_eq!(
+            bundle
+                .apply_signatures_with_sighashes(
+                    &mut rng,
+                    &[[0; 32]; 3],
+                    [1; 32],
+                    core::slice::from_ref(&ask),
+                )
+                .unwrap_err(),
+            Error::MismatchedSighashCount {
+                expected: 2,
+                actual: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn shared_sighash_signatures_use_the_shared_digest() {
+        let mut rng = StdRng::seed_from_u64(3);
+        let (bundle, ask) = proven_two_spend_bundle();
+        let sighash = [4; 32];
+
+        let authorized = bundle
+            .apply_signatures(&mut rng, sighash, core::slice::from_ref(&ask))
+            .unwrap();
+
+        for spend in authorized.shielded_spends() {
+            assert!(spend.rk().verify(&sighash, spend.spend_auth_sig()).is_ok());
+        }
+
+        let bvk = binding_verification_key(&authorized);
+        assert!(bvk
+            .verify(&sighash, &authorized.authorization().binding_sig)
+            .is_ok());
+    }
+
+    #[test]
+    fn dummy_spends_are_signed_with_their_indexed_sighash() {
+        let mut rng = StdRng::seed_from_u64(4);
+        let bundle = unsigned_dummy_bundle();
+        let spend_sighashes = [[5; 32], [6; 32]];
+
+        let prepared = bundle
+            .prepare_with_sighashes(&mut rng, &spend_sighashes, [7; 32])
+            .unwrap();
+
+        for (i, spend) in prepared.shielded_spends().iter().enumerate() {
+            let sig = spent_sighash(&prepared, i);
+            assert!(spend.rk().verify(&spend_sighashes[i], &sig).is_ok());
+            assert!(spend.rk().verify(&spend_sighashes[1 - i], &sig).is_err());
+        }
+    }
+
+    #[test]
+    fn append_signatures_verifies_each_spend_with_its_indexed_sighash() {
+        let mut rng = StdRng::seed_from_u64(5);
+        let (bundle, ask) = proven_two_spend_bundle();
+        let spend_sighashes = [[8; 32], [9; 32]];
+        let binding_sighash = [10; 32];
+
+        let partial = bundle
+            .prepare_with_sighashes(&mut rng, &spend_sighashes, binding_sighash)
+            .unwrap();
+        let signed = partial.clone().sign(&mut rng, &ask);
+        let signature = spent_sighash(&signed, 1);
+
+        let appended = partial.append_signatures(&[signature]).unwrap();
+        assert!(matches!(
+            appended.shielded_spends()[0].spend_auth_sig(),
+            MaybeSigned::SigningParts(_)
+        ));
+        assert!(matches!(
+            appended.shielded_spends()[1].spend_auth_sig(),
+            MaybeSigned::Signature(_)
+        ));
+
+        // A signature created under the wrong spend's digest is rejected.
+        let (bundle, _) = proven_two_spend_bundle();
+        let swapped = bundle
+            .prepare_with_sighashes(
+                &mut rng,
+                &[spend_sighashes[1], spend_sighashes[0]],
+                binding_sighash,
+            )
+            .unwrap()
+            .sign(&mut rng, &ask);
+        let swapped_signature = spent_sighash(&swapped, 1);
+
+        let (bundle, _) = proven_two_spend_bundle();
+        let partial = bundle
+            .prepare_with_sighashes(&mut rng, &spend_sighashes, binding_sighash)
+            .unwrap();
+        assert_eq!(
+            partial.append_signatures(&[swapped_signature]).unwrap_err(),
+            Error::InvalidExternalSignature
+        );
     }
 }

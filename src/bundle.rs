@@ -509,6 +509,25 @@ impl<A> From<OutputDescription<A>> for CompactOutputDescription {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn binding_verification_key<V: Copy + Into<i64>>(
+    bundle: &Bundle<Authorized, V>,
+) -> redjubjub::VerificationKey<redjubjub::Binding> {
+    use crate::value::CommitmentSum;
+
+    let spends = bundle
+        .shielded_spends()
+        .iter()
+        .map(|spend| spend.cv())
+        .sum::<CommitmentSum>();
+    let outputs = bundle
+        .shielded_outputs()
+        .iter()
+        .map(|output| output.cv())
+        .sum::<CommitmentSum>();
+    (spends - outputs).into_bvk(*bundle.value_balance())
+}
+
 #[cfg(any(test, feature = "test-dependencies"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "test-dependencies")))]
 pub mod testing {
