@@ -7,6 +7,26 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `sapling_crypto::Bundle::prepare_with_sighashes`
+- `sapling_crypto::Bundle::apply_signatures_with_sighashes`
+- `sapling_crypto::builder::Error::MismatchedSighashCount`
+- `sapling_crypto::BatchValidator::check_bundle_with_sighashes`
+- `sapling_crypto::pczt::Bundle::finalize_io_with_sighashes`
+- `sapling_crypto::pczt::IoFinalizerError::MismatchedSighashCount`
+- `sapling_crypto::Bundle<sapling_crypto::pczt::Unbound>::apply_binding_signature_with_sighashes`
+  (on the bundle returned by `sapling_crypto::pczt::Bundle::extract`)
+
+  The `*_with_sighashes` methods take one 32-byte signature message per spend,
+  ordered by spend position; those that produce a binding signature also take a
+  separate binding signature message. They support v7 transactions, whose
+  signature messages differ per spend. The existing shared-message methods
+  repeat their message across all spends and use it for the binding signature.
+
+  Callers of `sapling_crypto::pczt::Spend::sign` and
+  `sapling_crypto::pczt::Spend::apply_signature` must likewise pass the message
+  for that spend's index in v7 transactions, rather than a shared message.
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed

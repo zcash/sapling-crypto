@@ -8,6 +8,10 @@ use crate::keys::SpendAuthorizingKey;
 impl super::Spend {
     /// Signs the Sapling spend with the given spend authorizing key.
     ///
+    /// `sighash` must be the signature message for this spend's index in the bundle.
+    /// For v7 transactions each spend has its own message; for earlier versions every
+    /// spend uses the same one.
+    ///
     /// It is the caller's responsibility to perform any semantic validity checks on the
     /// PCZT (for example, comfirming that the change amounts are correct) before calling
     /// this method.
@@ -31,6 +35,10 @@ impl super::Spend {
     }
 
     /// Applies the given signature to the Sapling spend, if valid.
+    ///
+    /// `sighash` must be the signature message for this spend's index in the bundle.
+    /// For v7 transactions each spend has its own message; for earlier versions every
+    /// spend uses the same one.
     ///
     /// It is the caller's responsibility to perform any semantic validity checks on the
     /// PCZT (for example, comfirming that the change amounts are correct) before calling
