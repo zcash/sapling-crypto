@@ -338,3 +338,53 @@ impl Zip32Derivation {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod testing {
+    use incrementalmerkletree::{Hashable, Position};
+    use rand::{rngs::StdRng, SeedableRng};
+    use zip32::DiversifierIndex;
+
+    use crate::{
+        builder::{Builder, BundleType},
+        keys::SpendAuthorizingKey,
+        note_encryption::Zip212Enforcement,
+        value::NoteValue,
+        zip32::ExtendedSpendingKey,
+        Anchor, MerklePath, Node, Note, Rseed, NOTE_COMMITMENT_TREE_DEPTH,
+    };
+
+    use super::Bundle;
+
+    /// Builds a PCZT bundle with two spends of zero-valued notes, both controlled by the
+    /// returned spend authorizing key and both marked as dummies.
+    pub(crate) fn pczt_bundle() -> (Bundle, SpendAuthorizingKey) {
+        let mut rng = StdRng::seed_from_u64(0);
+        let extsk = ExtendedSpendingKey::master(&[]).unwrap();
+        let dfvk = extsk.to_diversifiable_full_viewing_key();
+
+        let mut builder = Builder::new(
+            Zip212Enforcement::On,
+            BundleType::DEFAULT,
+            Anchor::empty_tree(),
+        );
+        for i in 0..2u32 {
+            let address = dfvk.find_address(DiversifierIndex::from(i)).unwrap().1;
+            let note =
+                Note::from_parts(address, NoteValue::ZERO, Rseed::AfterZip212([i as u8; 32]));
+            let path = MerklePath::from_parts(
+                vec![Node::empty_leaf(); NOTE_COMMITMENT_TREE_DEPTH.into()],
+                Position::from(u64::from(i)),
+            )
+            .unwrap();
+            builder.add_spend(dfvk.fvk().clone(), note, path).unwrap();
+        }
+
+        let (mut bundle, _) = builder.build_for_pczt(&mut rng).unwrap();
+        let ask = extsk.expsk().ask().clone();
+        for spend in bundle.spends.iter_mut() {
+            spend.dummy_ask = Some(ask.clone());
+        }
+        (bundle, ask)
+    }
+}
