@@ -21,7 +21,13 @@ impl super::Bundle {
     pub fn extract_effects<V: TryFrom<i64>>(
         &self,
     ) -> Result<Option<crate::Bundle<EffectsOnly, V>>, TxExtractorError> {
-        self.to_tx_data(|_| Ok(()), |_| Ok(()), |_| Ok(()), |_| Ok(EffectsOnly))
+        self.to_tx_data(
+            Some,
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| Ok(EffectsOnly),
+        )
     }
 
     /// Extracts a fully authorized [regular `Bundle`] from this PCZT bundle.
@@ -33,6 +39,7 @@ impl super::Bundle {
         &self,
     ) -> Result<Option<crate::Bundle<Unbound, V>>, TxExtractorError> {
         self.to_tx_data(
+            |anchor| anchor,
             |spend| spend.zkproof.ok_or(TxExtractorError::MissingProof),
             |spend| {
                 spend
@@ -53,6 +60,7 @@ impl super::Bundle {
 
     fn to_tx_data<A, V, E, F, G, H, I>(
         &self,
+        anchor: impl Fn(bls12_381::Scalar) -> A::Anchor,
         spend_proof: F,
         spend_auth: G,
         output_proof: H,
@@ -73,7 +81,7 @@ impl super::Bundle {
             .map(|spend| {
                 Ok(SpendDescription::from_parts(
                     spend.cv.clone(),
-                    self.anchor.inner(),
+                    anchor(self.anchor.inner()),
                     spend.nullifier,
                     spend.rk,
                     spend_proof(spend)?,
@@ -158,6 +166,7 @@ pub struct Unbound {
 }
 
 impl Authorization for Unbound {
+    type Anchor = bls12_381::Scalar;
     type SpendProof = GrothProofBytes;
     type OutputProof = GrothProofBytes;
     type AuthSig = redjubjub::Signature<redjubjub::SpendAuth>;

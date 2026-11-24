@@ -8,6 +8,7 @@ and this library adheres to Rust's notion of
 ## [Unreleased]
 
 ### Added
+- `sapling_crypto::Bundle::{map_authorization_with_anchor, try_map_authorization_with_anchor}`
 - `sapling_crypto::Bundle::prepare_with_sighashes`
 - `sapling_crypto::Bundle::apply_signatures_with_sighashes`
 - `sapling_crypto::builder::Error::MismatchedSighashCount`
@@ -26,6 +27,12 @@ and this library adheres to Rust's notion of
   Callers of `sapling_crypto::pczt::Spend::sign` and
   `sapling_crypto::pczt::Spend::apply_signature` must likewise pass the message
   for that spend's index in v7 transactions, rather than a shared message.
+
+### Changed
+- `bundle::Authorization` requires an `Anchor` associated type. Complete states
+  use `bls12_381::Scalar`; `EffectsOnly` uses `Option<bls12_381::Scalar>`.
+  `SpendDescription::{from_parts, anchor}` use that representation.
+- Authorization mappers that preserve anchors require equal anchor types.
 
 ## [0.9.0] - 2026-09-30
 

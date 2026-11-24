@@ -953,6 +953,7 @@ pub struct InProgress<P: InProgressProofs, S: InProgressSignatures> {
 }
 
 impl<P: InProgressProofs, S: InProgressSignatures> Authorization for InProgress<P, S> {
+    type Anchor = bls12_381::Scalar;
     type SpendProof = P::SpendProof;
     type OutputProof = P::OutputProof;
     type AuthSig = S::AuthSig;

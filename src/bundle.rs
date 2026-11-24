@@ -24,16 +24,22 @@ pub type GrothProofBytes = [u8; GROTH_PROOF_SIZE];
 
 /// Defines the authorization type of a Sapling bundle.
 pub trait Authorization: Debug {
+    /// Tree root representation; complete states require a concrete root.
+    type Anchor: Copy + Debug + Into<Option<bls12_381::Scalar>>;
     type SpendProof: Clone + Debug;
     type OutputProof: Clone + Debug;
     type AuthSig: Clone + Debug;
 }
 
-/// Marker type for a bundle that contains no authorizing data.
-#[derive(Debug)]
+/// Marker type for effects without proofs or signatures.
+///
+/// Spend anchors are `None` when authorizing data was pruned, and `Some` when
+/// the transaction format commits to them as effects.
+#[derive(Clone, Copy, Debug)]
 pub struct EffectsOnly;
 
 impl Authorization for EffectsOnly {
+    type Anchor = Option<bls12_381::Scalar>;
     type SpendProof = ();
     type OutputProof = ();
     type AuthSig = ();
@@ -41,6 +47,17 @@ impl Authorization for EffectsOnly {
 
 /// Authorizing data for a bundle of Sapling spends and outputs, ready to be committed to
 /// the ledger.
+///
+/// Complete spends cannot carry an absent anchor:
+/// ```compile_fail
+/// use sapling_crypto::{Bundle, bundle::Authorized};
+/// fn remove_anchors(bundle: Bundle<Authorized, i64>) -> Bundle<Authorized, i64> {
+///     bundle.map_authorization_with_anchor(
+///         (), |_, _| None, |_, proof| proof, |_, proof| proof,
+///         |_, signature| signature, |_, auth| auth,
+///     )
+/// }
+/// ```
 #[derive(Debug, Copy, Clone)]
 pub struct Authorized {
     // TODO: Make this private.
@@ -48,6 +65,7 @@ pub struct Authorized {
 }
 
 impl Authorization for Authorized {
+    type Anchor = bls12_381::Scalar;
     type SpendProof = GrothProofBytes;
     type OutputProof = GrothProofBytes;
     type AuthSig = redjubjub::Signature<SpendAuth>;
@@ -106,9 +124,32 @@ impl<A: Authorization, V> Bundle<A, V> {
     }
 
     /// Transitions this bundle from one authorization state to another.
-    pub fn map_authorization<R, B: Authorization>(
+    pub fn map_authorization<R, B>(
+        self,
+        context: R,
+        spend_proof: impl Fn(&mut R, A::SpendProof) -> B::SpendProof,
+        output_proof: impl Fn(&mut R, A::OutputProof) -> B::OutputProof,
+        auth_sig: impl Fn(&mut R, A::AuthSig) -> B::AuthSig,
+        auth: impl FnOnce(&mut R, A) -> B,
+    ) -> Bundle<B, V>
+    where
+        B: Authorization<Anchor = A::Anchor>,
+    {
+        self.map_authorization_with_anchor(
+            context,
+            |_, anchor| anchor,
+            spend_proof,
+            output_proof,
+            auth_sig,
+            auth,
+        )
+    }
+
+    /// Transitions authorization and maps each spend's anchor representation.
+    pub fn map_authorization_with_anchor<R, B: Authorization>(
         self,
         mut context: R,
+        anchor: impl Fn(&mut R, A::Anchor) -> B::Anchor,
         spend_proof: impl Fn(&mut R, A::SpendProof) -> B::SpendProof,
         output_proof: impl Fn(&mut R, A::OutputProof) -> B::OutputProof,
         auth_sig: impl Fn(&mut R, A::AuthSig) -> B::AuthSig,
@@ -120,7 +161,7 @@ impl<A: Authorization, V> Bundle<A, V> {
                 .into_iter()
                 .map(|d| SpendDescription {
                     cv: d.cv,
-                    anchor: d.anchor,
+                    anchor: anchor(&mut context, d.anchor),
                     nullifier: d.nullifier,
                     rk: d.rk,
                     zkproof: spend_proof(&mut context, d.zkproof),
@@ -145,9 +186,32 @@ impl<A: Authorization, V> Bundle<A, V> {
     }
 
     /// Transitions this bundle from one authorization state to another.
-    pub fn try_map_authorization<R, B: Authorization, Error>(
+    pub fn try_map_authorization<R, B, Error>(
+        self,
+        context: R,
+        spend_proof: impl Fn(&mut R, A::SpendProof) -> Result<B::SpendProof, Error>,
+        output_proof: impl Fn(&mut R, A::OutputProof) -> Result<B::OutputProof, Error>,
+        auth_sig: impl Fn(&mut R, A::AuthSig) -> Result<B::AuthSig, Error>,
+        auth: impl Fn(&mut R, A) -> Result<B, Error>,
+    ) -> Result<Bundle<B, V>, Error>
+    where
+        B: Authorization<Anchor = A::Anchor>,
+    {
+        self.try_map_authorization_with_anchor(
+            context,
+            |_, anchor| Ok(anchor),
+            spend_proof,
+            output_proof,
+            auth_sig,
+            auth,
+        )
+    }
+
+    /// Transitions authorization and maps anchors, returning the first mapping error.
+    pub fn try_map_authorization_with_anchor<R, B: Authorization, Error>(
         self,
         mut context: R,
+        anchor: impl Fn(&mut R, A::Anchor) -> Result<B::Anchor, Error>,
         spend_proof: impl Fn(&mut R, A::SpendProof) -> Result<B::SpendProof, Error>,
         output_proof: impl Fn(&mut R, A::OutputProof) -> Result<B::OutputProof, Error>,
         auth_sig: impl Fn(&mut R, A::AuthSig) -> Result<B::AuthSig, Error>,
@@ -160,7 +224,7 @@ impl<A: Authorization, V> Bundle<A, V> {
                 .map(|d| {
                     Ok(SpendDescription {
                         cv: d.cv,
-                        anchor: d.anchor,
+                        anchor: anchor(&mut context, d.anchor)?,
                         nullifier: d.nullifier,
                         rk: d.rk,
                         zkproof: spend_proof(&mut context, d.zkproof)?,
@@ -217,7 +281,7 @@ impl<V: DynamicUsage> DynamicUsage for Bundle<Authorized, V> {
 #[derive(Clone)]
 pub struct SpendDescription<A: Authorization> {
     cv: ValueCommitment,
-    anchor: bls12_381::Scalar,
+    anchor: A::Anchor,
     nullifier: Nullifier,
     rk: redjubjub::VerificationKey<SpendAuth>,
     zkproof: A::SpendProof,
@@ -235,10 +299,10 @@ impl<A: Authorization> core::fmt::Debug for SpendDescription<A> {
 }
 
 impl<A: Authorization> SpendDescription<A> {
-    /// Constructs a v4 `SpendDescription` from its constituent parts.
+    /// Constructs a spend from its typed fields and authorization-selected anchor.
     pub fn from_parts(
         cv: ValueCommitment,
-        anchor: bls12_381::Scalar,
+        anchor: A::Anchor,
         nullifier: Nullifier,
         rk: redjubjub::VerificationKey<SpendAuth>,
         zkproof: A::SpendProof,
@@ -259,8 +323,10 @@ impl<A: Authorization> SpendDescription<A> {
         &self.cv
     }
 
-    /// Returns the root of the Sapling commitment tree that this spend commits to.
-    pub fn anchor(&self) -> &bls12_381::Scalar {
+    /// Returns the root representation selected by the authorization state.
+    ///
+    /// Complete states return a concrete root. Effects-only spends may omit it.
+    pub fn anchor(&self) -> &A::Anchor {
         &self.anchor
     }
 
@@ -282,6 +348,45 @@ impl<A: Authorization> SpendDescription<A> {
     /// Returns the authorization signature for this spend.
     pub fn spend_auth_sig(&self) -> &A::AuthSig {
         &self.spend_auth_sig
+    }
+}
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::{testing::arb_bundle, Authorized, EffectsOnly};
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn native_effects_allow_absent_anchors(bundle in arb_bundle(0i64)) {
+            if let Some(bundle) = bundle {
+                for spend in bundle.shielded_spends() {
+                    let _: &bls12_381::Scalar = spend.anchor();
+                }
+                let effects = bundle.clone().map_authorization_with_anchor(
+                    (), |_, _| None, |_, _| (), |_, _| (), |_, _| (), |_, _| EffectsOnly,
+                );
+                prop_assert_eq!(effects.shielded_spends().len(), bundle.shielded_spends().len());
+                for (effect, spend) in effects.shielded_spends().iter().zip(bundle.shielded_spends()) {
+                    prop_assert!(effect.anchor().is_none());
+                    prop_assert_eq!(effect.nullifier(), spend.nullifier());
+                    prop_assert_eq!(effect.cv().to_bytes(), spend.cv().to_bytes());
+                }
+                let retained = bundle.map_authorization_with_anchor(
+                    (), |_, anchor| Some(anchor), |_, _| (), |_, _| (), |_, _| (), |_, _| EffectsOnly,
+                );
+                for spend in retained.shielded_spends() {
+                    prop_assert!(spend.anchor().is_some());
+                }
+                let result = effects.try_map_authorization_with_anchor::<_, Authorized, ()>(
+                    (), |_, anchor| anchor.ok_or(()), |_, _| Ok([0; crate::constants::GROTH_PROOF_SIZE]),
+                    |_, _| Ok([0; crate::constants::GROTH_PROOF_SIZE]),
+                    |_, _| Ok(redjubjub::Signature::from([0; 64])),
+                    |_, _| Ok(Authorized { binding_sig: redjubjub::Signature::from([0; 64]) }),
+                );
+                prop_assert_eq!(result.is_err(), !retained.shielded_spends().is_empty());
+            }
+        }
     }
 }
 
@@ -319,7 +424,11 @@ impl SpendDescriptionV5 {
         spend_auth_sig: redjubjub::Signature<SpendAuth>,
     ) -> SpendDescription<A>
     where
-        A: Authorization<SpendProof = GrothProofBytes, AuthSig = redjubjub::Signature<SpendAuth>>,
+        A: Authorization<
+            Anchor = bls12_381::Scalar,
+            SpendProof = GrothProofBytes,
+            AuthSig = redjubjub::Signature<SpendAuth>,
+        >,
     {
         SpendDescription {
             cv: self.cv,
