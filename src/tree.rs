@@ -187,6 +187,9 @@ impl Hashable for Node {
     }
 
     /// Hashes pairs with [`Node::combine_batch`], splitting wide batches under `multicore`.
+    ///
+    /// Wide batches use the current rayon pool, initializing the global pool if called
+    /// outside a rayon worker. Batches with fewer than 64 pairs do not access rayon.
     fn combine_pairs<'a, I>(level: Level, pairs: I) -> Vec<Self>
     where
         Self: 'a,
@@ -196,16 +199,21 @@ impl Hashable for Node {
         {
             use rayon::prelude::*;
             let pairs = pairs.into_iter();
-            let threads = rayon::current_num_threads();
-            if threads == 1
-                || pairs
-                    .size_hint()
-                    .1
-                    .is_some_and(|len| len <= MIN_PAIRS_PER_TASK)
+            if pairs
+                .size_hint()
+                .1
+                .is_some_and(|len| len < 2 * MIN_PAIRS_PER_TASK)
             {
                 return Self::combine_batch(level, pairs);
             }
             let pairs: Vec<_> = pairs.collect();
+            if pairs.len() < 2 * MIN_PAIRS_PER_TASK {
+                return Self::combine_batch(level, pairs);
+            }
+            let threads = rayon::current_num_threads();
+            if threads == 1 {
+                return Self::combine_batch(level, pairs);
+            }
             let per_task = pairs
                 .len()
                 .div_ceil(threads)
@@ -440,11 +448,9 @@ mod tests {
                 for leaf in batch {
                     assert!(expected.append(*leaf));
                 }
-                assert!(batched.append_batch(batch.iter().copied()));
+                assert!(batched.append_batch(batch));
                 assert_eq!(
-                    visiting.append_batch_visiting(batch.iter().copied(), |_, _| {
-                        Ok::<(), Infallible>(())
-                    }),
+                    visiting.append_batch_visiting(batch, |_, _| Ok::<(), Infallible>(())),
                     Ok(true)
                 );
                 assert_eq!(
@@ -465,13 +471,13 @@ mod tests {
     #[test]
     fn frontier_rejects_oversized_batches_without_changing_the_root() {
         let mut frontier = Frontier::<Node, 4>::empty();
-        assert!(frontier.append_batch([Node::empty_leaf(); 15]));
+        assert!(frontier.append_batch(&[Node::empty_leaf(); 15]));
         let before = frontier.clone();
         let root = frontier.root();
-        assert!(!frontier.append_batch([Node::empty_leaf(); 2]));
+        assert!(!frontier.append_batch(&[Node::empty_leaf(); 2]));
         assert_eq!(frontier, before);
         assert_eq!(frontier.root(), root);
-        assert!(frontier.append_batch([Node::empty_leaf()]));
+        assert!(frontier.append_batch(&[Node::empty_leaf()]));
         assert_eq!(frontier.root(), Node::empty_root(Level::from(4)));
     }
 

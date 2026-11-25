@@ -170,7 +170,7 @@ fn bench_frontier(c: &mut Criterion) {
             b.iter_batched(
                 || prior.clone(),
                 |mut frontier| {
-                    assert!(frontier.append_batch(black_box(leaves).iter().copied()));
+                    assert!(frontier.append_batch(black_box(leaves)));
                     black_box(frontier.root())
                 },
                 BatchSize::SmallInput,
