@@ -179,7 +179,7 @@ mod tests {
             0xbd, 0x53, 0x05, 0xd8, 0xa1, 0x09, 0x08, 0xd8, 0x39, 0x33, 0x48, 0x7d, 0x9d, 0x29,
             0x53, 0xa7, 0xed, 0x73,
         ];
-        let children: [(&str, [u8; 32]); 5] = [
+        let mut children: [(&str, [u8; 32]); 5] = [
             ("zero", [0; 32]),
             ("low byte", [1; 32]),
             ("max canonical", max_canonical),
@@ -188,6 +188,7 @@ mod tests {
         ];
 
         for depth in 0..63 {
+            rng.fill_bytes(&mut children[4].1);
             for (lhs_name, lhs) in &children {
                 for (rhs_name, rhs) in &children {
                     assert_eq!(
@@ -196,6 +197,41 @@ mod tests {
                         "depth {depth}, {lhs_name} ‖ {rhs_name}"
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn merkle_hash_matches_reference_for_each_child_bit() {
+        for depth in [0, 31, 62] {
+            for bit in 0..256 {
+                let mut child = [0; 32];
+                child[bit / 8] = 1 << (bit % 8);
+                for (lhs, rhs) in [(child, [0; 32]), ([0; 32], child)] {
+                    assert_eq!(
+                        merkle_hash(depth, &lhs, &rhs),
+                        reference(depth, &lhs, &rhs),
+                        "depth {depth}, bit {bit}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn merkle_hash_matches_random_children_and_ignores_bit_255() {
+        let rng = &mut XorShiftRng::from_seed([17; 16]);
+        for depth in 0..63 {
+            for _ in 0..16 {
+                let (mut lhs, mut rhs) = ([0; 32], [0; 32]);
+                rng.fill_bytes(&mut lhs);
+                rng.fill_bytes(&mut rhs);
+                let expected = reference(depth, &lhs, &rhs);
+                assert_eq!(merkle_hash(depth, &lhs, &rhs), expected);
+                lhs[31] ^= 0x80;
+                assert_eq!(merkle_hash(depth, &lhs, &rhs), expected);
+                rhs[31] ^= 0x80;
+                assert_eq!(merkle_hash(depth, &lhs, &rhs), expected);
             }
         }
     }

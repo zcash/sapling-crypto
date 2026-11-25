@@ -278,11 +278,47 @@ pub(super) mod testing {
 #[cfg(test)]
 mod tests {
     use alloc::vec::Vec;
-    use incrementalmerkletree::{Hashable, Level};
+    use incrementalmerkletree::{
+        frontier::Frontier, testing::check_combine_pairs, Hashable, Level,
+    };
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
 
-    use super::{Anchor, Node, NOTE_COMMITMENT_TREE_DEPTH};
+    use super::{merkle_hash, Anchor, Node, NOTE_COMMITMENT_TREE_DEPTH};
+
+    #[test]
+    fn public_merkle_hash_matches_reference_for_arbitrary_child_bytes() {
+        use crate::pedersen_hash::{pedersen_hash, Personalization};
+        use group::Curve;
+
+        let mut high_bit = [0; 32];
+        high_bit[31] = 0x80;
+        for depth in [0, 31, 62] {
+            for (mut lhs, mut rhs) in [
+                ([0; 32], [0; 32]),
+                ([0xff; 32], [0xff; 32]),
+                (high_bit, [0; 32]),
+                ([0; 32], high_bit),
+                ([0x55; 32], [0xaa; 32]),
+            ] {
+                let bits = |child: [u8; 32]| {
+                    (0..255).map(move |bit| (child[bit / 8] >> (bit % 8)) & 1 != 0)
+                };
+                let expected = jubjub::ExtendedPoint::from(pedersen_hash(
+                    Personalization::MerkleTree(depth),
+                    bits(lhs).chain(bits(rhs)),
+                ))
+                .to_affine()
+                .get_u()
+                .to_bytes();
+                assert_eq!(merkle_hash(depth, &lhs, &rhs), expected);
+                lhs[31] ^= 0x80;
+                assert_eq!(merkle_hash(depth, &lhs, &rhs), expected);
+                rhs[31] ^= 0x80;
+                assert_eq!(merkle_hash(depth, &lhs, &rhs), expected);
+            }
+        }
+    }
 
     #[test]
     fn combine_batch_matches_combine_at_every_level_and_width() {
@@ -307,16 +343,136 @@ mod tests {
 
     #[test]
     fn combine_pairs_equals_combine_per_pair_across_task_splits() {
+        check_pair_batches();
+    }
+
+    fn check_pair_batches() {
         let rng = &mut XorShiftRng::from_seed([9; 16]);
         let pairs: Vec<_> = (0..1000)
             .map(|_| (Node::random(rng), Node::random(rng)))
             .collect();
 
-        for level in [0, 31].map(Level::from) {
-            for width in [0, 1, 31, 32, 33, 1000] {
-                incrementalmerkletree::testing::check_combine_pairs(level, &pairs[..width]);
+        for level in [0, 31, 62].map(Level::from) {
+            for width in [
+                0, 1, 2, 3, 31, 32, 33, 63, 64, 65, 255, 256, 257, 511, 512, 513, 1000,
+            ] {
+                check_combine_pairs(level, &pairs[..width]);
             }
         }
+    }
+
+    #[cfg(feature = "multicore")]
+    #[test]
+    fn combine_pairs_preserves_order_in_explicit_thread_pools() {
+        for threads in [1, 2, 4] {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap()
+                .install(|| {
+                    check_pair_batches();
+                    check_non_send_iterators();
+                });
+        }
+    }
+
+    #[test]
+    fn combine_pairs_consumes_non_send_iterators_once() {
+        check_non_send_iterators();
+    }
+
+    fn check_non_send_iterators() {
+        use alloc::rc::Rc;
+        use core::cell::Cell;
+
+        let rng = &mut XorShiftRng::from_seed([11; 16]);
+        let pairs: Vec<_> = (0..1000)
+            .map(|_| (Node::random(rng), Node::random(rng)))
+            .collect();
+        let level = Level::from(15);
+        for width in [0, 1, 33, 63, 1000] {
+            let expected: Vec<_> = pairs[..width]
+                .iter()
+                .map(|(lhs, rhs)| Node::combine(level, lhs, rhs))
+                .collect();
+            for source in [&pairs[..width], &pairs[..]] {
+                let reads = Rc::new(Cell::new(0));
+                let input = source
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| {
+                        reads.set(reads.get() + 1);
+                        *i < width
+                    })
+                    .map(|(_, (lhs, rhs))| (lhs, rhs));
+                assert_eq!(Node::combine_pairs(level, input), expected);
+                assert_eq!(reads.get(), source.len());
+            }
+
+            let reads = Rc::new(Cell::new(0));
+            let mut source = pairs[..width].iter();
+            let input = core::iter::from_fn(|| source.next()).map(|(lhs, rhs)| {
+                reads.set(reads.get() + 1);
+                (lhs, rhs)
+            });
+            assert_eq!(input.size_hint(), (0, None));
+            assert_eq!(Node::combine_pairs(level, input), expected);
+            assert_eq!(reads.get(), width);
+        }
+    }
+
+    #[test]
+    fn frontier_batch_appends_match_per_leaf_appends() {
+        use core::convert::Infallible;
+
+        let rng = &mut XorShiftRng::from_seed([13; 16]);
+        let leaves: Vec<_> = (0..1024).map(|_| Node::random(rng)).collect();
+        for start in [0, 1, 2, 3, 31, 32, 33, 255, 256, 257] {
+            let mut expected = Frontier::<Node, NOTE_COMMITMENT_TREE_DEPTH>::empty();
+            for leaf in &leaves[..start] {
+                assert!(expected.append(*leaf));
+            }
+            let mut batched = expected.clone();
+            let mut visiting = expected.clone();
+            let mut offset = start;
+            for width in [0, 1, 2, 31, 32, 33, 64, 65, 257] {
+                let batch = &leaves[offset..offset + width];
+                for leaf in batch {
+                    assert!(expected.append(*leaf));
+                }
+                assert!(batched.append_batch(batch.iter().copied()));
+                assert_eq!(
+                    visiting.append_batch_visiting(batch.iter().copied(), |_, _| {
+                        Ok::<(), Infallible>(())
+                    }),
+                    Ok(true)
+                );
+                assert_eq!(
+                    batched, expected,
+                    "start {start}, offset {offset}, width {width}"
+                );
+                assert_eq!(
+                    visiting, expected,
+                    "start {start}, offset {offset}, width {width}"
+                );
+                assert_eq!(batched.root(), expected.root());
+                assert_eq!(visiting.root(), expected.root());
+                offset += width;
+            }
+        }
+    }
+
+    #[test]
+    fn frontier_rejects_oversized_batches_without_changing_the_root() {
+        let mut frontier = Frontier::<Node, 4>::empty();
+        assert!(frontier.append_batch([Node::empty_leaf(); 15]));
+        let before = frontier.clone();
+        let root = frontier.root();
+        assert!(!frontier.append_batch([Node::empty_leaf(); 2]));
+        assert_eq!(frontier, before);
+        assert_eq!(frontier.root(), root);
+        assert!(frontier.append_batch([Node::empty_leaf()]));
+        assert_eq!(frontier.root(), Node::empty_root(Level::from(4)));
     }
 
     /// Published Sapling empty root (zcashd's `3e49b5f9…c2fb`, byte-reversed here)
