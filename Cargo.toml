@@ -57,7 +57,8 @@ tracing = { version = "0.1", optional = true, default-features = false }
 
 # Note Commitment Trees
 bitvec = { version = "1", default-features = false }
-incrementalmerkletree = { version = "0.9", default-features = false, features = ["legacy-api"] }
+# Pinned until a release includes Hashable::combine_pairs.
+incrementalmerkletree = { git = "https://github.com/zcash/incrementalmerkletree.git", rev = "f31006ff276349ded65caff667bafa4c9dc52e42", default-features = false, features = ["legacy-api"] }
 
 # Note encryption
 zcash_note_encryption = { version = "0.5.1", features = ["pre-zip-212"] }
@@ -85,7 +86,7 @@ rayon = { version = "1.4.1", optional = true }
 chacha20poly1305 = "0.11"
 rand = { version = "0.10", features = ["std_rng", "sys_rng"] }
 criterion = "0.5"
-incrementalmerkletree = { version = "0.9", features = ["legacy-api", "test-dependencies"] }
+incrementalmerkletree = { git = "https://github.com/zcash/incrementalmerkletree.git", rev = "f31006ff276349ded65caff667bafa4c9dc52e42", features = ["legacy-api", "test-dependencies"] }
 proptest = "1"
 rand_xorshift = "0.5"
 
@@ -142,7 +143,3 @@ harness = false
 [[bench]]
 name = "pedersen_hash"
 harness = false
-
-[patch.crates-io]
-# `Hashable::combine_pairs` (zcash/incrementalmerkletree#219); drop once released
-incrementalmerkletree = { git = "https://github.com/elicbarbieri/incrementalmerkletree.git", rev = "e11bf32479c30059f94e652e390d5939831cc901" }

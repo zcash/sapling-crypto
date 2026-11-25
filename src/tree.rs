@@ -152,18 +152,27 @@ impl Node {
     /// responsible for supplying children that belong at that level, and each digest equals
     /// [`Hashable::combine`]'s.
     ///
-    /// Returns one digest per input pair, preserving input order.
+    /// Consumes the input iterator once and returns one digest per pair, preserving order.
+    /// An empty iterator returns an empty vector.
     pub fn combine_batch<'a>(
         level: Level,
         pairs: impl IntoIterator<Item = (&'a Self, &'a Self)>,
     ) -> Vec<Self> {
-        let hashes: Vec<jubjub::ExtendedPoint> = pairs
-            .into_iter()
+        let mut pairs = pairs.into_iter().peekable();
+        let Some((lhs, rhs)) = pairs.next() else {
+            return Vec::new();
+        };
+        if pairs.peek().is_none() {
+            return vec![Self::combine(level, lhs, rhs)];
+        }
+
+        let mut hashes: Vec<jubjub::ExtendedPoint> = core::iter::once((lhs, rhs))
+            .chain(pairs)
             .map(|(lhs, rhs)| merkle_hash_point(level.into(), &lhs.0.to_bytes(), &rhs.0.to_bytes()))
             .collect();
-        let mut affine = vec![jubjub::AffinePoint::identity(); hashes.len()];
-        jubjub::ExtendedPoint::batch_normalize(&hashes, &mut affine);
-        affine.iter().map(|hash| Node(hash.get_u())).collect()
+        jubjub::batch_normalize(&mut hashes)
+            .map(|hash| Node(hash.get_u()))
+            .collect()
     }
 }
 
@@ -177,34 +186,42 @@ impl Hashable for Node {
         Node(hash.to_affine().get_u())
     }
 
-    /// - [`Node::combine_batch`] over each task's pairs
-    /// - `multicore`: one task per rayon thread, clamped to `MIN..=MAX_PAIRS_PER_TASK` pairs
-    fn combine_pairs(level: Level, children: &[Self]) -> Vec<Self> {
-        assert!(children.len().is_multiple_of(2), "children pair up");
-        let parents = |children: &[Self]| {
-            Self::combine_batch(
-                level,
-                children
-                    .as_chunks::<2>()
-                    .0
-                    .iter()
-                    .map(|[lhs, rhs]| (lhs, rhs)),
-            )
-        };
+    /// Hashes pairs with [`Node::combine_batch`], splitting wide batches under `multicore`.
+    fn combine_pairs<'a, I>(level: Level, pairs: I) -> Vec<Self>
+    where
+        Self: 'a,
+        I: IntoIterator<Item = (&'a Self, &'a Self)>,
+    {
         #[cfg(feature = "multicore")]
         {
             use rayon::prelude::*;
-            let per_task = (children.len() / 2)
-                .div_ceil(rayon::current_num_threads())
+            let pairs = pairs.into_iter();
+            let threads = rayon::current_num_threads();
+            if threads == 1
+                || pairs
+                    .size_hint()
+                    .1
+                    .is_some_and(|len| len <= MIN_PAIRS_PER_TASK)
+            {
+                return Self::combine_batch(level, pairs);
+            }
+            let pairs: Vec<_> = pairs.collect();
+            let per_task = pairs
+                .len()
+                .div_ceil(threads)
                 .clamp(MIN_PAIRS_PER_TASK, MAX_PAIRS_PER_TASK);
-            if children.len() > 2 * per_task {
-                return children
-                    .par_chunks(2 * per_task)
-                    .flat_map_iter(parents)
+            if pairs.len() > per_task {
+                return pairs
+                    .par_chunks(per_task)
+                    .flat_map_iter(|pairs| Self::combine_batch(level, pairs.iter().copied()))
                     .collect();
             }
+            Self::combine_batch(level, pairs)
         }
-        parents(children)
+        #[cfg(not(feature = "multicore"))]
+        {
+            Self::combine_batch(level, pairs)
+        }
     }
 
     fn empty_root(level: Level) -> Self {
@@ -288,34 +305,18 @@ mod tests {
         }
     }
 
-    /// 1000 pairs: several rayon tasks under `multicore` (on any machine with >= 2 threads)
     #[test]
     fn combine_pairs_equals_combine_per_pair_across_task_splits() {
         let rng = &mut XorShiftRng::from_seed([9; 16]);
-        let children: Vec<Node> = (0..2 * 1000).map(|_| Node::random(rng)).collect();
+        let pairs: Vec<_> = (0..1000)
+            .map(|_| (Node::random(rng), Node::random(rng)))
+            .collect();
 
         for level in [0, 31].map(Level::from) {
-            for pairs in [0, 1, 31, 32, 33, 1000] {
-                let children = &children[..2 * pairs];
-                let expected: Vec<Node> = children
-                    .as_chunks::<2>()
-                    .0
-                    .iter()
-                    .map(|[lhs, rhs]| Node::combine(level, lhs, rhs))
-                    .collect();
-                assert_eq!(
-                    Node::combine_pairs(level, children),
-                    expected,
-                    "level {level:?}, {pairs} pairs"
-                );
+            for width in [0, 1, 31, 32, 33, 1000] {
+                incrementalmerkletree::testing::check_combine_pairs(level, &pairs[..width]);
             }
         }
-    }
-
-    #[test]
-    #[should_panic(expected = "children pair up")]
-    fn combine_pairs_refuses_an_odd_count() {
-        Node::combine_pairs(Level::from(0), &[Node::empty_leaf()]);
     }
 
     /// Published Sapling empty root (zcashd's `3e49b5f9…c2fb`, byte-reversed here)

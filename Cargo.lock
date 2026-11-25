@@ -765,7 +765,7 @@ dependencies = [
 [[package]]
 name = "incrementalmerkletree"
 version = "0.9.0"
-source = "git+https://github.com/elicbarbieri/incrementalmerkletree.git?rev=e11bf32479c30059f94e652e390d5939831cc901#d5e07689456e0be0154934aa39d347a9e5f18765"
+source = "git+https://github.com/zcash/incrementalmerkletree.git?rev=f31006ff276349ded65caff667bafa4c9dc52e42#f31006ff276349ded65caff667bafa4c9dc52e42"
 dependencies = [
  "either",
  "proptest",

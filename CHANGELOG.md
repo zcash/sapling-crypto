@@ -7,11 +7,16 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Changed
+- The `multicore` feature now implies `std` and enables the `rayon` dependency
+  for parallel Merkle hashing. Builds on targets without `std` must disable
+  default features and leave `multicore` disabled.
+- The minimum `incrementalmerkletree` version is now 0.9.1.
+
 ### Added
 - `Hashable::combine_pairs` for `Node`, equal to `Hashable::combine` per pair
-  via `Node::combine_batch`; the `multicore` feature (now implying `std`) splits
-  wide levels across rayon tasks. Requires `incrementalmerkletree` with
-  `Hashable::combine_pairs`.
+  via `Node::combine_batch`, taking an iterator of sibling-node pairs.
+  The `multicore` feature splits wide levels across rayon tasks.
 - `sapling_crypto::Node::combine_batch`, which hashes same-level node pairs
   together, sharing one projective-to-affine normalization across the batch.
 - `runtime-precomputation` feature flag, not enabled by default. It evaluates
