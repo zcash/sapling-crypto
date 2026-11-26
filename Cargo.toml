@@ -57,7 +57,7 @@ tracing = { version = "0.1", optional = true, default-features = false }
 
 # Note Commitment Trees
 bitvec = { version = "1", default-features = false }
-incrementalmerkletree = { version = "0.9", default-features = false, features = ["legacy-api"] }
+incrementalmerkletree = { version = "0.9.1", default-features = false, features = ["legacy-api"] }
 
 # Note encryption
 zcash_note_encryption = { version = "0.5.1", features = ["pre-zip-212"] }
@@ -77,12 +77,15 @@ aes = "0.9"
 fpe = { version = "0.7", default-features = false, features = ["alloc"] }
 zip32 = { version = "0.3", default-features = false }
 
+# Multicore tree hashing
+rayon = { version = "1.4.1", optional = true }
+
 
 [dev-dependencies]
 chacha20poly1305 = "0.11"
 rand = { version = "0.10", features = ["std_rng", "sys_rng"] }
 criterion = "0.5"
-incrementalmerkletree = { version = "0.9", features = ["legacy-api", "test-dependencies"] }
+incrementalmerkletree = { version = "0.9.1", features = ["legacy-api", "test-dependencies"] }
 proptest = "1"
 rand_xorshift = "0.5"
 
@@ -110,12 +113,17 @@ circuit = [
   "std"
 ]
 
-## Enables multithreading support for creating proofs.
-multicore = ["bellman?/multicore", "groth16?/multicore"]
+## Enables multithreading support for creating proofs and hashing wide Merkle tree levels.
+multicore = ["std", "dep:rayon", "bellman?/multicore", "groth16?/multicore"]
 
 ### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
 ### should not be relied upon and will be removed in a future release.
 temporary-zcashd = []
+
+## Hashes Merkle tree nodes against precomputed window tables (≈2.7 MiB, built on
+## first use), with identical output. Intended for repeated hashing: short-lived
+## workloads may not amortize initialization. Speedups depend on the workload and hardware.
+runtime-precomputation = []
 
 ## Zeroizes spending-key material on drop, and exposes `Zeroize` impls.
 zeroize = ["dep:zeroize", "jubjub/zeroize", "redjubjub/zeroize", "zip32/zeroize"]

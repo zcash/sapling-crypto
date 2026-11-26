@@ -48,14 +48,42 @@ jobs:
       - name: Verify working directory is clean (excluding lockfile)
         run: git diff --exit-code ':!Cargo.lock'
 
+  test-features:
+    name: Test features (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: serial
+            args: --no-default-features
+          - name: serial-precomputation
+            args: --no-default-features --features runtime-precomputation
+          - name: default
+            args: ""
+          - name: default-precomputation
+            args: --features runtime-precomputation
+          - name: multicore
+            args: --no-default-features --features multicore
+          - name: multicore-precomputation
+            args: --no-default-features --features multicore,runtime-precomputation
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Run tests
+        run: cargo test --locked --release ${{ matrix.args }}
+      - name: Verify working directory is clean
+        run: git diff --exit-code
+
   build-nostd:
-    name: Build target ${{ matrix.target }}
+    name: Build target ${{ matrix.target }} (${{ matrix.features }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         target:
           - wasm32-wasip1
           - thumbv7em-none-eabihf
+        features: ["", "--features runtime-precomputation"]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -76,7 +104,7 @@ jobs:
           echo "#![no_std]" > ./ci-build/src/lib.rs
       - name: Add sapling-crypto as a dependency of the synthetic crate
         working-directory: ./ci-build
-        run: cargo add --no-default-features --path ../crate_root
+        run: cargo add --no-default-features --path ../crate_root ${{ matrix.features }}
       - name: Add lazy_static with the spin_no_std feature
         working-directory: ./ci-build
         run: cargo add lazy_static --no-default-features --features "spin_no_std"
@@ -119,6 +147,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: ${{ inputs.target }}
+          check-args: --locked --all-targets --all-features
           deny: warnings
 
   doc-links:

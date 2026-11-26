@@ -62,8 +62,8 @@ user-login = "ebfull"
 user-name = "Sean Bowe"
 
 [[publisher.incrementalmerkletree]]
-version = "0.9.0"
-when = "2026-09-30"
+version = "0.9.1"
+when = "2026-11-25"
 user-id = 169181
 user-login = "nuttycom"
 user-name = "Kris Nuttycombe"

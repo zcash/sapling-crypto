@@ -7,6 +7,24 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
+### Added
+- `sapling_crypto::Node::combine_batch`
+- `runtime-precomputation` feature flag (not enabled by default). When it is
+  enabled, `sapling_crypto::merkle_hash`, `Node::combine_batch` and the
+  `incrementalmerkletree::Hashable` methods of `Node` build about 2.7 MiB of
+  lookup tables on first use. Their outputs are unchanged.
+
+### Changed
+- Migrated to `incrementalmerkletree` 0.9.1.
+- The `multicore` feature now enables the `std` feature and the `rayon`
+  dependency. Builds for targets without `std` must disable default features
+  and leave `multicore` disabled.
+- `sapling_crypto::Node` now overrides
+  `incrementalmerkletree::Hashable::combine_pairs`. Under the `multicore`
+  feature, a call with 64 or more pairs runs on the current `rayon` thread
+  pool, and initializes the global pool when the caller is not on a `rayon`
+  worker thread.
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed
