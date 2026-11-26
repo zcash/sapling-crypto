@@ -154,6 +154,10 @@ impl Node {
     ///
     /// Consumes the input iterator once and returns one digest per pair, preserving order.
     /// An empty iterator returns an empty vector.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `pairs` is not empty and `level` is 63 or greater.
     pub fn combine_batch<'a>(
         level: Level,
         pairs: impl IntoIterator<Item = (&'a Self, &'a Self)>,
@@ -190,6 +194,16 @@ impl Hashable for Node {
     ///
     /// Wide batches use the current rayon pool, initializing the global pool if called
     /// outside a rayon worker. Batches with fewer than 64 pairs do not access rayon.
+    ///
+    /// A caller that runs on a rayon worker thread must not hold a lock that another task
+    /// of the same pool can take. The worker thread can run such a task while it waits for
+    /// a wide batch, and that task would then wait for the lock forever.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `pairs` is not empty and `level` is 63 or greater.
+    /// - Panics if a wide batch initializes the global rayon pool and rayon cannot build it,
+    ///   for example because the process cannot start threads.
     fn combine_pairs<'a, I>(level: Level, pairs: I) -> Vec<Self>
     where
         Self: 'a,
@@ -218,13 +232,10 @@ impl Hashable for Node {
                 .len()
                 .div_ceil(threads)
                 .clamp(MIN_PAIRS_PER_TASK, MAX_PAIRS_PER_TASK);
-            if pairs.len() > per_task {
-                return pairs
-                    .par_chunks(per_task)
-                    .flat_map_iter(|pairs| Self::combine_batch(level, pairs.iter().copied()))
-                    .collect();
-            }
-            Self::combine_batch(level, pairs)
+            pairs
+                .par_chunks(per_task)
+                .flat_map_iter(|pairs| Self::combine_batch(level, pairs.iter().copied()))
+                .collect()
         }
         #[cfg(not(feature = "multicore"))]
         {

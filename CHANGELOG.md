@@ -7,23 +7,23 @@ and this library adheres to Rust's notion of
 
 ## [Unreleased]
 
-### Changed
-- The `multicore` feature now implies `std` and enables the `rayon` dependency
-  for parallel Merkle hashing. Builds on targets without `std` must disable
-  default features and leave `multicore` disabled.
-- The minimum `incrementalmerkletree` version is now 0.9.1.
-
 ### Added
-- `Hashable::combine_pairs` for `Node`, equal to `Hashable::combine` per pair
-  via `Node::combine_batch`, taking an iterator of sibling-node pairs.
-  The `multicore` feature splits wide levels across rayon tasks.
-- `sapling_crypto::Node::combine_batch`, which hashes same-level node pairs
-  together, sharing one projective-to-affine normalization across the batch.
-- `runtime-precomputation` feature flag, not enabled by default. It evaluates
-  `sapling_crypto::merkle_hash`, `Hashable::combine` for `Node` and
-  `Node::combine_batch` against precomputed 9-bit window tables, which are built
-  once on first use (about 2.7 MiB). Outputs are unchanged. Speedups depend on the
-  workload and hardware; short-lived workloads may not amortize initialization.
+- `sapling_crypto::Node::combine_batch`
+- `runtime-precomputation` feature flag (not enabled by default). When it is
+  enabled, `sapling_crypto::merkle_hash`, `Node::combine_batch` and the
+  `incrementalmerkletree::Hashable` methods of `Node` build about 2.7 MiB of
+  lookup tables on first use. Their outputs are unchanged.
+
+### Changed
+- Migrated to `incrementalmerkletree` 0.9.1.
+- The `multicore` feature now enables the `std` feature and the `rayon`
+  dependency. Builds for targets without `std` must disable default features
+  and leave `multicore` disabled.
+- `sapling_crypto::Node` now overrides
+  `incrementalmerkletree::Hashable::combine_pairs`. Under the `multicore`
+  feature, a call with 64 or more pairs runs on the current `rayon` thread
+  pool, and initializes the global pool when the caller is not on a `rayon`
+  worker thread.
 
 ## [0.9.0] - 2026-09-30
 

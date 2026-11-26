@@ -9,8 +9,7 @@
 
 use alloc::{boxed::Box, vec::Vec};
 use ff::PrimeField;
-use group::Curve;
-use jubjub::{AffineNielsPoint, AffinePoint, ExtendedPoint};
+use jubjub::{AffineNielsPoint, ExtendedPoint};
 use lazy_static::lazy_static;
 
 use crate::constants::{PEDERSEN_HASH_CHUNKS_PER_GENERATOR, PEDERSEN_HASH_GENERATORS};
@@ -33,10 +32,6 @@ const WINDOW_CHUNKS: usize = 3;
 
 const WINDOW_BITS: usize = CHUNK_BITS * WINDOW_CHUNKS;
 
-const _: () = assert!(
-    PEDERSEN_HASH_CHUNKS_PER_GENERATOR.is_multiple_of(WINDOW_CHUNKS),
-    "a window never spans two generators"
-);
 const _: () = assert!(
     INPUT_CHUNKS <= PEDERSEN_HASH_GENERATORS.len() * PEDERSEN_HASH_CHUNKS_PER_GENERATOR,
     "enough generators for one message"
@@ -66,22 +61,26 @@ fn chunk_bases() -> Vec<ExtendedPoint> {
         .collect()
 }
 
-/// Entry `i` = Σ_k enc(chunk k of `i`) · `bases[k]`
+/// Builds the lookup table for one window of consecutive input chunks.
+///
+/// - Inputs: `bases` holds the base of each chunk of the window, in input order.
+/// - Outputs: a table of `8^bases.len()` points. Entry `i` is the sum over `k` of
+///   `enc(m_k) · bases[k]`, where `m_k` is bits `3k..3k + 3` of `i` and `enc` is the chunk
+///   encoding that [`encodings`] computes.
 fn sums(bases: &[ExtendedPoint]) -> Box<[AffineNielsPoint]> {
-    let digits: Vec<[ExtendedPoint; 1 << CHUNK_BITS]> = bases.iter().map(encodings).collect();
-    let points: Vec<ExtendedPoint> = (0..1usize << (CHUNK_BITS * bases.len()))
-        .map(|i| {
-            digits
-                .iter()
-                .enumerate()
-                .fold(ExtendedPoint::identity(), |sum, (k, digit)| {
-                    sum + digit[(i >> (CHUNK_BITS * k)) & ((1 << CHUNK_BITS) - 1)]
-                })
-        })
-        .collect();
-    let mut affine = vec![AffinePoint::identity(); points.len()];
-    ExtendedPoint::batch_normalize(&points, &mut affine);
-    affine.iter().map(AffinePoint::to_niels).collect()
+    // The table for the first `k + 1` chunks is one copy of the table for the first `k`
+    // chunks per value of chunk `k`, each copy shifted by that value's multiple of the base.
+    let mut points = bases
+        .iter()
+        .fold(vec![ExtendedPoint::identity()], |sums, base| {
+            encodings(base)
+                .into_iter()
+                .flat_map(|digit| sums.iter().map(move |sum| sum + digit))
+                .collect()
+        });
+    jubjub::batch_normalize(&mut points)
+        .map(|point| point.to_niels())
+        .collect()
 }
 
 /// `enc(abc) · base` for each chunk value `abc` (a = bit 0): `1 + a + 2b`, negated if `c`

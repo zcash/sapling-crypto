@@ -62,6 +62,10 @@ jobs:
             args: ""
           - name: default-precomputation
             args: --features runtime-precomputation
+          - name: multicore
+            args: --no-default-features --features multicore
+          - name: multicore-precomputation
+            args: --no-default-features --features multicore,runtime-precomputation
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
