@@ -33,10 +33,6 @@ and this library adheres to Rust's notion of
   use `bls12_381::Scalar`; `EffectsOnly` uses `Option<bls12_381::Scalar>`.
   `SpendDescription::{from_parts, anchor}` use that representation.
 - Authorization mappers that preserve anchors require equal anchor types.
-- With `multicore`, `BatchValidator::{check_bundle, check_bundle_with_sighashes}`
-  parse spend and output proofs in parallel when their respective list contains
-  at least four proofs. Smaller lists and builds without `multicore` retain
-  streaming proof parsing.
 
 ## [0.9.0] - 2026-09-30
 
