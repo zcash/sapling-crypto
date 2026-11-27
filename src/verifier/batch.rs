@@ -7,30 +7,38 @@ use rayon::prelude::*;
 
 use super::SaplingVerificationContextInner;
 use crate::{
-    bundle::{Authorized, Bundle},
+    bundle::{Authorized, Bundle, GrothProofBytes},
     circuit::{OutputVerifyingKey, SpendVerifyingKey},
 };
 
 #[cfg(test)]
 mod tests;
 
-/// Parses large lists in parallel and small lists serially, stopping at the first failure.
-#[cfg(feature = "multicore")]
-fn read_proofs_in_parallel<T: Sync>(
+/// The smallest number of proofs that [`read_proofs`] parses in parallel when the
+/// `multicore` feature is enabled.
+const PARALLEL_PARSE_THRESHOLD: usize = 4;
+
+/// Parses the Groth16 proof of each element of `descriptions`.
+///
+/// `proof_bytes` returns the encoded proof of one description. The function returns
+/// the parsed proofs in the same order as `descriptions`. It returns `None` if any
+/// proof fails to parse.
+///
+/// With the `multicore` feature, the function parses a list of at least
+/// [`PARALLEL_PARSE_THRESHOLD`] proofs in parallel on the Rayon thread pool. It parses
+/// shorter lists serially on the calling thread. Without `multicore`, it parses every
+/// list serially. Serial parsing stops at the first proof that fails to parse. Parallel
+/// parsing stops soon after any proof fails to parse.
+fn read_proofs<T: Sync>(
     descriptions: &[T],
-    proof_bytes: impl Fn(&T) -> &crate::bundle::GrothProofBytes + Sync,
+    proof_bytes: impl Fn(&T) -> &GrothProofBytes + Sync,
 ) -> Option<Vec<groth16::Proof<Bls12>>> {
-    if descriptions.len() >= 4 {
-        descriptions
-            .par_iter()
-            .map(|description| groth16::Proof::read(&proof_bytes(description)[..]).ok())
-            .collect()
-    } else {
-        descriptions
-            .iter()
-            .map(|description| groth16::Proof::read(&proof_bytes(description)[..]).ok())
-            .collect()
+    let read_proof = |description: &T| groth16::Proof::read(&proof_bytes(description)[..]).ok();
+    #[cfg(feature = "multicore")]
+    if descriptions.len() >= PARALLEL_PARSE_THRESHOLD {
+        return descriptions.par_iter().map(read_proof).collect();
     }
+    descriptions.iter().map(read_proof).collect()
 }
 
 /// Batch validation context for Sapling.
@@ -108,16 +116,7 @@ impl BatchValidator {
         let mut ctx = SaplingVerificationContextInner::new();
 
         // Deserialize the spend proofs, in spend order.
-        #[cfg(feature = "multicore")]
-        let spend_proofs =
-            read_proofs_in_parallel(bundle.shielded_spends(), |spend| spend.zkproof());
-        #[cfg(not(feature = "multicore"))]
-        let spend_proofs = bundle
-            .shielded_spends()
-            .iter()
-            .map(|spend| groth16::Proof::read(&spend.zkproof()[..]).ok())
-            .collect::<Option<Vec<_>>>();
-        let spend_proofs = match spend_proofs {
+        let spend_proofs = match read_proofs(bundle.shielded_spends(), |spend| spend.zkproof()) {
             Some(proofs) => proofs,
             None => return false,
         };
@@ -165,16 +164,8 @@ impl BatchValidator {
         };
 
         // Deserialize the output proofs, in output order.
-        #[cfg(feature = "multicore")]
-        let output_proofs =
-            read_proofs_in_parallel(bundle.shielded_outputs(), |output| output.zkproof());
-        #[cfg(not(feature = "multicore"))]
-        let output_proofs = bundle
-            .shielded_outputs()
-            .iter()
-            .map(|output| groth16::Proof::read(&output.zkproof()[..]).ok())
-            .collect::<Option<Vec<_>>>();
-        let output_proofs = match output_proofs {
+        let output_proofs = match read_proofs(bundle.shielded_outputs(), |output| output.zkproof())
+        {
             Some(proofs) => proofs,
             None => return false,
         };

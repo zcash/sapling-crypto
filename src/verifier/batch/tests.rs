@@ -6,7 +6,9 @@ use rand::{rngs::StdRng, SeedableRng};
 use redjubjub::{Binding, SigningKey, SpendAuth};
 use zcash_note_encryption::EphemeralKeyBytes;
 
-use super::{BatchValidator, SaplingVerificationContextInner};
+use super::{
+    read_proofs, BatchValidator, SaplingVerificationContextInner, PARALLEL_PARSE_THRESHOLD,
+};
 use crate::{
     builder::testing::proven_two_spend_bundle,
     bundle::{Authorized, Bundle, GrothProofBytes, OutputDescription, SpendDescription},
@@ -191,39 +193,47 @@ fn replace_proof(
     )
 }
 
+/// Returns the list lengths just below, at, and just above the parallel parsing threshold.
+fn counts_around_threshold() -> [usize; 3] {
+    [
+        PARALLEL_PARSE_THRESHOLD - 1,
+        PARALLEL_PARSE_THRESHOLD,
+        PARALLEL_PARSE_THRESHOLD + 1,
+    ]
+}
+
 #[test]
 fn preparation_matches_serial_at_threshold_boundaries() {
+    let threshold = PARALLEL_PARSE_THRESHOLD;
     for (spends, outputs) in [
         (0, 1),
         (1, 0),
-        (2, 2),
-        (3, 3),
-        (4, 0),
-        (0, 4),
-        (4, 4),
-        (5, 5),
+        (threshold - 2, threshold - 2),
+        (threshold - 1, threshold - 1),
+        (threshold, 0),
+        (0, threshold),
+        (threshold, threshold),
+        (threshold + 1, threshold + 1),
     ] {
         assert!(assert_accepted_like_serial(bundle(spends, outputs)));
     }
 }
 
-#[cfg(feature = "multicore")]
 #[test]
 fn read_proofs_preserves_order_and_rejects_any_malformed_proof() {
-    for count in 0..=5 {
-        let proofs = (0..count).map(proof_bytes).collect::<Vec<_>>();
+    for count in 0..=PARALLEL_PARSE_THRESHOLD + 1 {
+        let proofs = (0..count)
+            .map(|index| proof_bytes(u64::try_from(index).unwrap()))
+            .collect::<Vec<_>>();
         let serial = proofs
             .iter()
             .map(|proof| Proof::read(&proof[..]).unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(
-            super::read_proofs_in_parallel(&proofs, |proof| proof),
-            Some(serial)
-        );
+        assert_eq!(read_proofs(&proofs, |proof| proof), Some(serial));
         for index in 0..proofs.len() {
             let mut proofs = proofs.clone();
             proofs[index] = [0; 192];
-            assert_eq!(super::read_proofs_in_parallel(&proofs, |proof| proof), None);
+            assert_eq!(read_proofs(&proofs, |proof| proof), None);
         }
     }
 }
@@ -277,7 +287,7 @@ fn malformed_proofs_reject_like_serial() {
     malformed.push(torsion);
     for proof in malformed {
         assert!(Proof::<Bls12>::read(&proof[..]).is_err());
-        for count in [3, 4, 5] {
+        for count in counts_around_threshold() {
             for index in [0, count / 2, count - 1] {
                 for output in [false, true] {
                     let bundle = replace_proof(bundle(count, count), output, index, proof);
@@ -290,7 +300,7 @@ fn malformed_proofs_reject_like_serial() {
 
 #[test]
 fn semantic_failures_reject_like_serial() {
-    for count in [3, 4, 5] {
+    for count in counts_around_threshold() {
         for index in [0, count / 2, count - 1] {
             for epk in [[0xff; 32], jubjub::ExtendedPoint::identity().to_bytes()] {
                 let bundle = bundle(count, count);
@@ -344,7 +354,7 @@ fn semantic_failures_reject_like_serial() {
 
 #[test]
 fn accepted_bundle_queues_its_binding_signature() {
-    let bundle = bundle(4, 4).map_authorization(
+    let bundle = bundle(PARALLEL_PARSE_THRESHOLD, PARALLEL_PARSE_THRESHOLD).map_authorization(
         (),
         |_, proof| proof,
         |_, proof| proof,
