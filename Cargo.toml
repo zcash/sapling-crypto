@@ -111,7 +111,9 @@ circuit = [
   "std"
 ]
 
-## Enables multithreading support for creating and verifying proofs.
+## Enables multithreading support for creating and verifying proofs. This feature has
+## no effect unless `circuit` is also enabled. It always depends on `rayon`, which
+## requires a target with the standard library.
 multicore = ["bellman?/multicore", "groth16?/multicore", "dep:rayon"]
 
 ### A temporary feature flag that exposes granular APIs needed by `zcashd`. These APIs
