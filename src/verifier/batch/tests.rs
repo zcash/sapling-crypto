@@ -81,7 +81,7 @@ fn bundle(spends: usize, outputs: usize) -> Bundle<Authorized, i64> {
     .unwrap()
 }
 
-// Independent streaming reference for check_bundle's preparation and partial queues.
+// Independent streaming reference for check_bundle's decision and queued items.
 fn serial_check(validator: &mut BatchValidator, bundle: &Bundle<Authorized, i64>) -> Option<()> {
     validator.bundles_added = true;
     let mut ctx = SaplingVerificationContextInner::new();
@@ -129,12 +129,14 @@ fn serial_check(validator: &mut BatchValidator, bundle: &Bundle<Authorized, i64>
     .then_some(())
 }
 
-fn assert_matches_serial(bundle: Bundle<Authorized, i64>, accepted: bool, signatures_valid: bool) {
+/// Asserts that both `check_bundle` and the serial reference accept `bundle`, and that
+/// they queue the same proofs in the same order. Returns whether the signatures queued
+/// by `check_bundle` verify, after asserting that the reference's signatures agree.
+fn assert_accepted_like_serial(bundle: Bundle<Authorized, i64>) -> bool {
     let mut serial = BatchValidator::new();
-    assert_eq!(serial_check(&mut serial, &bundle).is_some(), accepted);
+    assert!(serial_check(&mut serial, &bundle).is_some());
     let mut actual = BatchValidator::new();
-    assert_eq!(actual.check_bundle(bundle, SIGHASH), accepted);
-    assert_eq!(actual.bundles_added, serial.bundles_added);
+    assert!(actual.check_bundle(bundle, SIGHASH));
     // The underlying verifier exposes Debug, but no accessors for queued items.
     assert_eq!(
         format!("{:?}", actual.spend_proofs),
@@ -144,14 +146,18 @@ fn assert_matches_serial(bundle: Bundle<Authorized, i64>, accepted: bool, signat
         format!("{:?}", actual.output_proofs),
         format!("{:?}", serial.output_proofs)
     );
+    let signatures_valid = actual.signatures.verify(StdRng::seed_from_u64(1)).is_ok();
     assert_eq!(
         serial.signatures.verify(StdRng::seed_from_u64(1)).is_ok(),
         signatures_valid
     );
-    assert_eq!(
-        actual.signatures.verify(StdRng::seed_from_u64(1)).is_ok(),
-        signatures_valid
-    );
+    signatures_valid
+}
+
+/// Asserts that both `check_bundle` and the serial reference reject `bundle`.
+fn assert_rejected_like_serial(bundle: Bundle<Authorized, i64>) {
+    assert!(serial_check(&mut BatchValidator::new(), &bundle).is_none());
+    assert!(!BatchValidator::new().check_bundle(bundle, SIGHASH));
 }
 
 fn replace_proof(
@@ -197,24 +203,27 @@ fn preparation_matches_serial_at_threshold_boundaries() {
         (4, 4),
         (5, 5),
     ] {
-        assert_matches_serial(bundle(spends, outputs), true, true);
+        assert!(assert_accepted_like_serial(bundle(spends, outputs)));
     }
 }
 
 #[cfg(feature = "multicore")]
 #[test]
-fn parallel_threshold_is_per_list() {
+fn read_proofs_preserves_order_and_rejects_any_malformed_proof() {
     for count in 0..=5 {
         let proofs = (0..count).map(proof_bytes).collect::<Vec<_>>();
-        let parsed = super::read_proofs_in_parallel(&proofs, |proof| proof).collect::<Vec<_>>();
-        if count < 4 {
-            assert!(parsed.is_empty());
-        } else {
-            let serial = proofs
-                .iter()
-                .map(|proof| Proof::read(&proof[..]).ok())
-                .collect::<Vec<_>>();
-            assert_eq!(parsed, serial);
+        let serial = proofs
+            .iter()
+            .map(|proof| Proof::read(&proof[..]).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            super::read_proofs_in_parallel(&proofs, |proof| proof),
+            Some(serial)
+        );
+        for index in 0..proofs.len() {
+            let mut proofs = proofs.clone();
+            proofs[index] = [0; 192];
+            assert_eq!(super::read_proofs_in_parallel(&proofs, |proof| proof), None);
         }
     }
 }
@@ -230,7 +239,7 @@ fn preparation_matches_serial_with_one_worker() {
 }
 
 #[test]
-fn malformed_proofs_preserve_partial_queues() {
+fn malformed_proofs_reject_like_serial() {
     let valid = proof_bytes(0);
     let mut malformed = Vec::new();
     for (start, end) in [(0, 48), (48, 144), (144, 192)] {
@@ -272,7 +281,7 @@ fn malformed_proofs_preserve_partial_queues() {
             for index in [0, count / 2, count - 1] {
                 for output in [false, true] {
                     let bundle = replace_proof(bundle(count, count), output, index, proof);
-                    assert_matches_serial(bundle, false, true);
+                    assert_rejected_like_serial(bundle);
                 }
             }
         }
@@ -280,7 +289,7 @@ fn malformed_proofs_preserve_partial_queues() {
 }
 
 #[test]
-fn semantic_failures_preserve_partial_queues() {
+fn semantic_failures_reject_like_serial() {
     for count in [3, 4, 5] {
         for index in [0, count / 2, count - 1] {
             for epk in [[0xff; 32], jubjub::ExtendedPoint::identity().to_bytes()] {
@@ -294,7 +303,7 @@ fn semantic_failures_preserve_partial_queues() {
                     *bundle.authorization(),
                 )
                 .unwrap();
-                assert_matches_serial(bundle, false, true);
+                assert_rejected_like_serial(bundle);
             }
             let bundle = bundle(count, count);
             let mut spends = bundle.shielded_spends().to_vec();
@@ -302,7 +311,7 @@ fn semantic_failures_preserve_partial_queues() {
             spends[index] = SpendDescription::from_parts(
                 spend.cv().clone(),
                 *spend.anchor(),
-                spend.nullifier().clone(),
+                *spend.nullifier(),
                 jubjub::ExtendedPoint::identity()
                     .to_bytes()
                     .try_into()
@@ -317,7 +326,7 @@ fn semantic_failures_preserve_partial_queues() {
                 *bundle.authorization(),
             )
             .unwrap();
-            assert_matches_serial(bundle, false, true);
+            assert_rejected_like_serial(bundle);
         }
     }
     // Invalid commitments cannot enter a decoded bundle through the network constructors.
@@ -334,26 +343,7 @@ fn semantic_failures_preserve_partial_queues() {
 }
 
 #[test]
-fn signatures_stop_at_the_first_failed_proof() {
-    for bad_signature in [0, 2, 4] {
-        let bundle = bundle(5, 5).map_authorization(
-            0,
-            |_, proof| proof,
-            |_, proof| proof,
-            |index, signature| {
-                let replace = *index == bad_signature;
-                *index += 1;
-                if replace {
-                    [0xff; 64].into()
-                } else {
-                    signature
-                }
-            },
-            |_, auth| auth,
-        );
-        let bundle = replace_proof(bundle, false, 2, [0; 192]);
-        assert_matches_serial(bundle, false, bad_signature >= 2);
-    }
+fn accepted_bundle_queues_its_binding_signature() {
     let bundle = bundle(4, 4).map_authorization(
         (),
         |_, proof| proof,
@@ -363,7 +353,7 @@ fn signatures_stop_at_the_first_failed_proof() {
             binding_sig: [0xff; 64].into(),
         },
     );
-    assert_matches_serial(bundle, true, false);
+    assert!(!assert_accepted_like_serial(bundle));
 }
 
 fn decodable_proof() -> GrothProofBytes {
