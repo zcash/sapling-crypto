@@ -952,11 +952,9 @@ impl DiversifiableFullViewingKey {
             return Some((j_external, Scope::External));
         }
 
-        let j_internal = self
-            .internal_parts()
-            .1
-            .diversifier_index(addr.diversifier());
-        if self.address(j_internal).as_ref() == Some(addr) {
+        let (fvk_internal, dk_internal) = self.internal_parts();
+        let j_internal = dk_internal.diversifier_index(addr.diversifier());
+        if sapling_address(&fvk_internal, &dk_internal, j_internal).as_ref() == Some(addr) {
             return Some((j_internal, Scope::Internal));
         }
 
@@ -1242,6 +1240,27 @@ mod tests {
 
         let j_1 = DiversifierIndex::from([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(xfvk_m.address(j_1), None);
+    }
+
+    #[test]
+    fn decrypt_diversifier() {
+        let seed = [0; 32];
+        let xsk_m = ExtendedSpendingKey::master(&seed).unwrap();
+        let dfvk = xsk_m.to_diversifiable_full_viewing_key();
+
+        let (j_external, addr_external) = dfvk.default_address();
+        assert_eq!(
+            dfvk.decrypt_diversifier(&addr_external),
+            Some((j_external, Scope::External))
+        );
+
+        // The change address is derived from the internal FVK, so its diversifier
+        // index must be decrypted and verified against the internal parts.
+        let (j_internal, addr_internal) = dfvk.change_address();
+        assert_eq!(
+            dfvk.decrypt_diversifier(&addr_internal),
+            Some((j_internal, Scope::Internal))
+        );
     }
 
     #[test]
